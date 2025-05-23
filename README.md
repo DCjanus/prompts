@@ -8,5 +8,8 @@
 ### [GitHub Issue 回复助手](./github_issue_reply.md)
 根据 GitHub issue 内容和用户补充信息，生成得体、精准、礼貌的英文回复，自动调整格式以提升可读性。
 
+### [多语言翻译助手](./multilingual_translation_prompt.md)
+根据输入文本的语言，自动翻译为中文或英文，并提供标准、专业、文学、俚语四种不同风格的翻译结果。
+
 ### [Cursor 全局规则](./cursor.md)
 我的 Cursor 全局规则，包括语言选择、代码风格、Git 提交规范以及依赖管理等方面的指引。
