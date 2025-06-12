@@ -13,4 +13,4 @@
 
 | 工作流 | 描述 |
 | --- | --- |
-| [AI 辅助开发工作流](./code_workflow/README.md) | **记录 AI 辅助高效开发的个人实践。** |
+| [AI 辅助开发工作流](./code_workflow/README.md) | **AI 辅助开发的个人实践** |
