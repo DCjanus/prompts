@@ -11,4 +11,4 @@
 
 ## 工作流
 
-### [代码工作流](./code_workflow/)
+### [AI 辅助开发工作流](./code_workflow/README.md)
