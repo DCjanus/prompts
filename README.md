@@ -13,4 +13,4 @@
 
 | 工作流 | 描述 |
 | --- | --- |
-| [AI 辅助开发工作流](./code_workflow/README.md) | **记录 AI 辅助高效开发的个人实践。**<br/><br/>本实践基于 [Cursor](https://cursor.sh/)，通过其"自定义模式 (Custom Mode)"功能，将各阶段的提示词与默认模型固化，并为每个自定义模式绑定快捷键以提升效率。 |
+| [AI 辅助开发工作流](./code_workflow/README.md) | **记录 AI 辅助高效开发的个人实践。** |
