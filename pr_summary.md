@@ -7,7 +7,7 @@
 1.  **获取代码差异**:
     *   首先，检查用户是否已提供 `git diff` 内容。
     *   如果**没有**提供，请按以下步骤操作：
-        1.  通过 `git remote show origin` 等方式，自动识别出远程仓库的默认分支（如 `main` 或 `master`）。
+        1.  通过 `git symbolic-ref refs/remotes/origin/HEAD` 等方式，自动识别出远程仓库的默认分支（如 `main` 或 `master`）。
         2.  执行 `git diff` 命令，将当前分支与获取到的默认分支进行比较。
 2.  **理解变更上下文**：
     *   仔细审查 `git diff` 的输出，了解变更的表面内容。
