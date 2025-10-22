@@ -5,3 +5,4 @@
 ## 仓库结构
 
 - `.codex/AGENTS.md`：记录我在 Codex 里共用的代理约束
+ - `TECH_DOC_BEST_PRACTICES.md`：技术文档写作最佳实践（简明版）
