@@ -12,3 +12,7 @@
   - Rust：`cargo add <crate>`
   - Python：`uv add <package>`
   - 前端（npm）：`npm install <package>`
+
+## GitHub Issue 获取背景
+- 用户给出 issue 链接且需了解评论时，直接用 gh CLI 获取内容。
+- 命令示例：`gh issue view <issue-url> -c` 会连同评论展示（如 `gh issue view https://github.com/testcontainers/testcontainers-rs/issues/786 -c`）。
