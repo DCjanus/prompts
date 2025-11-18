@@ -14,6 +14,6 @@
   - 前端（npm）：`npm install <package>`
 
 ## GitHub 链接快速查看
-- 收到 GitHub issue 或 PR URL 时，优先用 gh CLI 而非直接访问。
-- Issue：`gh issue view <issue-url> -c`（携带评论）。
-- PR diff：`gh pr diff <pr-url> --color never`。
+- URL 格式：`https://github.com/<owner>/<repo>/(issues|pull)/<id>`；收到后优先用 gh 而非直接访问。
+- Issue：`gh issue view <url> -c`（含评论）。
+- PR diff：`gh pr diff <url> --color never`。
