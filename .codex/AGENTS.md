@@ -27,4 +27,5 @@
       - 示例：`gh pr create --title "feat(scope): short semantic summary" --body "- Added X\n- Updated Y\n- Notes: Z"`
       - 若需指定基准分支：`gh pr create --base main --title "fix(ui): handle empty state" --body "- Fix empty list rendering\n- Add regression test"`
       - 草稿 PR：在命令中加入 `--draft`。
+      - **注意**：需要多行正文时务必使用 `--body-file`（或 `gh pr edit --body-file`）并提供实际包含换行符的文件，禁止在 `--body` 中嵌入 `\n`，否则 PR 描述会出现字面字符串。
     - 创建 PR 成功后，在终端单独一行输出完整的 PR URL，方便后续引用。
