@@ -21,11 +21,18 @@
 ## 创建 PR
 - PR 标题：一律使用英文且遵循语义化提交规范，必要时包含 scope。
 - PR 描述：使用英文保持简洁、专业、精准，像专业工程师撰写的说明；合理运用 Markdown（列表、代码块等）提升可读性，并根据需要引用关联 issue、相关代码片段、历史 PR 或提交，为 reviewer 提供充分上下文；描述聚焦整个 PR 的核心变更和目的，结合问题背景或待修复 BUG 说明我们解决了什么，而非罗列零散提交的细节，以降低 reviewer 的认知负担。
+  - 正文开头先写最关键的目标或解决的问题，再补充次要更新；若当下信息不足以明确目标，先询问开发者而非自行臆测。
 - 提交流程：
   - 确认当前分支及代码已推送到远程（`git status`、`git push`）。
-    - 通过 `gh pr create` 创建 PR，显式提供标题与描述以避免交互：
-      - 示例：`gh pr create --title "feat(scope): short semantic summary" --body "- Added X\n- Updated Y\n- Notes: Z"`
-      - 若需指定基准分支：`gh pr create --base main --title "fix(ui): handle empty state" --body "- Fix empty list rendering\n- Add regression test"`
-      - 草稿 PR：在命令中加入 `--draft`。
-      - **注意**：需要多行正文时务必使用 `--body-file`（或 `gh pr edit --body-file`）并提供实际包含换行符的文件，禁止在 `--body` 中嵌入 `\n`，否则 PR 描述会出现字面字符串。
+    - 通过 `gh pr new` 创建 PR，显式提供标题与描述以避免交互：
+      - 推荐使用标准输入一次性写入正文，例如：
+        ```bash
+        gh pr new --title "feat(scope): short semantic summary" --body-file - <<'EOF'
+        - Added X
+        - Updated Y
+        - Notes: Z
+        EOF
+        ```
+      - `gh pr edit` 与 `gh pr new` 的参数大体类似，可按需复用 `--base`、`--draft`、`--body-file` 等选项。
+      - **注意**：正文默认走 `--body-file`（文件或标准输入），多行内容禁止在 `--body` 中写 `\n`，否则描述会展示字面字符串。
     - 创建 PR 成功后，在终端单独一行输出完整的 PR URL，方便后续引用。
