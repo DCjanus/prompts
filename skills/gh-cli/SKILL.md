@@ -7,8 +7,10 @@ description: 使用 GitHub CLI 查看 issue/PR 并按约定创建 PR 的流程�
 
 ## GitHub 链接快速查看
 - 进入 Issue 前可先运行 `gh auth status` 或 `gh api user --jq '.login'`，确认当前身份以辨识讨论中提到的用户是否就是自己。
-- Issue：`gh issue view <url|number> -c`（含评论）。
-- PR diff：`gh pr diff <url|number> --color never`。
+- Issue：`gh issue view <url> --json number,title,state,author,body,comments`。
+  - gh 默认会开启交互式 TUI，在 Codex 环境中无法阅读；务必使用 `--json` 并指定需要的字段列表，确保一次性输出。
+- PR 信息：`gh pr view <url> --json number,title,state,author,body,url,baseRefName,headRefName,additions,deletions,changedFiles,mergeable,mergeStateStatus,reviewDecision`，按需调整字段。
+- PR diff：`gh pr diff <url> --color never`。
 
 ## 创建 PR
 1. 确认 `git status` 干净，`git push` 到远端。

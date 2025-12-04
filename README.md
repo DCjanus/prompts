@@ -1,6 +1,6 @@
 这个仓库只是我个人在 Codex 中使用的提示词备份，内容会根据日常需求随时增删，未必完整，也不保证对所有场景都适用。如果你正好有类似需求，欢迎参考或复制现有结构自行扩展。
 
-仓库最初建立时我主要使用 Cursor，因此曾包含针对 Cursor 的提示词；目前已不再使用，相关文件已删除。如需了解历史用法，可访问 [deprecated/cursor](https://github.com/DCjanus/prompts/releases/tag/deprecated%2Fcursor)。
+目前仓库只保留与 Codex 直接相关的提示词与技能说明：早期为 Cursor 准备的内容已经删除，若需要历史记录可参考 [deprecated/cursor](https://github.com/DCjanus/prompts/releases/tag/deprecated%2Fcursor) 归档。
 
 ## 使用方式
 
@@ -12,5 +12,7 @@ alias codex='codex --dangerously-bypass-approvals-and-sandbox'
 
 ## 仓库结构
 
-- [`AGENTS.md`](AGENTS.md)：记录我在 Codex 里共用的全局代理约束
-- [`TECH_DOC_BEST_PRACTICES.md`](TECH_DOC_BEST_PRACTICES.md)：技术文档写作最佳实践（简明版）
+- [`AGENTS.md`](AGENTS.md)：Codex 中所有代理共享的基础约束与工作流
+- [`skills/`](skills)：按功能分类的技能库，供 Codex 在需要时加载
+  - [`skills/gh-cli/SKILL.md`](skills/gh-cli/SKILL.md)：使用 GitHub CLI 查看 issue/PR 与创建 PR 的操作指引
+  - [`skills/tech-doc/SKILL.md`](skills/tech-doc/SKILL.md)：技术协作文档的统一写作指南
