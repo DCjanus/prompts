@@ -6,7 +6,7 @@ description: 使用 GitHub CLI 查看 issue/PR 并按约定创建 PR 的流程�
 # GitHub CLI Skill
 
 ## GitHub 链接快速查看
-- 进入 Issue 前可先运行 `gh auth status` 或 `gh api user --jq '.login'`，确认当前身份以辨识讨论中提到的用户是否就是自己。
+- 进入 Issue 前可先运行 `gh api user --jq '.login'`，确认当前身份以辨识讨论中提到的用户是否就是自己。
 - Issue：`gh issue view <url>`；若需阅读评论，加 `--comments`。
 - PR 信息：`gh pr view <url>`，同样使用默认输出即可，必要时可附加 `--comments`、`--files` 等参数按需展开。
 - PR diff：`gh pr diff <url> --color never`。
