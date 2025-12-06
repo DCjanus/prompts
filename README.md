@@ -16,3 +16,4 @@ alias codex='codex --dangerously-bypass-approvals-and-sandbox'
 - [`skills/`](skills)：按功能分类的技能库，供 Codex 在需要时加载
   - [`skills/gh-cli/SKILL.md`](skills/gh-cli/SKILL.md)：使用 GitHub CLI 查看 issue/PR 与创建 PR 的操作指引
   - [`skills/tech-doc/SKILL.md`](skills/tech-doc/SKILL.md)：技术协作文档的统一写作指南
+  - [`skills/skill-creator/SKILL.md`](skills/skill-creator/SKILL.md)：Claude 官方的技能模板与打包脚本，目录完整复制自 [anthropics/skills skill-creator](https://github.com/anthropics/skills/tree/main/skills/skill-creator)（2025-12-06 获取）
