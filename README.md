@@ -17,3 +17,4 @@ alias codex='codex --dangerously-bypass-approvals-and-sandbox'
   - [`skills/gh-cli/SKILL.md`](skills/gh-cli/SKILL.md)：使用 GitHub CLI 查看 issue/PR 与创建 PR 的操作指引
   - [`skills/tech-doc/SKILL.md`](skills/tech-doc/SKILL.md)：技术协作文档的统一写作指南
   - [`skills/skill-creator/SKILL.md`](skills/skill-creator/SKILL.md)：Claude 官方的技能模板与打包脚本，目录完整复制自 [anthropics/skills skill-creator](https://github.com/anthropics/skills/tree/main/skills/skill-creator)（2025-12-06 获取）
+  - [`skills/go-lo/SKILL.md`](skills/go-lo/SKILL.md)：Go ≥ 1.18 项目使用 samber/lo 简化集合/映射/字符串、错误处理、重试/防抖/节流、通道并发或指针空值场景的速用指南（含按官方 docs 划分的参考文件）
