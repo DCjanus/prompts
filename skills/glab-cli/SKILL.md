@@ -42,7 +42,8 @@ EOF
   --draft \
   --yes
 ```
-- 其他常用参数：`--reviewer user1,user2`、`--remove-source-branch`、`--allow-collaboration`。  
+- 推荐参数（可按需开启）：`--remove-source-branch`（合并后删源分支）、`--squash-before-merge`（合并前压缩为单一 commit）；若团队偏好可省略。  
+- 其他常用参数：`--reviewer user1,user2`、`--allow-collaboration`。  
 - 修改已建 MR：`glab mr update <id> --title "..."
   --description "$(cat <<'EOF'\n...\nEOF\n)" --label ... --yes`。
 
