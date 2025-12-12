@@ -15,6 +15,7 @@ alias codex='codex --dangerously-bypass-approvals-and-sandbox'
 - [`AGENTS.md`](AGENTS.md)：Codex 中所有代理共享的基础约束与工作流
 - [`skills/`](skills)：按功能分类的技能库，供 Codex 在需要时加载
   - [`skills/gh-cli/SKILL.md`](skills/gh-cli/SKILL.md)：使用 GitHub CLI 查看 issue/PR 与创建 PR 的操作指引
+  - [`skills/glab-cli/SKILL.md`](skills/glab-cli/SKILL.md)：使用 GitLab CLI（glab）查看/评论 issue、MR 与非交互创建 MR/issue 的操作指引，适配自建 GitLab 实例
   - [`skills/tech-doc/SKILL.md`](skills/tech-doc/SKILL.md)：技术协作文档的统一写作指南
   - [`skills/skill-creator/SKILL.md`](skills/skill-creator/SKILL.md)：Claude 官方的技能模板与打包脚本，目录完整复制自 [anthropics/skills skill-creator](https://github.com/anthropics/skills/tree/main/skills/skill-creator)（2025-12-06 获取）
   - [`skills/go-lo/SKILL.md`](skills/go-lo/SKILL.md)：Go ≥ 1.18 项目使用 samber/lo 简化集合/映射/字符串、错误处理、重试/防抖/节流、通道并发或指针空值场景的速用指南（含按官方 docs 划分的参考文件）
