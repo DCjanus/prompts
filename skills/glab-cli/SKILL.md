@@ -6,7 +6,10 @@ description: 使用 GitLab CLI (glab) 查看/评论 issue 与 merge request，�
 # GitLab CLI Skill
 
 ## 基本准备
-- 确认认证：`glab auth status`；如需指向自建实例，设置 `GLAB_HOST` 或在命令加 `-R group/project`。
+- 确认身份与认证：
+  - `glab auth status` 读取当前实例及 “Logged in to <host> as <user>” 行。
+  - 直接取用户名：`GITLAB_HOST=<host> glab api /user | jq -r '.username'`（依赖本机 `jq`，若已设全局 `GITLAB_HOST` 可直接 `glab api /user`）。
+  - 自建实例优先通过环境变量 `GITLAB_HOST` 指定；如需单次覆盖，可在命令前加 `GITLAB_HOST=<host>` 或用 `-R group/project`。
 - 输出格式默认够用，若需机器可读用 `--output json`。
 
 ## Issue 快速查看
