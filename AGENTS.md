@@ -4,6 +4,7 @@
 - 仅在用户当次明确指令下执行 `git commit`；不得主动请求或沿用任何历史授权。
 - Git Commit Message 使用简洁、精确、描述性强的英文，遵循[语义化提交规范](https://www.conventionalcommits.org/en/v1.0.0/)，且在可行时尽量包含 scope 信息
 - 需要查看 GitHub issue 或 PR 时，避免直接打开链接，应使用 GitHub CLI 命令获取详情。
+- 除非明确要求，否则新加的代码不要考虑向后兼容性；但如果存在破坏性更新，必须明确显式声明已做出破坏性更新。
 
 ## 依赖管理
 - 通用原则
