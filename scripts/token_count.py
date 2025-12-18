@@ -46,7 +46,9 @@ def count_tokens(text: str) -> int:
 
 
 @app.command(help="统计输入文本的 token 数（tiktoken/cl100k_base）。")
-def main(file: Path | None = typer.Option(None, "--file", "-f", help="输入文件路径，省略则读取 stdin")) -> None:
+def main(
+    file: Path | None = typer.Argument(None, help="输入文件路径，省略则读取 stdin"),
+) -> None:
     try:
         spec = InputSpec(file_path=file)
     except ValidationError as exc:
