@@ -22,12 +22,10 @@ alias codex='codex --dangerously-bypass-approvals-and-sandbox --enable skills --
     - [`SKILL.md`](skills/gitlab-pr-issue/SKILL.md)：查看/评论/修改 issue、MR，包含标题/正文格式及非交互创建命令，适配自建 GitLab 实例
   - [`golang-lo/`](skills/golang-lo)：Go ≥ 1.18 项目使用 samber/lo 的速用指南
     - [`SKILL.md`](skills/golang-lo/SKILL.md)：速用指南，含安装/导入示例与官方函数清单获取方式
-  - [`partial-git-commit/`](skills/partial-git-commit)：在禁用 `git add -p` 场景下筛选并提交改动
-    - [`SKILL.md`](skills/partial-git-commit/SKILL.md)：自动生成/应用 patch 的脚本说明
   - [`skill-creator/`](skills/skill-creator)：Claude 官方技能模板与打包脚本
     - [`SKILL.md`](skills/skill-creator/SKILL.md)：目录复制自 [anthropics/skills skill-creator](https://github.com/anthropics/skills/tree/main/skills/skill-creator)（2025-12-06 获取）
   - [`tech-doc/`](skills/tech-doc)：技术协作文档的统一写作指南
     - [`SKILL.md`](skills/tech-doc/SKILL.md)：撰写与维护高质量技术文档的指引
 - [`scripts/`](scripts)：放置 uv script 模式的工具脚本（约束见 `scripts/AGENTS.md`）
   - [`token_count.py`](scripts/token_count.py)：基于 [tiktoken](https://github.com/openai/tiktoken) 的 token 计数 CLI
-  - [`token_tree.py`](scripts/token_tree.py)：统计仓库内所有 Git 跟踪文本文件的 token 数，按树状结构输出；支持全局比例进度条、终端宽度右对齐与百分比显示，可用 `--bar-width` 调整条形宽度
+  - [`token_tree.py`](scripts/token_tree.py)：统计仓库内所有 Git 跟踪文本文件的 token 数，按树状结构输出；支持全局比例进度条、对齐条形显示与百分比，可用 `--bar-width` 调整条形宽度
