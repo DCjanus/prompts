@@ -1,9 +1,9 @@
 ---
-name: gh-cli
-description: 使用 GitHub CLI 查看 issue/PR 并按约定创建 PR 的流程指引。
+name: github-pr-issue
+description: 使用 GitHub CLI（gh）查看/修改/创建 issue 与 PR，并包含团队约定的 PR 创建规范（标题/正文格式、非交互命令）。
 ---
 
-# GitHub CLI Skill
+# GitHub CLI Skill（Issue/PR）
 
 ## GitHub 链接快速查看
 - 进入 Issue 前可先运行 `gh api user --jq '.login'`，确认当前身份以辨识讨论中提到的用户是否就是自己。

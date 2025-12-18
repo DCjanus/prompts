@@ -1,9 +1,9 @@
 ---
-name: glab-cli
-description: 使用 GitLab CLI (glab) 查看/评论 issue 与 merge request，并按约定创建 MR。
+name: gitlab-pr-issue
+description: 使用 GitLab CLI（glab）查看/评论/修改 issue 与 merge request，并包含团队约定的 MR/issue 创建规范（标题/正文格式、非交互命令）。
 ---
 
-# GitLab CLI Skill
+# GitLab CLI Skill（Issue/MR）
 
 ## 基本准备
 - 确认身份与认证：
