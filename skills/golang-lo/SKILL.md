@@ -32,25 +32,11 @@ groups := lo.GroupBy(users, func(u User) int { return u.Age })
 t := lo.Must(time.Parse(time.RFC3339, ts))
 ```
 
-## 资源（按官方 docs/docs 结构，树状索引）
-- core/
-  - slice.md
-  - map.md
-  - string.md
-  - math.md
-  - time.md
-  - condition.md
-  - type.md
-  - error-handling.md
-  - concurrency.md
-  - channel.md
-  - find.md
-  - intersect.md
-  - function.md
-  - tuple.md
-- parallel/
-  - slice.md
-- mutable/
-  - slice.md
-- iter/
-  - overview.md
+## 官方清单获取
+使用 curl 直接读取最新函数列表：
+
+```bash
+curl -sSL https://lo.samber.dev/llms.txt
+```
+
+该清单随 Git 仓库最新提交更新，可能包含尚未发布的变更；使用前请核对本地依赖版本。
