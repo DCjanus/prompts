@@ -27,4 +27,4 @@ alias codex='codex --dangerously-bypass-approvals-and-sandbox --enable skills --
   - [`tech-doc/`](skills/tech-doc)：技术协作文档的统一写作指南
     - [`SKILL.md`](skills/tech-doc/SKILL.md)：撰写与维护高质量技术文档的指引
 - [`scripts/`](scripts)：放置 uv script 模式的工具脚本（约束见 `scripts/AGENTS.md`）
-  - [`token_count.py`](scripts/token_count.py)：基于 Typer/rich/pydantic/tiktoken 的 token 计数 CLI，支持文件或 stdin 输入，用于预估 LLM 调用上下文长度
+  - [`token_count.py`](scripts/token_count.py)：基于 [tiktoken](https://github.com/openai/tiktoken) 的 token 计数 CLI
