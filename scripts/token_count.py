@@ -21,7 +21,8 @@ import tiktoken
 import typer
 
 console = Console()
-app = typer.Typer(add_completion=True, no_args_is_help=False)
+# 关闭 Typer 自动补全以保持命令行精简
+app = typer.Typer(add_completion=False, no_args_is_help=False)
 
 
 class InputSpec(BaseModel):
