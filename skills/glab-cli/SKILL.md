@@ -26,7 +26,7 @@ description: 使用 GitLab CLI (glab) 查看/评论 issue 与 merge request，�
 ## 创建 MR（非交互）
 1) 确保本地分支已推送且 `git status` 干净。  
 2) 语义化英文标题，必要时添加 scope（例 `feat(scope): short summary`）。  
-3) 用 heredoc 传多行描述，避免交互式编辑：
+3) 用 heredoc 传多行描述，避免交互式编辑；描述聚焦合并前后行为与影响的变化，避免记录开发过程中的中间尝试或撤销动作：
 ```
 glab mr create \
   --title "feat(scope): short summary" \
