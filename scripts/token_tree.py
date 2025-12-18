@@ -7,6 +7,7 @@
 #     "rich>=14.2.0",
 #     "tiktoken>=0.12.0",
 #     "typer>=0.20.0",
+#     # 交互式 TUI 暂不启用，若需可添加 textual>=6.10.0
 # ]
 # ///
 
@@ -132,11 +133,7 @@ def build_token_tree(repo_root: Path, files: Iterable[Path], encoding) -> TokenN
         file_node.tokens = tokens
 
     root_node.aggregate()
-    if skipped:
-        console.print(
-            f"[yellow]跳过 {len(skipped)} 个疑似二进制或非 UTF-8 文件[/yellow]"
-        )
-    return root_node
+    return root_node, len(skipped)
 
 
 def max_token_text_len(node: TokenNode) -> int:
@@ -158,60 +155,56 @@ def render_tree_lines(
     max_tokens: int,
     bar_width: int,
     max_token_len: int,
-) -> list[Text]:
-    lines: list[Text] = []
+):
+    from rich.table import Table
 
-    # 首先遍历计算所有文件行左侧文字的最大长度，用于统一条形图起始列。
-    file_left_lengths: list[int] = []
-
-    def measure(current: TokenNode, prefix: str, is_last: bool, depth: int) -> None:
-        connector = "" if depth == 0 else ("└─ " if is_last else "├─ ")
-        next_prefix = prefix + ("   " if is_last else "│  ")
-        if not current.is_dir:
-            token_text = format_tokens(current.tokens).rjust(max_token_len)
-            left_len = len(f"{token_text} tokens  {prefix}{connector}{current.name}")
-            file_left_lengths.append(left_len)
-        children = list(current.children.values())
-        dirs = sorted([c for c in children if c.is_dir], key=lambda n: n.name)
-        files = sorted([c for c in children if not c.is_dir], key=lambda n: n.name)
-        ordered = dirs + files
-        for idx, child in enumerate(ordered):
-            measure(child, next_prefix, idx == len(ordered) - 1, depth + 1)
-
-    measure(node, prefix="", is_last=True, depth=0)
-    bar_start_col = (max(file_left_lengths) + 1) if file_left_lengths else 0
+    table = Table(
+        show_header=False,
+        show_edge=False,
+        box=None,
+        pad_edge=False,
+        expand=False,
+        collapse_padding=True,
+    )
+    table.add_column("tokens", justify="right", min_width=max_token_len, no_wrap=True)
+    table.add_column("name", justify="left")
+    table.add_column(
+        "bar",
+        justify="left",
+        min_width=bar_width,
+        max_width=bar_width,
+        no_wrap=True,
+    )
+    table.add_column("%", justify="right", width=4, no_wrap=True)
 
     def walk(current: TokenNode, prefix: str, is_last: bool, depth: int) -> None:
-        connector = "" if depth == 0 else ("└─ " if is_last else "├─ ")
-        next_prefix = prefix + ("   " if is_last else "│  ")
+        connector = "" if depth == 0 else ("└── " if is_last else "├── ")
+        next_prefix = prefix + ("    " if is_last else "│   ")
 
         is_file = not current.is_dir
         tokens_style = "green" if is_file else "blue"
         name_style = None if is_file else "bold"
-        token_text = format_tokens(current.tokens).rjust(max_token_len)
+        token_text = format_tokens(current.tokens)
 
-        left = f"{token_text} tokens  {prefix}{connector}{current.name}"
-        # 进度条只给文件；目录不填充空格。条形图有背景，不再按终端宽度右对齐，仅保持与数字列的最小间距。
+        name_text = Text(f"{prefix}{connector}")
+        name_text.append(current.name, style=name_style)
+
+        bar_text: Text | str = ""
+        percent_text = ""
         if is_file:
             ratio = 0 if max_tokens == 0 else current.tokens / max_tokens
             filled = max(1 if current.tokens > 0 else 0, int(ratio * bar_width))
             empty = bar_width - filled
             bar = "█" * filled + "░" * empty
+            bar_text = Text(bar, style="magenta")
             percent_text = f"{ratio * 100:>3.0f}%"
-            # 保持所有文件条形图起始位置一致，锚点为最长左侧文本 + 1。
-            padding = max(1, bar_start_col - len(left))
-            left += " " * padding
-        line = Text()
-        line.append(token_text, style=tokens_style)
-        line.append(" tokens  ")
-        line.append(f"{prefix}{connector}")
-        line.append(current.name, style=name_style)
-        if is_file:
-            line.append(" " * padding)
-            line.append(bar, style="magenta")
-            line.append(" ")
-            line.append(percent_text, style="white")
-        lines.append(line)
+
+        table.add_row(
+            Text(token_text, style=tokens_style),
+            name_text,
+            bar_text,
+            percent_text,
+        )
 
         children = list(current.children.values())
         dirs = sorted([c for c in children if c.is_dir], key=lambda n: n.name)
@@ -221,7 +214,28 @@ def render_tree_lines(
             walk(child, next_prefix, idx == len(ordered) - 1, depth + 1)
 
     walk(node, prefix="", is_last=True, depth=0)
-    return lines
+    return table
+
+
+def summarize_tree(node: TokenNode) -> tuple[int, int, str]:
+    """返回 (文件数, 最大 token 数, 最大文件名)。"""
+    max_tokens = 0
+    max_name = ""
+    count = 0
+
+    def walk(current: TokenNode, path_parts: list[str]) -> None:
+        nonlocal max_tokens, max_name, count
+        if not current.is_dir:
+            count += 1
+            if current.tokens > max_tokens:
+                max_tokens = current.tokens
+                max_name = "/".join(path_parts + [current.name])
+            return
+        for child in current.children.values():
+            walk(child, path_parts + [current.name])
+
+    walk(node, [])
+    return count, max_tokens, max_name
 
 
 @app.command(help="统计仓库内所有被 Git 追踪的文本文件的 token 数，并以树状图展示。")
@@ -245,15 +259,16 @@ def main(
     files = list_tracked_files(repo_root)
     encoding = tiktoken.get_encoding("cl100k_base")
 
-    token_tree = build_token_tree(repo_root, files, encoding)
-    lines = render_tree_lines(
+    token_tree, skipped = build_token_tree(repo_root, files, encoding)
+    tree = render_tree_lines(
         node=token_tree,
         max_tokens=token_tree.tokens,
         bar_width=bar_width,
         max_token_len=max_token_text_len(token_tree),
     )
-    for line in lines:
-        console.print(line)
+    if skipped:
+        console.print(f"[yellow]跳过 {skipped} 个疑似二进制或非 UTF-8 文件[/yellow]")
+    console.print(tree)
 
 
 if __name__ == "__main__":
