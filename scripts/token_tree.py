@@ -158,9 +158,28 @@ def render_tree_lines(
     max_tokens: int,
     bar_width: int,
     max_token_len: int,
-    console_width: int,
 ) -> list[Text]:
     lines: list[Text] = []
+
+    # 首先遍历计算所有文件行左侧文字的最大长度，用于统一条形图起始列。
+    file_left_lengths: list[int] = []
+
+    def measure(current: TokenNode, prefix: str, is_last: bool, depth: int) -> None:
+        connector = "" if depth == 0 else ("└─ " if is_last else "├─ ")
+        next_prefix = prefix + ("   " if is_last else "│  ")
+        if not current.is_dir:
+            token_text = format_tokens(current.tokens).rjust(max_token_len)
+            left_len = len(f"{token_text} tokens  {prefix}{connector}{current.name}")
+            file_left_lengths.append(left_len)
+        children = list(current.children.values())
+        dirs = sorted([c for c in children if c.is_dir], key=lambda n: n.name)
+        files = sorted([c for c in children if not c.is_dir], key=lambda n: n.name)
+        ordered = dirs + files
+        for idx, child in enumerate(ordered):
+            measure(child, next_prefix, idx == len(ordered) - 1, depth + 1)
+
+    measure(node, prefix="", is_last=True, depth=0)
+    bar_start_col = (max(file_left_lengths) + 1) if file_left_lengths else 0
 
     def walk(current: TokenNode, prefix: str, is_last: bool, depth: int) -> None:
         connector = "" if depth == 0 else ("└─ " if is_last else "├─ ")
@@ -172,14 +191,15 @@ def render_tree_lines(
         token_text = format_tokens(current.tokens).rjust(max_token_len)
 
         left = f"{token_text} tokens  {prefix}{connector}{current.name}"
-        # 进度条只给文件；目录不填充空格。
+        # 进度条只给文件；目录不填充空格。条形图有背景，不再按终端宽度右对齐，仅保持与数字列的最小间距。
         if is_file:
             ratio = 0 if max_tokens == 0 else current.tokens / max_tokens
             filled = max(1 if current.tokens > 0 else 0, int(ratio * bar_width))
             empty = bar_width - filled
             bar = "█" * filled + "░" * empty
             percent_text = f"{ratio * 100:>3.0f}%"
-            padding = max(0, console_width - len(left) - bar_width - 1 - len(percent_text))
+            # 保持所有文件条形图起始位置一致，锚点为最长左侧文本 + 1。
+            padding = max(1, bar_start_col - len(left))
             left += " " * padding
         line = Text()
         line.append(token_text, style=tokens_style)
@@ -231,7 +251,6 @@ def main(
         max_tokens=token_tree.tokens,
         bar_width=bar_width,
         max_token_len=max_token_text_len(token_tree),
-        console_width=console.size.width or 80,
     )
     for line in lines:
         console.print(line)
