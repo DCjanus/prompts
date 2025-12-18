@@ -18,8 +18,8 @@ alias codex='codex --dangerously-bypass-approvals-and-sandbox'
     - [`SKILL.md`](skills/github-pr-issue/SKILL.md)：查看/修改 issue 与 PR，包含标题/正文格式及非交互创建命令
   - [`gitlab-pr-issue/`](skills/gitlab-pr-issue)：GitLab CLI（glab）使用指引（issue/MR 查看、编辑与创建，含团队 MR/issue 规范）
     - [`SKILL.md`](skills/gitlab-pr-issue/SKILL.md)：查看/评论/修改 issue、MR，包含标题/正文格式及非交互创建命令，适配自建 GitLab 实例
-  - [`go-lo/`](skills/go-lo)：Go ≥ 1.18 项目使用 samber/lo 的速用指南
-    - [`SKILL.md`](skills/go-lo/SKILL.md)：包含按官方 docs 划分的参考文件
+  - [`golang-lo/`](skills/golang-lo)：Go ≥ 1.18 项目使用 samber/lo 的速用指南
+    - [`SKILL.md`](skills/golang-lo/SKILL.md)：包含按官方 docs 划分的参考文件
   - [`partial-git-commit/`](skills/partial-git-commit)：在禁用 `git add -p` 场景下筛选并提交改动
     - [`SKILL.md`](skills/partial-git-commit/SKILL.md)：自动生成/应用 patch 的脚本说明
   - [`skill-creator/`](skills/skill-creator)：Claude 官方技能模板与打包脚本
