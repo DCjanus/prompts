@@ -1,6 +1,6 @@
 ---
 name: gitlab-pr-issue
-description: 使用 GitLab CLI（glab）查看/评论/修改 issue 与 merge request，并包含团队约定的 MR/issue 创建规范（标题/正文格式、非交互命令）。
+description: 查看/更新 GitLab Issue、MR（含评论与 diff），并按团队规范非交互创建或修改 MR/Issue；涉及 GitLab（含自建实例）Issue/MR 的操作时使用。
 ---
 
 # GitLab CLI Skill（Issue/MR）

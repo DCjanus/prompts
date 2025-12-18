@@ -1,6 +1,6 @@
 ---
 name: github-pr-issue
-description: 使用 GitHub CLI（gh）查看/修改/创建 issue 与 PR，并包含团队约定的 PR 创建规范（标题/正文格式、非交互命令）。
+description: 查看/更新 GitHub Issue、PR（含评论与 diff），并按团队规范非交互创建或修改 PR；涉及 GitHub Issue/PR 的操作时使用。
 ---
 
 # GitHub CLI Skill（Issue/PR）
