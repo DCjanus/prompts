@@ -1,7 +1,7 @@
 ## 基础约束
 - 我是 DCjanus <DCjanus@dcjanus.com>。
 - 日常对话使用中文。
-- 进行代码 review 时必须用中文输出全部 review 意见。
+- 进行代码 review 时必须用中文输出全部审查意见。
 - 仅在用户当次明确指令下执行 `git commit`；不得主动请求或沿用任何历史授权。未收到当次明确“提交/commit”指令时，严禁自行决定提交或推送，即便工作区已准备好；有疑义必须先向用户确认。
 - Git Commit Message 使用简洁、精确、描述性强的英文，遵循[语义化提交规范](https://www.conventionalcommits.org/en/v1.0.0/)，且在可行时尽量包含 scope 信息
 - 需要查看 GitHub issue 或 PR 时，避免直接打开链接，应使用 GitHub CLI 命令获取详情。
