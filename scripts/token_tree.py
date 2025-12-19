@@ -73,6 +73,16 @@ def list_tracked_files(repo_root: Path) -> List[Path]:
     return [repo_root / path for path in output.split("\x00") if path]
 
 
+def filter_context_files(repo_root: Path, files: Iterable[Path]) -> List[Path]:
+    """仅保留 skills/**/SKILL.md 与 AGENTS.md。"""
+    selected: List[Path] = []
+    for file_path in files:
+        rel_path = file_path.relative_to(repo_root)
+        if rel_path == Path("AGENTS.md") or rel_path.match("skills/**/SKILL.md"):
+            selected.append(file_path)
+    return selected
+
+
 def is_text_file(path: Path, sample_size: int = 4096) -> bool:
     """简单二进制判定：包含 NUL 字节或无法 UTF-8 解码则视为二进制。"""
     try:
@@ -238,7 +248,7 @@ def summarize_tree(node: TokenNode) -> tuple[int, int, str]:
     return count, max_tokens, max_name
 
 
-@app.command(help="统计仓库内所有被 Git 追踪的文本文件的 token 数，并以树状图展示。")
+@app.command(help="统计仓库内 AGENTS.md 与 skills/**/SKILL.md 的 token 数，并以树状图展示。")
 def main(
     path: Path | None = typer.Option(
         None, "--path", "-p", help="Git 仓库路径，默认自动探测"
@@ -256,7 +266,7 @@ def main(
         raise typer.Exit(code=1)
 
     repo_root = detect_repo_root(spec.repo_path)
-    files = list_tracked_files(repo_root)
+    files = filter_context_files(repo_root, list_tracked_files(repo_root))
     encoding = tiktoken.get_encoding("cl100k_base")
 
     token_tree, skipped = build_token_tree(repo_root, files, encoding)
