@@ -22,8 +22,6 @@ alias codex='codex --dangerously-bypass-approvals-and-sandbox --enable skills --
     - [`SKILL.md`](skills/gitlab-pr-issue/SKILL.md)：查看/评论/修改 issue、MR，包含标题/正文格式及非交互创建命令，适配自建 GitLab 实例
   - [`golang-lo/`](skills/golang-lo)：Go ≥ 1.18 项目使用 samber/lo 的速用指南
     - [`SKILL.md`](skills/golang-lo/SKILL.md)：速用指南，含安装/导入示例与官方函数清单获取方式
-  - [`skill-creator/`](skills/skill-creator)：Claude 官方技能模板与打包脚本
-    - [`SKILL.md`](skills/skill-creator/SKILL.md)：目录复制自 [anthropics/skills skill-creator](https://github.com/anthropics/skills/tree/main/skills/skill-creator)（2025-12-06 获取）
   - [`tech-doc/`](skills/tech-doc)：技术协作文档的统一写作指南
     - [`SKILL.md`](skills/tech-doc/SKILL.md)：撰写与维护高质量技术文档的指引
 - [`scripts/`](scripts)：放置 uv script 模式的工具脚本（约束见 `scripts/AGENTS.md`）

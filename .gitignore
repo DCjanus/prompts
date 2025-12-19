@@ -20,3 +20,6 @@ venv/
 .idea/
 .vscode/
 .ipynb_checkpoints/
+
+# Codex built-in skills
+skills/.system/
