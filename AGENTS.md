@@ -20,3 +20,4 @@
   - Rust：`cargo add <crate>`
   - Python：`uv add <package>`
   - 前端（npm）：`npm install <package>`
+  - Go：`go get <module>`
