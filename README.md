@@ -9,7 +9,13 @@
 为了方便在当前环境中调用 Codex，可以在 shell 中新增以下 alias：
 
 ```bash
-alias codex='codex --dangerously-bypass-approvals-and-sandbox --enable skills --enable web_search_request'
+alias codex='codex --dangerously-bypass-approvals-and-sandbox --enable skills'
+```
+
+如需搜索能力，可添加 Exa MCP：
+
+```bash
+codex mcp add exa --url https://mcp.exa.ai/mcp
 ```
 
 ## 仓库结构
