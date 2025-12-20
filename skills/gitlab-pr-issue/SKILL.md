@@ -24,17 +24,22 @@ description: 查看/更新 GitLab Issue、MR（含评论与 diff），并按团�
 - 相关 issue：`glab mr issues <id>`。
 
 ## 创建 MR（非交互）
-以下标题与描述规范为默认推荐格式；如与团队/仓库/平台等既有约束冲突，以既有约束为准。
+以下标题与描述规范为默认推荐格式；如与团队/仓库/平台等既有约束冲突，以既有约束为准。若有明确要求（如需中文），则优先遵循；未覆盖的部分再按本规范补齐。
 1) 确保本地分支已推送且 `git status` 干净。  
 2) 语义化英文标题，必要时添加 scope（例 `feat(scope): short summary`）。  
-3) 用 heredoc 传多行描述，避免交互式编辑；描述聚焦合并前后行为与影响的变化，避免记录开发过程中的中间尝试或撤销动作：
+3) 描述风格：英文、短句和项目符号，优先让不看代码的读者也能理解动机与结果。重点是 what/why/impact 和被迫约束，避免流水账与开发过程细节。若上下文不足以明确目标或约束，应主动向开发者确认后再撰写。  
+4) 期望正文格式（精简但信息完整，按需删减无关块）：
+- `## Summary`：用 1-2 条短句说明“改了什么/影响是什么”与“为什么现在做”。
+- `## Key changes`：3-5 条要点列出主要变更。
+- `## Constraints / tradeoffs`：若存在约束、限制或非理想选择，简要说明。
+- `## Testing`：验证方式、命令或场景；未测试需注明原因。
+- `## Notes`（可选）：review 关注点、发布注意事项或后续计划。
+5) 用 heredoc 传多行描述，避免交互式编辑：
 ```
 glab mr create \
   --title "feat(scope): short summary" \
   --description "$(cat <<'EOF'
-- Added X
-- Updated Y
-- Notes: Z
+# 按上面的格式填充正文
 EOF
 )" \
   --target-branch main \

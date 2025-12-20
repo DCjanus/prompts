@@ -28,6 +28,8 @@ codex mcp add exa --url https://mcp.exa.ai/mcp
     - [`SKILL.md`](skills/gitlab-pr-issue/SKILL.md)：查看/评论/修改 issue、MR，包含标题/正文格式及非交互创建命令，适配自建 GitLab 实例
   - [`golang-lo/`](skills/golang-lo)：Go ≥ 1.18 项目使用 samber/lo 的速用指南
     - [`SKILL.md`](skills/golang-lo/SKILL.md)：速用指南，含安装/导入示例与官方函数清单获取方式
+  - [`pwdebug/`](skills/pwdebug)：通过命令行复用浏览器会话进行前端调试
+    - [`SKILL.md`](skills/pwdebug/SKILL.md)：基于 Playwright 的调试流程（导航、执行 JS、截图与控制台日志）
   - [`tech-doc/`](skills/tech-doc)：技术协作文档的统一写作指南
     - [`SKILL.md`](skills/tech-doc/SKILL.md)：撰写与维护高质量技术文档的指引
 - [`scripts/`](scripts)：放置 uv script 模式的工具脚本（约束见 `scripts/AGENTS.md`）
