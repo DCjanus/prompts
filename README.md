@@ -18,20 +18,22 @@ alias codex='codex --dangerously-bypass-approvals-and-sandbox'
 codex mcp add exa --url https://mcp.exa.ai/mcp
 ```
 
+说明：编程相关检索优先用 Exa，因为它在 API/SDK/代码语境上的相关性与结果质量更好；`web_search_request` 在这类场景下通常不如 Exa 精准高效。
+
 ## 仓库结构
 
 - [`AGENTS.md`](AGENTS.md)：Codex 中所有代理共享的基础约束与工作流
-- [`skills/`](skills)：按功能分类的技能库，供 Codex 在需要时加载
-  - [`github-pr-issue/`](skills/github-pr-issue)：GitHub CLI 使用指引（issue/PR 查看、编辑与创建，含团队 PR 规范）
-    - [`SKILL.md`](skills/github-pr-issue/SKILL.md)：查看/修改 issue 与 PR，包含标题/正文格式及非交互创建命令
-  - [`gitlab-pr-issue/`](skills/gitlab-pr-issue)：GitLab CLI（glab）使用指引（issue/MR 查看、编辑与创建，含团队 MR/issue 规范）
-    - [`SKILL.md`](skills/gitlab-pr-issue/SKILL.md)：查看/评论/修改 issue、MR，包含标题/正文格式及非交互创建命令，适配自建 GitLab 实例
-  - [`golang-lo/`](skills/golang-lo)：Go ≥ 1.18 项目使用 samber/lo 的速用指南
-    - [`SKILL.md`](skills/golang-lo/SKILL.md)：速用指南，含安装/导入示例与官方函数清单获取方式
-  - [`pwdebug/`](skills/pwdebug)：通过命令行复用浏览器会话进行前端调试
-    - [`SKILL.md`](skills/pwdebug/SKILL.md)：基于 Playwright 的调试流程（导航、执行 JS、截图与控制台日志）
-  - [`tech-doc/`](skills/tech-doc)：技术协作文档的统一写作指南
-    - [`SKILL.md`](skills/tech-doc/SKILL.md)：撰写与维护高质量技术文档的指引
+- [`skills/`](skills)：按功能分类的技能库，详情见下方技能列表
 - [`scripts/`](scripts)：放置 uv script 模式的工具脚本（约束见 `scripts/AGENTS.md`）
   - [`token_count.py`](scripts/token_count.py)：基于 [tiktoken](https://github.com/openai/tiktoken) 的 token 计数 CLI
   - [`token_tree.py`](scripts/token_tree.py)：统计仓库内所有 Git 跟踪文本文件的 token 数，按树状结构输出；支持全局比例进度条、对齐条形显示与百分比，可用 `--bar-width` 调整条形宽度
+
+### 技能列表
+
+| 技能 | 说明 |
+| --- | --- |
+| [`github-pr-issue`](skills/github-pr-issue/SKILL.md) | GitHub CLI 使用指引（issue/PR 查看、编辑与创建，含团队 PR 规范） |
+| [`gitlab-pr-issue`](skills/gitlab-pr-issue/SKILL.md) | GitLab CLI（glab）使用指引（issue/MR 查看、编辑与创建，含团队 MR/issue 规范） |
+| [`golang-lo`](skills/golang-lo/SKILL.md) | Go ≥ 1.18 项目使用 samber/lo 的速用指南 |
+| [`pwdebug`](skills/pwdebug/SKILL.md) | 通过命令行复用浏览器会话进行前端调试 |
+| [`tech-doc`](skills/tech-doc/SKILL.md) | 技术协作文档的统一写作指南 |
