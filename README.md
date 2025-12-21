@@ -4,10 +4,6 @@
 
 技能编写可参考 Claude 官方的 [技能创作最佳实践](https://platform.claude.com/docs/zh-CN/agents-and-tools/agent-skills/best-practices) 文档。
 
-## TODO
-
-- 用 httpx 代替所有用到 requests 的场景。
-
 ## 使用方式
 
 为了方便在当前环境中调用 Codex，可以在 shell 中新增以下 alias：
