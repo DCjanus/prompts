@@ -34,7 +34,8 @@ description: 查看/更新 GitLab Issue、MR（含评论与 diff），并按团�
 - `## Constraints / tradeoffs`：若存在约束、限制或非理想选择，简要说明。
 - `## Testing`：验证方式、命令或场景；未测试需注明原因。
 - `## Notes`（可选）：review 关注点、发布注意事项或后续计划。
-5) 用 heredoc 传多行描述，避免交互式编辑：
+5) 特别强调：描述应聚焦 MR 合并前后系统的变化与影响，避免记录开发中的中间过程或修改步骤。
+6) 用 heredoc 传多行描述，避免交互式编辑：
 ```
 glab mr create \
   --title "feat(scope): short summary" \

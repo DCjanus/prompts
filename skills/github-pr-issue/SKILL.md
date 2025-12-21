@@ -22,7 +22,8 @@ description: 查看/更新 GitHub Issue、PR（含评论与 diff），并按团�
    - `## Constraints / tradeoffs`：若存在约束、限制或非理想选择，简要说明。
    - `## Testing`：验证方式、命令或场景；未测试需注明原因。
    - `## Notes`（可选）：review 关注点、发布注意事项或后续计划。
-5. 用非交互式命令创建 PR，正文统一通过 `--body-file` 传入：
+5. 特别强调：描述应聚焦 PR 合并前后系统的变化与影响，避免记录开发中的中间过程或修改步骤。
+6. 用非交互式命令创建 PR，正文统一通过 `--body-file` 传入：
    ```bash
    gh pr new --title "feat(scope): short semantic summary" --body-file - <<'EOF'
    # 按上面的格式填充正文
@@ -30,5 +31,5 @@ description: 查看/更新 GitHub Issue、PR（含评论与 diff），并按团�
    ```
    - 可追加 `--base <branch>`、`--draft` 等参数。
    - 多行正文只能通过 `--body-file` 传入，避免在 `--body` 中写 `\n`。
-6. `gh pr edit` 与 `gh pr new` 参数一致，需修改时复用。
-7. PR 创建成功后，在终端单独输出 CLI 返回的完整 PR URL。
+7. `gh pr edit` 与 `gh pr new` 参数一致，需修改时复用。
+8. PR 创建成功后，在终端单独输出 CLI 返回的完整 PR URL。
