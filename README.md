@@ -37,3 +37,4 @@ codex mcp add exa --url https://mcp.exa.ai/mcp
 | [`golang-lo`](skills/golang-lo/SKILL.md) | Go ≥ 1.18 项目使用 samber/lo 的速用指南 |
 | [`pwdebug`](skills/pwdebug/SKILL.md) | 通过命令行复用浏览器会话进行前端调试 |
 | [`tech-doc`](skills/tech-doc/SKILL.md) | 技术协作文档的统一写作指南 |
+| [`url-to-markdown`](skills/url-to-markdown/SKILL.md) | 通过 URL 获取 Markdown 内容（依赖 CloudFlare API） |
