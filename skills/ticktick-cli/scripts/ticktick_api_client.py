@@ -31,7 +31,7 @@ class ApiConfig(ApiModel):
     )
 
 
-class DidaApiError(RuntimeError):
+class TicktickApiError(RuntimeError):
     """API 请求失败时抛出的异常。"""
     def __init__(self, message: str, status_code: int | None = None) -> None:
         super().__init__(message)
@@ -151,7 +151,7 @@ class ProjectData(ApiModel):
     columns: list[Column] | None = Field(default=None, description="项目列信息。")
 
 
-class Dida365ApiClient:
+class TicktickApiClient:
     """Dida365 Open API 客户端封装。"""
     def __init__(
         self,
@@ -209,7 +209,7 @@ class Dida365ApiClient:
         """发起请求并解析 JSON（或原始文本）。"""
         response = self._request(method, path, params=params, payload=payload)
         if response.status_code >= 400:
-            raise DidaApiError(
+            raise TicktickApiError(
                 f"Request failed: {response.status_code} {response.text}",
                 response.status_code,
             )
@@ -285,7 +285,7 @@ class Dida365ApiClient:
         self._request_json("DELETE", f"project/{project_id}/task/{task_id}")
 
 def main() -> None:
-    print("Hello from dida_api_client.py!")
+    print("Hello from ticktick_api_client.py!")
 
 
 if __name__ == "__main__":

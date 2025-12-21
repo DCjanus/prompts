@@ -32,7 +32,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from dida_api_client import Dida365ApiClient, DidaApiError  # noqa: E402
+from ticktick_api_client import TicktickApiClient, TicktickApiError  # noqa: E402
 
 app = typer.Typer(no_args_is_help=True)
 config_app = typer.Typer(no_args_is_help=True)
@@ -145,7 +145,7 @@ def api_request(
     config = load_config()
     if not config.token:
         raise ApiError("Missing token. Run `config set --token <token>` first.")
-    client = Dida365ApiClient(
+    client = TicktickApiClient(
         token=config.token,
         base_url=str(config.base_url),
         timeout_seconds=config.timeout_seconds,
@@ -171,7 +171,7 @@ app.add_typer(api_app, name="api")
 def run() -> None:
     try:
         app()
-    except (ApiError, DidaApiError) as exc:
+    except (ApiError, TicktickApiError) as exc:
         if exc.status_code:
             console.print(f"[red]Error:[/red] {exc} (status {exc.status_code})")
         else:

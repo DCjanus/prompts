@@ -51,4 +51,4 @@ description: 使用 Python CLI 与 Dida365 Open API 交互以管理滴答清单�
 
 ## 资源
 
-- [scripts/ticktick-cli.py](scripts/ticktick-cli.py)：主 CLI 入口，负责读取配置并发起 API 调用。
+- [scripts/ticktick_cli.py](scripts/ticktick_cli.py)：主 CLI 入口，负责读取配置并发起 API 调用。
