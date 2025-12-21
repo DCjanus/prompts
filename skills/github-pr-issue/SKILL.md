@@ -11,6 +11,16 @@ description: 查看/更新 GitHub Issue、PR（含评论与 diff），并按团�
 - PR 信息：`gh pr view <url>`，同样使用默认输出即可，必要时可附加 `--comments`、`--files` 等参数按需展开。
 - PR diff：`gh pr diff <url> --color never`。
 
+## 创建 Issue（非交互）
+1. 标题与描述风格同 PR，内容保持简洁清晰。
+2. 用 `--body-file` 传多行描述，避免交互式编辑：
+   ```bash
+   gh issue create --title "feat: short summary" --body-file - <<'EOF'
+   # 按上面的格式填充正文
+   EOF
+   ```
+3. Issue 创建成功后，在终端**单独一行**输出 CLI 返回的完整 Issue URL。
+
 ## 创建 PR
 以下标题与描述规范为默认推荐格式；如与团队/仓库/平台等既有约束冲突，以既有约束为准。若有明确要求（如需中文），则优先遵循；未覆盖的部分再按本规范补齐。
 1. 确认 `git status` 干净，`git push` 到远端。

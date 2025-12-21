@@ -69,5 +69,4 @@ glab issue create \
 
 ## 常见选项速记
 - `-R group/project`：指定自建实例项目，等价于完整 URL。
-- `--web`：改用浏览器查看当前对象。
 - `--per-page` 与 `--page`：分页查看列表或评论时使用。
