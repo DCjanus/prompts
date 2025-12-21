@@ -32,4 +32,4 @@ description: 查看/更新 GitHub Issue、PR（含评论与 diff），并按团�
    - 可追加 `--base <branch>`、`--draft` 等参数。
    - 多行正文只能通过 `--body-file` 传入，避免在 `--body` 中写 `\n`。
 7. `gh pr edit` 与 `gh pr new` 参数一致，需修改时复用。
-8. PR 创建成功后，在终端单独输出 CLI 返回的完整 PR URL。
+8. PR 创建成功后，在终端**单独一行**输出 CLI 返回的完整 PR URL。

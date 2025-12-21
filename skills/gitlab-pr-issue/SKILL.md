@@ -11,6 +11,7 @@ description: 查看/更新 GitLab Issue、MR（含评论与 diff），并按团�
   - 直接取用户名：`GITLAB_HOST=<host> glab api /user | jq -r '.username'`（依赖本机 `jq`，若已设全局 `GITLAB_HOST` 可直接 `glab api /user`）。
   - 自建实例优先通过环境变量 `GITLAB_HOST` 指定；如需单次覆盖，可在命令前加 `GITLAB_HOST=<host>` 或用 `-R group/project`。
 - 输出格式默认够用，若需机器可读用 `--output json`。
+- 创建 MR 或 Issue 成功后，在终端**单独一行**输出 CLI 返回的完整 URL。
 
 ## Issue 快速查看
 - 只看正文：`glab issue view <id|url>`.
