@@ -12,5 +12,6 @@
 
 ## 计划
 - 使用 Cloudflare Worker 部署 OAuth 服务端逻辑，预计单文件 JS。
+- Worker 脚本占位文件：[ticktick-oauth-worker.js](skills/ticktick-cli/assets/ticktick-oauth-worker.js)。
 - 部署方式倾向手动，避免使用官方工具（如 wrangler）引入过多文件。
 - OAuth app 部署完成后在本地跑通流程，再回头优化 `skills/ticktick-cli/SKILL.md` 并用简单用例验证 CLI 可用性。
