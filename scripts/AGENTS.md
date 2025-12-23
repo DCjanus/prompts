@@ -5,4 +5,5 @@
 - 元数据块（含 shebang 与 `/// script` 部分）是唯一依赖声明位置，禁止手工编辑。
 - 运行方式：为脚本添加执行权限（`chmod +x <file.py>`）后直接运行 `./<file.py>`。
 - 命令行参数定义优先使用 Typer，提供更友好的 CLI 体验；输出信息尽量用 rich 提升可读性与美观度；数据校验/模型定义尽量用 pydantic。
+- 脚本内每个模块、函数与类型都必须包含简短中文文档字符串。
 - 脚本完成后优先用 uv 调用 ruff 做质量检查与格式化：`uv run ruff check scripts`；格式化：`uv run ruff format scripts`。对单文件可替换为具体路径。
