@@ -5,9 +5,11 @@ description: 使用 Exa 搜索与代码上下文命令行进行信息检索与�
 
 ## 使用方式
 
-- 运行脚本：`skills/exa-cli/scripts/exa-cli.py`
-- 网页搜索：`web-search-exa <query>`
-- 编程检索：`get-code-context-exa <query>`
+说明：以下调用方式均以当前 `SKILL.md` 文件所在文件夹为 workdir。
+
+- 运行脚本：`scripts/exa-cli.py`
+- 网页搜索：`scripts/exa-cli.py web-search-exa <query>`
+- 编程检索：`scripts/exa-cli.py get-code-context-exa <query>`
 
 ### web-search-exa
 
@@ -42,4 +44,4 @@ description: 使用 Exa 搜索与代码上下文命令行进行信息检索与�
 
 ## 参考信息
 
-- [exa-cli.py](skills/exa-cli/scripts/exa-cli.py)
+- [exa-cli.py](scripts/exa-cli.py)
