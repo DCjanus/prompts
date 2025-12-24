@@ -1,6 +1,6 @@
 ---
 name: url-to-markdown
-description: 需要将网页 URL 内容转换为 Markdown 格式以便阅读，并通过 CloudFlare API 获取指定 URL 的 Markdown 内容的场景。
+description: 将网页 URL 转为 Markdown 便于阅读，通过 CloudFlare API 获取；若 URL 已明显是 Markdown 则不使用。
 ---
 
 # URL 转 Markdown
