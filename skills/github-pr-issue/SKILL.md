@@ -11,9 +11,9 @@ description: 查看/更新 GitHub Issue、PR（含评论与 diff），并按团�
 - PR 信息：`gh pr view <url>`，同样使用默认输出即可，必要时可附加 `--files` 等参数按需展开。
 - PR diff：`gh pr diff <url> --color never`。
 - PR Review / Review Threads / Issue Comments：
-  - 一次性拉取 Review（评审）、Review Threads（代码行内讨论线程）与 Issue Comments（PR 评论）（JSON，推荐）：使用脚本 `./scripts/gh_pr_context.py`。
-    - PR 链接：`./scripts/gh_pr_context.py fetch https://github.com/OWNER/REPO/pull/123`
-    - 手动参数：`./scripts/gh_pr_context.py fetch --owner OWNER --repo REPO --number 123`
+  - 一次性拉取 Review（评审）、Review Threads（代码行内讨论线程）与 Issue Comments（PR 评论）（JSON，推荐）：使用脚本 `./scripts/pr_context.py`。
+    - PR 链接：`./scripts/pr_context.py fetch https://github.com/OWNER/REPO/pull/123`
+    - 手动参数：`./scripts/pr_context.py fetch --owner OWNER --repo REPO --number 123`
 
 ## 创建 Issue（非交互）
 1. 标题与描述风格同 PR，内容保持简洁清晰。
