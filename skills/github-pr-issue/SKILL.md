@@ -13,7 +13,8 @@ description: 查看/更新 GitHub Issue、PR（含评论与 diff），并按团�
 - PR Review / Review Threads / Issue Comments：
   - 一次性拉取 Review（评审）、Review Threads（代码行内讨论线程）与 Issue Comments（PR 评论）（JSON，推荐）：使用脚本 `./scripts/pr_context.py`。
     - PR 链接：`./scripts/pr_context.py fetch https://github.com/OWNER/REPO/pull/123`
-    - 手动参数：`./scripts/pr_context.py fetch --owner OWNER --repo REPO --number 123`
+    - 默认限制：Review / Review Threads / Issue Comments 各最多返回 20 条；每个 Review Thread 内的 Comments 也最多 20 条。
+    - 使用注意：若某一类返回数量恰好为 20，说明可能存在截断；必要时请改用 `gh api graphql` 做分页拉取。
 
 ## 创建 Issue（非交互）
 1. 标题与描述风格同 PR，内容保持简洁清晰。

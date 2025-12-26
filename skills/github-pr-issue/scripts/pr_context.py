@@ -38,32 +38,23 @@ def parse_pr_url(pr_url: str) -> Tuple[str, str, int]:
     return owner, repo, number
 
 
-def ensure_positive(name: str, value: int) -> None:
-    """校验计数字段为正整数。"""
-    if value <= 0:
-        raise typer.BadParameter(f"{name} 必须为正整数。")
-
-
-def build_query(body_field: str) -> str:
+def build_query() -> str:
     """构造 GraphQL 查询字符串。"""
-    if body_field not in {"body", "bodyText"}:
-        raise typer.BadParameter("body 字段仅支持 body 或 bodyText。")
-
-    return f"""
-query($owner:String!, $repo:String!, $number:Int!, $reviewsCount:Int!, $commentsCount:Int!, $threadsCount:Int!) {{
+    return """
+query($owner:String!, $repo:String!, $number:Int!) {{
   repository(owner:$owner, name:$repo) {{
     pullRequest(number:$number) {{
       title
       url
-      {body_field}
+      body
       reviewDecision
-      reviews(first:$reviewsCount) {{
+      reviews(first:20) {{
         nodes {{ author {{ login }} state body submittedAt }}
       }}
-      comments(first:$commentsCount) {{
+      comments(first:20) {{
         nodes {{ author {{ login }} body createdAt }}
       }}
-      reviewThreads(first:$threadsCount) {{
+      reviewThreads(first:20) {{
         nodes {{
           isResolved
           comments(first:20) {{
@@ -82,9 +73,6 @@ def run_query(
     owner: str,
     repo: str,
     number: int,
-    reviews_count: int,
-    comments_count: int,
-    threads_count: int,
 ) -> str:
     """调用 gh api graphql 并返回原始 JSON。"""
     command = [
@@ -99,12 +87,6 @@ def run_query(
         f"repo={repo}",
         "-F",
         f"number={number}",
-        "-F",
-        f"reviewsCount={reviews_count}",
-        "-F",
-        f"commentsCount={comments_count}",
-        "-F",
-        f"threadsCount={threads_count}",
     ]
 
     try:
@@ -123,39 +105,19 @@ def run_query(
 
 @app.command()
 def fetch(
-    pr_url: str | None = typer.Argument(
-        None,
+    pr_url: str = typer.Argument(
+        ...,
         help="PR 链接，例如 https://github.com/OWNER/REPO/pull/123。",
     ),
-    owner: str | None = typer.Option(None, help="仓库 owner，若未提供 PR 链接需填写。"),
-    repo: str | None = typer.Option(None, help="仓库 repo，若未提供 PR 链接需填写。"),
-    number: int | None = typer.Option(None, help="PR 编号，若未提供 PR 链接需填写。"),
-    reviews_count: int = typer.Option(50, help="拉取 review 数量上限。"),
-    comments_count: int = typer.Option(50, help="拉取评论数量上限。"),
-    threads_count: int = typer.Option(50, help="拉取 review threads 数量上限。"),
-    body_field: str = typer.Option("body", help="PR 正文字段：body 或 bodyText。"),
 ) -> None:
     """拉取 PR 的 reviews、comments 与 review threads。"""
-    ensure_positive("reviewsCount", reviews_count)
-    ensure_positive("commentsCount", comments_count)
-    ensure_positive("threadsCount", threads_count)
-
-    if pr_url:
-        owner_value, repo_value, number_value = parse_pr_url(pr_url)
-    else:
-        if not owner or not repo or number is None:
-            raise typer.BadParameter("必须提供 PR 链接或 owner/repo/number。")
-        owner_value, repo_value, number_value = owner, repo, number
-
-    query = build_query(body_field)
+    owner_value, repo_value, number_value = parse_pr_url(pr_url)
+    query = build_query()
     output = run_query(
         query,
         owner_value,
         repo_value,
         number_value,
-        reviews_count,
-        comments_count,
-        threads_count,
     )
     sys.stdout.write(output)
 
