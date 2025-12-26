@@ -4,7 +4,7 @@
 # dependencies = [
 #     "pydantic>=2.8.2",
 #     "httpx>=0.27.2",
-#     "tomlkit>=0.13.2",
+#     "PyYAML>=6.0.3",
 #     "rich>=14.2.0",
 #     "typer>=0.21.0",
 # ]
@@ -13,10 +13,8 @@
 
 from __future__ import annotations
 
-import json
-import os
-import subprocess
 import re
+import subprocess
 import sys
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Tuple
@@ -24,7 +22,7 @@ from urllib.parse import urlparse
 
 import httpx
 import typer
-import tomlkit
+import yaml
 from pydantic import BaseModel, ConfigDict
 from rich.console import Console
 from rich.panel import Panel
@@ -42,40 +40,41 @@ def parse_pr_url(pr_url: str) -> Tuple[str, str, int]:
 
     match = re.match(r"^/([^/]+)/([^/]+)/pull/(\d+)", parsed.path)
     if not match:
-        raise typer.BadParameter("PR 链接格式应为 https://github.com/<owner>/<repo>/pull/<number>。")
+        raise typer.BadParameter(
+            "PR 链接格式应为 https://github.com/<owner>/<repo>/pull/<number>。"
+        )
 
     owner, repo, number = match.group(1), match.group(2), int(match.group(3))
     return owner, repo, number
 
 
 def resolve_token() -> str:
-    """读取 GitHub Token。"""
-    token = os.getenv("GITHUB_TOKEN") or os.getenv("GH_TOKEN")
-    if not token:
-        try:
-            result = subprocess.run(
-                ["gh", "auth", "token"],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-        except FileNotFoundError as exc:
-            CONSOLE.print(Panel.fit("[red]未找到 gh 命令，请先安装 GitHub CLI。[/red]"))
-            raise typer.Exit(code=1) from exc
-        if result.returncode == 0:
-            token = result.stdout.strip()
+    """从 gh auth token 读取 GitHub Token。"""
+    try:
+        result = subprocess.run(
+            ["gh", "auth", "token"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError as exc:
+        CONSOLE.print(Panel.fit("[red]未找到 gh 命令，请先安装 GitHub CLI。[/red]"))
+        raise typer.Exit(code=1) from exc
+    token = result.stdout.strip() if result.returncode == 0 else ""
     if not token:
         CONSOLE.print(
             Panel.fit(
-                "[red]未检测到 GITHUB_TOKEN 或 GH_TOKEN，且无法从 gh auth token 获取。[/red]\n"
-                "请先设置访问令牌，再执行脚本。"
+                "[red]无法从 gh auth token 获取访问令牌。[/red]\n"
+                "请先执行 gh auth login 再运行脚本。"
             )
         )
         raise typer.Exit(code=1)
     return token
 
 
-def build_headers(token: str, accept: str = "application/vnd.github+json") -> Dict[str, str]:
+def build_headers(
+    token: str, accept: str = "application/vnd.github+json"
+) -> Dict[str, str]:
     """构造 GitHub API 请求头。"""
     return {
         "Accept": accept,
@@ -95,7 +94,9 @@ def update_rate_limit_info(headers: httpx.Headers, info: Dict[str, Any]) -> None
         info["remaining"] = int(remaining)
     if reset is not None:
         try:
-            info["reset_at"] = datetime.fromtimestamp(int(reset), tz=timezone.utc).isoformat()
+            info["reset_at"] = datetime.fromtimestamp(
+                int(reset), tz=timezone.utc
+            ).isoformat()
         except ValueError:
             info["reset_at"] = None
 
@@ -166,6 +167,7 @@ class UserSlim(ApiBaseModel):
     """用户信息裁剪模型。"""
 
     login: str | None = None
+    id: int | None = None
 
 
 class ReviewSlim(ApiBaseModel):
@@ -239,19 +241,6 @@ class SourceInfo(ApiBaseModel):
     generated_at: str
 
 
-class SelectionInfo(ApiBaseModel):
-    """输出选择开关信息模型。"""
-
-    body: bool
-    comments: bool
-    reviews: bool
-    review_comments: bool
-    files: bool
-    commits: bool
-    stats: bool
-    diff: bool
-
-
 class RateLimitInfo(ApiBaseModel):
     """GitHub API rate limit 信息模型。"""
 
@@ -271,7 +260,7 @@ class Payload(ApiBaseModel):
     """脚本最终输出载体模型。"""
 
     source: SourceInfo
-    selection: SelectionInfo
+    viewer: UserSlim | None = None
     pr: Dict[str, Any] | None = None
     files: List[Dict[str, Any]] | None = None
     commits: List[Dict[str, Any]] | None = None
@@ -282,7 +271,9 @@ class Payload(ApiBaseModel):
     rate_limit: RateLimitInfo | None = None
 
 
-def to_dict_list(model: type[ApiBaseModel], items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def to_dict_list(
+    model: type[ApiBaseModel], items: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
     """用 pydantic 模型裁剪列表数据。"""
     return [model.model_validate(item).model_dump() for item in items]
 
@@ -334,8 +325,7 @@ def build_payload(
         source=SourceInfo(
             url=pr_url,
             generated_at=datetime.now(timezone.utc).isoformat(),
-        ),
-        selection=SelectionInfo(**selection),
+        )
     )
 
     owner, repo, number = parse_pr_url(pr_url)
@@ -345,6 +335,13 @@ def build_payload(
     rate_info: Dict[str, Any] = {}
 
     with httpx.Client(base_url=API_BASE, headers=base_headers) as client:
+        viewer_data = request_json(
+            client,
+            "/user",
+            base_headers,
+            rate_info=rate_info,
+        )
+        payload.viewer = UserSlim.model_validate(viewer_data)
         if selection["body"] or selection["stats"]:
             pr_data = request_json(
                 client,
@@ -459,7 +456,9 @@ def fetch(
         help="PR 链接，例如 https://github.com/OWNER/REPO/pull/123。",
     ),
     body: bool = typer.Option(False, "--with-body", help="是否包含 PR body。"),
-    comments: bool = typer.Option(False, "--with-comments", help="是否包含 issue comments。"),
+    comments: bool = typer.Option(
+        False, "--with-comments", help="是否包含 issue comments。"
+    ),
     reviews: bool = typer.Option(False, "--with-reviews", help="是否包含 reviews。"),
     review_comments: bool = typer.Option(
         False,
@@ -470,7 +469,9 @@ def fetch(
     commits: bool = typer.Option(False, "--with-commits", help="是否包含提交列表。"),
     stats: bool = typer.Option(False, "--with-stats", help="是否包含增删行统计。"),
     diff: bool = typer.Option(False, "--with-diff", help="是否包含 diff 内容。"),
-    with_rate_limit: bool = typer.Option(False, "--with-rate-limit", help="是否包含 rate limit 信息。"),
+    with_rate_limit: bool = typer.Option(
+        False, "--with-rate-limit", help="是否包含 rate limit 信息。"
+    ),
     reviews_limit: int = typer.Option(20, help="reviews 最大数量。"),
     comments_limit: int = typer.Option(20, help="comments 最大数量。"),
     review_comments_limit: int = typer.Option(20, help="review comments 最大数量。"),
@@ -498,7 +499,14 @@ def fetch(
         commits_limit,
         with_rate_limit,
     )
-    sys.stdout.write(tomlkit.dumps(drop_none(payload.model_dump())))
+    sys.stdout.write(
+        yaml.safe_dump(
+            drop_none(payload.model_dump()),
+            allow_unicode=True,
+            sort_keys=False,
+            default_flow_style=False,
+        )
+    )
 
 
 if __name__ == "__main__":

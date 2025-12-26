@@ -6,13 +6,10 @@ description: 查看/更新 GitHub Issue、PR（含评论与 diff），并按团�
 # GitHub CLI Skill（Issue/PR）
 
 ## 链接快速查看
-- 进入 Issue 前先运行 `gh api user --jq '.login'`，确认当前身份以辨识讨论中提到的用户是否就是自己。
 - Issue：`gh issue view <url>`。
-- PR 详细信息（TOML，推荐）：使用脚本 [read_pr.py](scripts/read_pr.py)。
+- PR 详细信息（YAML，推荐）：使用脚本 [read_pr.py](scripts/read_pr.py)。
+  - 说明：`gh` 没有简单的一条命令可一次性获取多类 PR 信息，因此封装 `read_pr.py` 按需拉取并拼接输出。
   - 在当前 `SKILL.md` 所在目录执行：`./scripts/read_pr.py https://github.com/OWNER/REPO/pull/123`
-  - 默认输出：仅包含 source 与 selection。
-  - 需设置 `GITHUB_TOKEN` / `GH_TOKEN`，或已通过 `gh auth token` 登录。
-  - 说明：REST API 不提供 review threads 结构，`--with-review-comments` 返回的是 review comments 列表。
   - 可选参数示例：
     - `--with-diff`：包含 diff。
     - `--with-body`：包含 PR body。
