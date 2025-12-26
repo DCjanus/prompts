@@ -20,7 +20,6 @@ import typer
 from rich.console import Console
 from rich.panel import Panel
 
-app = typer.Typer(add_completion=False, help="获取 GitHub PR 的 reviews、comments、review threads。")
 CONSOLE = Console()
 
 
@@ -30,7 +29,7 @@ def parse_pr_url(pr_url: str) -> Tuple[str, str, int]:
     if parsed.netloc != "github.com":
         raise typer.BadParameter("仅支持 github.com 域名的 PR 链接。")
 
-    match = re.match(r"^/([^/]+)/([^/]+)/pull/(\\d+)", parsed.path)
+    match = re.match(r"^/([^/]+)/([^/]+)/pull/(\d+)", parsed.path)
     if not match:
         raise typer.BadParameter("PR 链接格式应为 https://github.com/<owner>/<repo>/pull/<number>。")
 
@@ -41,30 +40,30 @@ def parse_pr_url(pr_url: str) -> Tuple[str, str, int]:
 def build_query() -> str:
     """构造 GraphQL 查询字符串。"""
     return """
-query($owner:String!, $repo:String!, $number:Int!) {{
-  repository(owner:$owner, name:$repo) {{
-    pullRequest(number:$number) {{
+query($owner:String!, $repo:String!, $number:Int!) {
+  repository(owner:$owner, name:$repo) {
+    pullRequest(number:$number) {
       title
       url
       body
       reviewDecision
-      reviews(first:20) {{
-        nodes {{ author {{ login }} state body submittedAt }}
-      }}
-      comments(first:20) {{
-        nodes {{ author {{ login }} body createdAt }}
-      }}
-      reviewThreads(first:20) {{
-        nodes {{
+      reviews(first:20) {
+        nodes { author { login } state body submittedAt }
+      }
+      comments(first:20) {
+        nodes { author { login } body createdAt }
+      }
+      reviewThreads(first:20) {
+        nodes {
           isResolved
-          comments(first:20) {{
-            nodes {{ author {{ login }} body path line createdAt }}
-          }}
-        }}
-      }}
-    }}
-  }}
-}}
+          comments(first:20) {
+            nodes { author { login } body path line createdAt }
+          }
+        }
+      }
+    }
+  }
+}
 """.strip()
 
 
@@ -103,7 +102,6 @@ def run_query(
     return result.stdout
 
 
-@app.command()
 def fetch(
     pr_url: str = typer.Argument(
         ...,
@@ -123,4 +121,4 @@ def fetch(
 
 
 if __name__ == "__main__":
-    app()
+    typer.run(fetch)

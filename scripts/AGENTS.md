@@ -6,7 +6,7 @@
 - 运行方式：为脚本添加执行权限（`chmod +x <file.py>`）后直接运行 `./<file.py>`。
 - 命令行参数定义优先使用 Typer，提供更友好的 CLI 体验；输出信息尽量用 rich 提升可读性与美观度；数据校验/模型定义尽量用 pydantic。
 - Typer 应用实例使用小写 `app` 变量名。
-- 当仅定义一个 command 时，调用规则为直接执行脚本并传参，不使用子命令（例如 `tool.py <url>`；避免 `tool.py fetch <url>`）。
+- 当仅定义一个 command 时，用 `typer.run(main)` 作为入口，不使用 Typer 应用实例与子命令；调用时直接执行脚本并传参（例如 `tool.py <url>`；避免 `tool.py fetch <url>`）。
 - 脚本内每个模块、函数与类型都必须包含简短中文文档字符串。
 - 依赖项必须按需添加；移除依赖项的引用后，若确认不再使用，需同步移除该依赖。
 - 脚本完成后优先用 uv 调用 ruff 做质量检查与格式化：`uv run ruff check scripts`；格式化：`uv run ruff format scripts`。对单文件可替换为具体路径。
