@@ -8,13 +8,19 @@ description: 查看/更新 GitHub Issue、PR（含评论与 diff），并按团�
 ## 链接快速查看
 - 进入 Issue 前先运行 `gh api user --jq '.login'`，确认当前身份以辨识讨论中提到的用户是否就是自己。
 - Issue：`gh issue view <url>`。
-- PR 信息：`gh pr view <url>`；需要文件列表可加 `--files`。
-- PR diff：`gh pr diff <url> --color never`。
-- PR Review / Review Threads / Issue Comments：
-  - 一次性拉取 Review / Review Threads / Issue Comments（JSON，推荐）：使用脚本 [pr_context.py](scripts/pr_context.py)。
-    - 在当前 `SKILL.md` 所在目录执行：`./scripts/pr_context.py https://github.com/OWNER/REPO/pull/123`
-    - 默认限制：Review / Review Threads / Issue Comments 各最多 20 条；每个 Review Thread 内的 Comments 也最多 20 条。
-    - 若某一类返回数量恰好为 20，可能截断；必要时改用 `gh api graphql` 分页拉取。
+- PR 详细信息（TOML，推荐）：使用脚本 [read_pr.py](scripts/read_pr.py)。
+  - 在当前 `SKILL.md` 所在目录执行：`./scripts/read_pr.py https://github.com/OWNER/REPO/pull/123`
+  - 默认输出：仅包含 source 与 selection。
+  - 需设置 `GITHUB_TOKEN` / `GH_TOKEN`，或已通过 `gh auth token` 登录。
+  - 说明：REST API 不提供 review threads 结构，`--with-review-comments` 返回的是 review comments 列表。
+  - 可选参数示例：
+    - `--with-diff`：包含 diff。
+    - `--with-body`：包含 PR body。
+    - `--with-reviews` / `--with-review-comments` / `--with-comments`：按需包含评审/评审评论/评论。
+    - `--with-files` / `--with-commits` / `--with-stats`：按需包含文件/提交/统计。
+    - `--with-rate-limit`：输出 rate limit 信息（limit/remaining/reset_at）。
+    - `--reviews-limit 50` / `--comments-limit 50` / `--review-comments-limit 50`：调整拉取数量。
+    - `--files-limit 100` / `--commits-limit 100`：调整文件/提交数量。
 
 ## 创建 Issue（非交互）
 1. 标题与描述风格同 PR，内容保持简洁清晰。
