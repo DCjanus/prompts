@@ -7,9 +7,13 @@ description: 查看/更新 GitHub Issue、PR（含评论与 diff），并按团�
 
 ## GitHub 链接快速查看
 - 进入 Issue 前可先运行 `gh api user --jq '.login'`，确认当前身份以辨识讨论中提到的用户是否就是自己。
-- Issue：`gh issue view <url>`；若需阅读评论，加 `--comments`。
-- PR 信息：`gh pr view <url>`，同样使用默认输出即可，必要时可附加 `--comments`、`--files` 等参数按需展开。
+- Issue：`gh issue view <url>`。
+- PR 信息：`gh pr view <url>`，同样使用默认输出即可，必要时可附加 `--files` 等参数按需展开。
 - PR diff：`gh pr diff <url> --color never`。
+- PR Review / Review Threads / Issue Comments：
+  - 一次性拉取 Review（评审）、Review Threads（代码行内讨论线程）与 Issue Comments（PR 评论）（JSON，推荐）：使用脚本 `./scripts/gh_pr_context.py`。
+    - PR 链接：`./scripts/gh_pr_context.py fetch https://github.com/OWNER/REPO/pull/123`
+    - 手动参数：`./scripts/gh_pr_context.py fetch --owner OWNER --repo REPO --number 123`
 
 ## 创建 Issue（非交互）
 1. 标题与描述风格同 PR，内容保持简洁清晰。
@@ -31,7 +35,7 @@ description: 查看/更新 GitHub Issue、PR（含评论与 diff），并按团�
    - `## Key changes`：3-5 条要点列出主要变更。
    - `## Constraints / tradeoffs`：若存在约束、限制或非理想选择，简要说明。
    - `## Testing`：验证方式、命令或场景；未测试需注明原因。
-   - `## Notes`（可选）：review 关注点、发布注意事项或后续计划。
+   - `## Notes`（可选）：reviewers 关注点、发布注意事项或后续计划。
 5. 特别强调：描述应聚焦 PR 合并前后系统的变化与影响，避免记录开发中的中间过程或修改步骤。
 6. 用非交互式命令创建 PR，正文统一通过 `--body-file` 传入：
    ```bash
