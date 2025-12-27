@@ -34,6 +34,7 @@ codex mcp add exa --url https://mcp.exa.ai/mcp
 | --- | --- |
 | [`github-pr-issue`](skills/github-pr-issue/SKILL.md) | GitHub CLI 使用指引（issue/PR 查看、编辑与创建，含团队 PR 规范） |
 | [`gitlab-pr-issue`](skills/gitlab-pr-issue/SKILL.md) | GitLab CLI（glab）使用指引（issue/MR 查看、编辑与创建，含团队 MR/issue 规范） |
+| [`git-worktree-workflow`](skills/git-worktree-workflow/SKILL.md) | 基于 git worktree 的多 agent 并行开发全生命周期流程（创建、协作、切换与清理） |
 | [`golang-lo`](skills/golang-lo/SKILL.md) | Go ≥ 1.18 项目使用 samber/lo 的速用指南 |
 | [`pwdebug`](skills/pwdebug/SKILL.md) | 通过命令行复用浏览器会话进行前端调试 |
 | [`tech-doc`](skills/tech-doc/SKILL.md) | 技术协作文档的统一写作指南 |
