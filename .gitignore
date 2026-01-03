@@ -23,3 +23,6 @@ venv/
 
 # Codex built-in skills
 skills/.system/
+
+# 临时文件
+tmp/
