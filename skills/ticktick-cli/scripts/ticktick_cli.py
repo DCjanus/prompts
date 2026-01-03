@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 from typing import Any
@@ -203,6 +204,40 @@ def parse_timeout(raw: str) -> float:
         raise ApiError(f"Invalid timeout: {raw}") from exc
 
 
+def parse_checklist_items(
+    item: list[str] | None,
+    item_json: str | None,
+) -> list[ChecklistItem] | None:
+    if item and item_json:
+        raise ApiError("Use --item or --item-json, not both.")
+    if item_json:
+        raw = item_json
+        if raw.startswith("@"):
+            path = Path(raw[1:]).expanduser()
+            try:
+                raw = path.read_text(encoding="utf-8")
+            except OSError as exc:
+                raise ApiError(f"Failed to read items JSON: {path}") from exc
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise ApiError("Invalid JSON for --item-json.") from exc
+        if not isinstance(payload, list):
+            raise ApiError("--item-json must be a JSON array.")
+        items: list[ChecklistItem] = []
+        for entry in payload:
+            if isinstance(entry, str):
+                items.append(ChecklistItem(title=entry))
+                continue
+            if not isinstance(entry, dict):
+                raise ApiError("Each item in --item-json must be an object or string.")
+            items.append(ChecklistItem.model_validate(entry))
+        return items or None
+    if item:
+        return [ChecklistItem(title=item_title) for item_title in item]
+    return None
+
+
 @app.callback()
 def main(
     ctx: typer.Context,
@@ -373,9 +408,14 @@ def task_create(
     priority: int | None = typer.Option(None, "--priority"),
     sort_order: int | None = typer.Option(None, "--sort-order"),
     item: list[str] | None = typer.Option(None, "--item"),
+    item_json: str | None = typer.Option(
+        None,
+        "--item-json",
+        help="JSON array string or @path to JSON file for checklist items.",
+    ),
 ) -> None:
     client = get_client(ctx)
-    items = [ChecklistItem(title=item_title) for item_title in (item or [])]
+    items = parse_checklist_items(item, item_json)
     task = client.create_task(
         TaskCreate(
             title=title,
@@ -416,6 +456,11 @@ def task_update(
     priority: int | None = typer.Option(None, "--priority"),
     sort_order: int | None = typer.Option(None, "--sort-order"),
     item: list[str] | None = typer.Option(None, "--item"),
+    item_json: str | None = typer.Option(
+        None,
+        "--item-json",
+        help="JSON array string or @path to JSON file for checklist items.",
+    ),
 ) -> None:
     if not any(
         [
@@ -431,11 +476,12 @@ def task_update(
             priority,
             sort_order,
             item,
+            item_json,
         ]
     ):
         raise ApiError("No update fields provided.")
     client = get_client(ctx)
-    items = [ChecklistItem(title=item_title) for item_title in (item or [])]
+    items = parse_checklist_items(item, item_json)
     task = client.update_task(
         task_id,
         TaskUpdate(

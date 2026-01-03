@@ -46,7 +46,7 @@ class ChecklistItem(ApiModel):
     completedTime: str | int | None = Field(default=None, description="子任务完成时间。")
     isAllDay: bool | None = Field(default=None, description="是否为全天任务。")
     sortOrder: int | None = Field(default=None, description="子任务排序值。")
-    startDate: str | None = Field(default=None, description="子任务开始时间。")
+    startDate: str | int | None = Field(default=None, description="子任务开始时间。")
     timeZone: str | None = Field(default=None, description="子任务时区。")
 
 

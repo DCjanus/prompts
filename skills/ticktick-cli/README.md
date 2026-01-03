@@ -7,8 +7,13 @@
 - CLI 入口：[ticktick_cli.py](scripts/ticktick_cli.py)。
 
 ## 认证现状
-- 目前只有基础 API 封装，尚未彻底跑通。
-- 跑通前提：在开发者平台注册 OAuth app，并部署服务端逻辑获取 OAuth Token。
+- CLI 已可正常调用（依赖可用的 OAuth Token）。
+- 仍需：在开发者平台注册 OAuth app，并部署服务端逻辑获取 OAuth Token（Worker 路径见下）。
+
+## CLI 进度
+- 已支持项目/任务的增删改查与完成。
+- 已支持更新 Checklist 子任务，推荐使用 JSON 方式：`--item-json`（可传 JSON 字符串或 `@path` 文件）。
+- 典型场景：按剧集/章节拆分追踪，每集一个子任务并写入 `startDate`。
 
 ## OAuth Worker 运行所需信息
 - `TICKTICK_CLIENT_ID`：在 [Dida365 Developer Center](https://developer.dida365.com/manage) 创建 OAuth 应用后获得。
