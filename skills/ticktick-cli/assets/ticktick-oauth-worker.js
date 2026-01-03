@@ -3,6 +3,8 @@
 
 const TICKTICK_AUTH_URL = "https://dida365.com/oauth/authorize";
 const TICKTICK_TOKEN_URL = "https://dida365.com/oauth/token";
+const TICKTICK_REDIRECT_URI =
+  "https://ticktick-oauth.dcjanus.workers.dev/callback";
 
 /**
  * 返回 JSON 响应。
@@ -120,7 +122,7 @@ export default {
     if (path === "/authorize") {
       // 启动 OAuth 授权流程：重定向到 TickTick 授权页面。
       const clientId = getEnvVar(env, "TICKTICK_CLIENT_ID");
-      const redirectUri = getEnvVar(env, "TICKTICK_REDIRECT_URI");
+      const redirectUri = TICKTICK_REDIRECT_URI;
       const state = url.searchParams.get("state") || "";
       const scope = url.searchParams.get("scope") || "";
 
@@ -155,7 +157,7 @@ export default {
 
       const clientId = getEnvVar(env, "TICKTICK_CLIENT_ID");
       const clientSecret = getEnvVar(env, "TICKTICK_CLIENT_SECRET");
-      const redirectUri = getEnvVar(env, "TICKTICK_REDIRECT_URI");
+      const redirectUri = TICKTICK_REDIRECT_URI;
 
       const tokenResult = await exchangeCodeForToken({
         code,
