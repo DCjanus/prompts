@@ -12,13 +12,9 @@
 alias codex='codex --dangerously-bypass-approvals-and-sandbox'
 ```
 
-如需搜索能力，可添加 Exa MCP：
+## 运行前提
 
-```bash
-codex mcp add exa --url https://mcp.exa.ai/mcp
-```
-
-说明：编程相关检索优先用 Exa，因为它在 API/SDK/代码语境上的相关性与结果质量更好；`web_search_request` 在这类场景下通常不如 Exa 精准高效。
+本仓库内的所有脚本与 skills 默认假设当前环境已安装最新版 [`uv`](https://github.com/astral-sh/uv)。
 
 ## 仓库结构
 
@@ -39,3 +35,5 @@ codex mcp add exa --url https://mcp.exa.ai/mcp
 | [`tech-doc`](skills/tech-doc/SKILL.md) | 技术协作文档的统一写作指南 |
 | [`fetch-url`](skills/fetch-url/SKILL.md) | 渲染 URL 并输出多格式内容或原始 HTML（Playwright + trafilatura） |
 | [`ticktick-cli`](skills/ticktick-cli/SKILL.md) | 通过 CLI 调用滴答清单 Open API 管理任务与项目 |
+| [`ui-ux-pro-max`](skills/ui-ux-pro-max/SKILL.md) | UI/UX 设计情报库（样式、配色、字体、图表、UX 指南、栈最佳实践）；来源：[ui-ux-pro-max-skill](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill) |
+
