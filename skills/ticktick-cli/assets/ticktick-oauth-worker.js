@@ -1,8 +1,8 @@
-// Cloudflare Worker 的 TickTick OAuth 服务占位脚本。
-// 纯 JS 单文件 Worker，需要时替换 env 绑定与端点。
+// Cloudflare Worker 的 TickTick OAuth 服务脚本。
+// 仅提供 /authorize 与 /callback 两个端点。
 
-const TICKTICK_AUTH_URL = "https://ticktick.com/oauth/authorize";
-const TICKTICK_TOKEN_URL = "https://ticktick.com/oauth/token";
+const TICKTICK_AUTH_URL = "https://dida365.com/oauth/authorize";
+const TICKTICK_TOKEN_URL = "https://dida365.com/oauth/token";
 
 /**
  * 返回 JSON 响应。
@@ -15,21 +15,6 @@ function json(data, status = 200) {
     status,
     headers: {
       "content-type": "application/json; charset=utf-8",
-      "cache-control": "no-store",
-    },
-  });
-}
-
-/**
- * 生成 302 重定向响应。
- * @param {string} url 目标地址
- * @returns {Response}
- */
-function redirect(url) {
-  return new Response(null, {
-    status: 302,
-    headers: {
-      location: url,
       "cache-control": "no-store",
     },
   });
@@ -132,18 +117,6 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
-    if (path === "/") {
-      return json({
-        ok: true,
-        service: "ticktick-oauth-worker",
-        endpoints: ["/authorize", "/callback", "/health"],
-      });
-    }
-
-    if (path === "/health") {
-      return json({ ok: true });
-    }
-
     if (path === "/authorize") {
       // 启动 OAuth 授权流程：重定向到 TickTick 授权页面。
       const clientId = getEnvVar(env, "TICKTICK_CLIENT_ID");
@@ -157,7 +130,13 @@ export default {
         state,
         scope,
       });
-      return redirect(authorizeUrl);
+      return new Response(null, {
+        status: 302,
+        headers: {
+          location: authorizeUrl,
+          "cache-control": "no-store",
+        },
+      });
     }
 
     if (path === "/callback") {
@@ -185,13 +164,36 @@ export default {
         redirectUri,
       });
 
-      // 占位：TODO 将 tokenResult 存入 KV/Durable Object 或返回给客户端。
-      return json({
-        ok: tokenResult.status >= 200 && tokenResult.status < 300,
-        state,
-        token: tokenResult.data,
-        status: tokenResult.status,
-      });
+      if (tokenResult.status < 200 || tokenResult.status >= 300) {
+        return json(
+          {
+            error: "token_exchange_failed",
+            status: tokenResult.status,
+            details: tokenResult.data,
+          },
+          tokenResult.status,
+        );
+      }
+
+      const accessToken =
+        tokenResult.data &&
+        typeof tokenResult.data === "object" &&
+        "access_token" in tokenResult.data
+          ? tokenResult.data.access_token
+          : null;
+
+      if (!accessToken) {
+        return json(
+          {
+            error: "missing_access_token",
+            status: tokenResult.status,
+            details: tokenResult.data,
+          },
+          502,
+        );
+      }
+
+      return json({ access_token: accessToken });
     }
 
     return json({ ok: false, error: "not_found" }, 404);
