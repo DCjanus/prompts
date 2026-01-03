@@ -3,47 +3,48 @@
 # requires-python = ">=3.14"
 # dependencies = [
 #     "httpx>=0.28.1",
+#     "typer>=0.20.1",
 #     "pydantic>=2.12.5",
 #     "rich>=14.2.0",
-#     "typer>=0.20.1",
 # ]
 # ///
 
 from __future__ import annotations
 
-import json
-import os
 import sys
 from pathlib import Path
 from typing import Any
 
-import httpx
 import typer
-from pydantic import AnyHttpUrl, BaseModel, Field, ValidationError
+from pydantic import BaseModel
 from rich.console import Console
 from rich.table import Table
 
-APP_NAME = "ticktick-cli"
-DEFAULT_BASE_URL = "https://api.dida365.com/api/v2"
-CONFIG_DIR = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / APP_NAME
-CONFIG_PATH = CONFIG_DIR / "config.json"
+AUTH_URL = "https://ticktick-oauth.dcjanus.workers.dev/authorize"
+ENV_BASE_URL = "TICKTICK_BASE_URL"
+ENV_TIMEOUT = "TICKTICK_TIMEOUT"
+ENV_TOKEN = "TICKTICK_TOKEN"
+# 该脚本主要提供给 AI Agent 调用，人类 CLI 使用只是顺带支持。
 SCRIPT_DIR = Path(__file__).resolve().parent
 
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from ticktick_api_client import TicktickApiClient, TicktickApiError  # noqa: E402
+from ticktick_api_client import (  # noqa: E402
+    DEFAULT_BASE_URL,
+    ChecklistItem,
+    ProjectCreate,
+    ProjectUpdate,
+    TaskCreate,
+    TaskUpdate,
+    TicktickApiClient,
+    TicktickApiError,
+)
 
 app = typer.Typer(no_args_is_help=True)
-config_app = typer.Typer(no_args_is_help=True)
-api_app = typer.Typer(no_args_is_help=True)
+project_app = typer.Typer(no_args_is_help=True, help="项目相关操作。")
+task_app = typer.Typer(no_args_is_help=True, help="任务相关操作。")
 console = Console()
-
-
-class ClientConfig(BaseModel):
-    base_url: AnyHttpUrl = Field(default=DEFAULT_BASE_URL)
-    token: str | None = Field(default=None)
-    timeout_seconds: float = Field(default=30.0, gt=0)
 
 
 class ApiError(RuntimeError):
@@ -52,120 +53,438 @@ class ApiError(RuntimeError):
         self.status_code = status_code
 
 
-def load_config() -> ClientConfig:
-    if not CONFIG_PATH.exists():
-        return ClientConfig()
-    try:
-        data = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-        return ClientConfig.model_validate(data)
-    except (OSError, json.JSONDecodeError, ValidationError) as exc:
-        raise ApiError(f"Invalid config at {CONFIG_PATH}: {exc}") from exc
+class AppState(BaseModel):
+    token: str | None
+    base_url: str
+    timeout: str
+    json_output: bool
 
 
-def save_config(config: ClientConfig) -> None:
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    CONFIG_PATH.write_text(
-        json.dumps(config.model_dump(mode="json"), indent=2, sort_keys=True),
-        encoding="utf-8",
+def get_client(ctx: typer.Context) -> TicktickApiClient:
+    state = ctx.obj
+    if not isinstance(state, AppState):
+        raise ApiError("Client config not initialized.")
+    token = state.token
+    if not token:
+        raise ApiError(
+            "缺少 token。请先访问 "
+            f"{AUTH_URL} 授权，"
+            f"然后通过 --token 或环境变量 {ENV_TOKEN} 传入。"
+        )
+    base_url = state.base_url
+    timeout_raw = state.timeout
+    timeout_seconds = parse_timeout(str(timeout_raw))
+    if timeout_seconds <= 0:
+        raise ApiError("Timeout must be greater than 0.")
+    return TicktickApiClient(
+        token=token,
+        base_url=base_url,
+        timeout_seconds=timeout_seconds,
     )
 
 
-def parse_key_value(items: list[str]) -> dict[str, str]:
-    params: dict[str, str] = {}
-    for item in items:
-        if "=" not in item:
-            raise ApiError(f"Invalid key=value pair: {item}")
-        key, value = item.split("=", 1)
-        params[key] = value
-    return params
-
-
-def render_response(response: httpx.Response) -> None:
-    console.print(f"[bold]Status:[/bold] {response.status_code}")
-    content_type = response.headers.get("Content-Type", "")
-    if "application/json" in content_type:
-        try:
-            payload = response.json()
-        except json.JSONDecodeError:
-            console.print(response.text)
-            return
-        console.print_json(data=payload)
+def render_payload(payload: Any) -> None:
+    if isinstance(payload, list):
+        data = [
+            item.model_dump() if hasattr(item, "model_dump") else item
+            for item in payload
+        ]
+        console.print_json(data=data)
         return
-    console.print(response.text)
+    if hasattr(payload, "model_dump"):
+        console.print_json(data=payload.model_dump())
+        return
+    console.print_json(data=payload)
 
 
-@app.callback()
-def main() -> None:
-    pass
-
-
-@config_app.command("path")
-def config_path() -> None:
-    console.print(str(CONFIG_PATH))
-
-
-@config_app.command("show")
-def config_show() -> None:
-    config = load_config()
-    table = Table(title="ticktick-cli config")
-    table.add_column("field")
-    table.add_column("value")
-    table.add_row("base_url", str(config.base_url))
-    table.add_row("token", "set" if config.token else "missing")
-    table.add_row("timeout_seconds", str(config.timeout_seconds))
+def render_table(title: str, columns: list[str], rows: list[list[str]]) -> None:
+    table = Table(title=title)
+    for column in columns:
+        table.add_column(column)
+    for row in rows:
+        table.add_row(*row)
     console.print(table)
 
 
-@config_app.command("set")
-def config_set(
-    base_url: str | None = typer.Option(None, "--base-url"),
-    token: str | None = typer.Option(None, "--token"),
-    timeout_seconds: float | None = typer.Option(None, "--timeout"),
-) -> None:
-    config = load_config()
-    payload = config.model_dump()
-    if base_url is not None:
-        payload["base_url"] = base_url
-    if token is not None:
-        payload["token"] = token
-    if timeout_seconds is not None:
-        payload["timeout_seconds"] = timeout_seconds
-    updated = ClientConfig.model_validate(payload)
-    save_config(updated)
-    console.print("Config updated.")
+def render_kv_table(title: str, data: dict[str, Any]) -> None:
+    rows = [[key, "" if value is None else str(value)] for key, value in data.items()]
+    render_table(title, ["field", "value"], rows)
 
 
-@api_app.command("request")
-def api_request(
-    method: str = typer.Argument(...),
-    path: str = typer.Argument(...),
-    params: list[str] = typer.Option(None, "--param"),
-    raw_json: str | None = typer.Option(None, "--json"),
-) -> None:
-    config = load_config()
-    if not config.token:
-        raise ApiError("Missing token. Run `config set --token <token>` first.")
-    client = TicktickApiClient(
-        token=config.token,
-        base_url=str(config.base_url),
-        timeout_seconds=config.timeout_seconds,
+def render_project_list(projects: list[Any]) -> None:
+    rows = []
+    for project in projects:
+        data = project.model_dump() if hasattr(project, "model_dump") else project
+        rows.append(
+            [
+                str(data.get("id", "")),
+                str(data.get("name", "")),
+                str(data.get("color", "")),
+                str(data.get("closed", "")),
+                str(data.get("groupId", "")),
+                str(data.get("viewMode", "")),
+                str(data.get("kind", "")),
+                str(data.get("sortOrder", "")),
+            ]
+        )
+    render_table(
+        "Projects",
+        ["id", "name", "color", "closed", "groupId", "viewMode", "kind", "sortOrder"],
+        rows,
     )
-    query = parse_key_value(params or [])
-    payload: dict[str, Any] | list[Any] | None = None
-    if raw_json:
-        try:
-            payload = json.loads(raw_json)
-        except json.JSONDecodeError as exc:
-            raise ApiError(f"Invalid JSON payload: {exc}") from exc
-    response = client._request(method, path, params=query, payload=payload)
-    if response.status_code >= 400:
-        render_response(response)
-        raise ApiError("Request failed", response.status_code)
-    render_response(response)
 
 
-app.add_typer(config_app, name="config")
-app.add_typer(api_app, name="api")
+def render_task_list(tasks: list[Any]) -> None:
+    rows = []
+    for task in tasks:
+        data = task.model_dump() if hasattr(task, "model_dump") else task
+        rows.append(
+            [
+                str(data.get("id", "")),
+                str(data.get("title", "")),
+                str(data.get("status", "")),
+                str(data.get("priority", "")),
+                str(data.get("dueDate", "")),
+                str(data.get("projectId", "")),
+            ]
+        )
+    render_table(
+        "Tasks",
+        ["id", "title", "status", "priority", "dueDate", "projectId"],
+        rows,
+    )
+
+
+def render_columns_list(columns: list[Any]) -> None:
+    rows = []
+    for column in columns:
+        data = column.model_dump() if hasattr(column, "model_dump") else column
+        rows.append(
+            [
+                str(data.get("id", "")),
+                str(data.get("name", "")),
+                str(data.get("sortOrder", "")),
+            ]
+        )
+    render_table("Columns", ["id", "name", "sortOrder"], rows)
+
+
+def parse_timeout(raw: str) -> float:
+    value = raw.strip().lower()
+    if not value:
+        raise ApiError("Timeout cannot be empty.")
+    multipliers = [
+        ("seconds", 1),
+        ("second", 1),
+        ("secs", 1),
+        ("sec", 1),
+        ("s", 1),
+        ("minutes", 60),
+        ("minute", 60),
+        ("mins", 60),
+        ("min", 60),
+        ("m", 60),
+        ("hours", 3600),
+        ("hour", 3600),
+        ("hrs", 3600),
+        ("hr", 3600),
+        ("h", 3600),
+    ]
+    for unit, multiplier in multipliers:
+        if value.endswith(unit):
+            number = value[: -len(unit)].strip()
+            try:
+                return float(number) * multiplier
+            except ValueError as exc:
+                raise ApiError(f"Invalid timeout: {raw}") from exc
+    try:
+        return float(value)
+    except ValueError as exc:
+        raise ApiError(f"Invalid timeout: {raw}") from exc
+
+
+@app.callback()
+def main(
+    ctx: typer.Context,
+    token: str | None = typer.Option(
+        None,
+        "--token",
+        envvar=ENV_TOKEN,
+        help="OAuth token.",
+    ),
+    base_url: str = typer.Option(
+        DEFAULT_BASE_URL,
+        "--base-url",
+        envvar=ENV_BASE_URL,
+        help="API base URL.",
+    ),
+    timeout: str = typer.Option(
+        "30s",
+        "--timeout",
+        envvar=ENV_TIMEOUT,
+        help="Request timeout (e.g. 20s, 1m).",
+    ),
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help="输出 JSON 格式。",
+    ),
+) -> None:
+    if ctx.resilient_parsing:
+        return
+    ctx.obj = AppState(
+        token=token,
+        base_url=base_url,
+        timeout=timeout,
+        json_output=json_output,
+    )
+
+
+@project_app.command("list", help="列出当前账号的项目。")
+def project_list(ctx: typer.Context) -> None:
+    client = get_client(ctx)
+    projects = client.list_projects()
+    if ctx.obj.json_output:
+        render_payload(projects)
+        return
+    render_project_list(projects)
+
+
+@project_app.command("get", help="根据项目 ID 获取项目详情。")
+def project_get(
+    ctx: typer.Context,
+    project_id: str = typer.Option(..., "--project-id"),
+) -> None:
+    client = get_client(ctx)
+    project = client.get_project(project_id)
+    if ctx.obj.json_output:
+        render_payload(project)
+        return
+    render_kv_table("Project", project.model_dump())
+
+
+@project_app.command("data", help="获取项目详情（包含未完成任务与列）。")
+def project_data(
+    ctx: typer.Context,
+    project_id: str = typer.Option(..., "--project-id"),
+) -> None:
+    client = get_client(ctx)
+    data = client.get_project_data(project_id)
+    if ctx.obj.json_output:
+        render_payload(data)
+        return
+    project = data.project.model_dump() if data.project else {}
+    render_kv_table("Project", project)
+    render_task_list(data.tasks or [])
+    render_columns_list(data.columns or [])
+
+
+@project_app.command("create", help="创建项目。")
+def project_create(
+    ctx: typer.Context,
+    name: str = typer.Option(..., "--name"),
+    color: str | None = typer.Option(None, "--color"),
+    sort_order: int | None = typer.Option(None, "--sort-order"),
+    view_mode: str | None = typer.Option(None, "--view-mode"),
+    kind: str | None = typer.Option(None, "--kind"),
+) -> None:
+    client = get_client(ctx)
+    project = client.create_project(
+        ProjectCreate(
+            name=name,
+            color=color,
+            sortOrder=sort_order,
+            viewMode=view_mode,
+            kind=kind,
+        )
+    )
+    if ctx.obj.json_output:
+        render_payload(project)
+        return
+    render_kv_table("Project", project.model_dump())
+
+
+@project_app.command("update", help="更新项目。")
+def project_update(
+    ctx: typer.Context,
+    project_id: str = typer.Option(..., "--project-id"),
+    name: str | None = typer.Option(None, "--name"),
+    color: str | None = typer.Option(None, "--color"),
+    sort_order: int | None = typer.Option(None, "--sort-order"),
+    view_mode: str | None = typer.Option(None, "--view-mode"),
+    kind: str | None = typer.Option(None, "--kind"),
+) -> None:
+    if not any([name, color, sort_order, view_mode, kind]):
+        raise ApiError("No update fields provided.")
+    client = get_client(ctx)
+    project = client.update_project(
+        project_id,
+        ProjectUpdate(
+            name=name,
+            color=color,
+            sortOrder=sort_order,
+            viewMode=view_mode,
+            kind=kind,
+        ),
+    )
+    if ctx.obj.json_output:
+        render_payload(project)
+        return
+    render_kv_table("Project", project.model_dump())
+
+
+@project_app.command("delete", help="删除项目。")
+def project_delete(
+    ctx: typer.Context,
+    project_id: str = typer.Option(..., "--project-id"),
+) -> None:
+    client = get_client(ctx)
+    client.delete_project(project_id)
+    console.print("OK")
+
+
+@task_app.command("get", help="根据项目 ID 与任务 ID 获取任务。")
+def task_get(
+    ctx: typer.Context,
+    project_id: str = typer.Option(..., "--project-id"),
+    task_id: str = typer.Option(..., "--task-id"),
+) -> None:
+    client = get_client(ctx)
+    task = client.get_task(project_id, task_id)
+    if ctx.obj.json_output:
+        render_payload(task)
+        return
+    render_kv_table("Task", task.model_dump())
+
+
+@task_app.command("create", help="创建任务。")
+def task_create(
+    ctx: typer.Context,
+    title: str = typer.Option(..., "--title"),
+    project_id: str = typer.Option(..., "--project-id"),
+    content: str | None = typer.Option(None, "--content"),
+    desc: str | None = typer.Option(None, "--desc"),
+    is_all_day: bool | None = typer.Option(None, "--all-day"),
+    start_date: str | None = typer.Option(None, "--start-date"),
+    due_date: str | None = typer.Option(None, "--due-date"),
+    time_zone: str | None = typer.Option(None, "--time-zone"),
+    reminder: list[str] | None = typer.Option(None, "--reminder"),
+    repeat_flag: str | None = typer.Option(None, "--repeat"),
+    priority: int | None = typer.Option(None, "--priority"),
+    sort_order: int | None = typer.Option(None, "--sort-order"),
+    item: list[str] | None = typer.Option(None, "--item"),
+) -> None:
+    client = get_client(ctx)
+    items = [ChecklistItem(title=item_title) for item_title in (item or [])]
+    task = client.create_task(
+        TaskCreate(
+            title=title,
+            projectId=project_id,
+            content=content,
+            desc=desc,
+            isAllDay=is_all_day,
+            startDate=start_date,
+            dueDate=due_date,
+            timeZone=time_zone,
+            reminders=reminder or None,
+            repeatFlag=repeat_flag,
+            priority=priority,
+            sortOrder=sort_order,
+            items=items or None,
+        )
+    )
+    if ctx.obj.json_output:
+        render_payload(task)
+        return
+    render_kv_table("Task", task.model_dump())
+
+
+@task_app.command("update", help="更新任务。")
+def task_update(
+    ctx: typer.Context,
+    task_id: str = typer.Option(..., "--task-id"),
+    project_id: str = typer.Option(..., "--project-id"),
+    title: str | None = typer.Option(None, "--title"),
+    content: str | None = typer.Option(None, "--content"),
+    desc: str | None = typer.Option(None, "--desc"),
+    is_all_day: bool | None = typer.Option(None, "--all-day"),
+    start_date: str | None = typer.Option(None, "--start-date"),
+    due_date: str | None = typer.Option(None, "--due-date"),
+    time_zone: str | None = typer.Option(None, "--time-zone"),
+    reminder: list[str] | None = typer.Option(None, "--reminder"),
+    repeat_flag: str | None = typer.Option(None, "--repeat"),
+    priority: int | None = typer.Option(None, "--priority"),
+    sort_order: int | None = typer.Option(None, "--sort-order"),
+    item: list[str] | None = typer.Option(None, "--item"),
+) -> None:
+    if not any(
+        [
+            title,
+            content,
+            desc,
+            is_all_day is not None,
+            start_date,
+            due_date,
+            time_zone,
+            reminder,
+            repeat_flag,
+            priority,
+            sort_order,
+            item,
+        ]
+    ):
+        raise ApiError("No update fields provided.")
+    client = get_client(ctx)
+    items = [ChecklistItem(title=item_title) for item_title in (item or [])]
+    task = client.update_task(
+        task_id,
+        TaskUpdate(
+            id=task_id,
+            projectId=project_id,
+            title=title,
+            content=content,
+            desc=desc,
+            isAllDay=is_all_day,
+            startDate=start_date,
+            dueDate=due_date,
+            timeZone=time_zone,
+            reminders=reminder or None,
+            repeatFlag=repeat_flag,
+            priority=priority,
+            sortOrder=sort_order,
+            items=items or None,
+        ),
+    )
+    if ctx.obj.json_output:
+        render_payload(task)
+        return
+    render_kv_table("Task", task.model_dump())
+
+
+@task_app.command("complete", help="完成指定任务。")
+def task_complete(
+    ctx: typer.Context,
+    project_id: str = typer.Option(..., "--project-id"),
+    task_id: str = typer.Option(..., "--task-id"),
+) -> None:
+    client = get_client(ctx)
+    client.complete_task(project_id, task_id)
+    console.print("OK")
+
+
+@task_app.command("delete", help="删除任务。")
+def task_delete(
+    ctx: typer.Context,
+    project_id: str = typer.Option(..., "--project-id"),
+    task_id: str = typer.Option(..., "--task-id"),
+) -> None:
+    client = get_client(ctx)
+    client.delete_task(project_id, task_id)
+    console.print("OK")
+
+
+app.add_typer(project_app, name="project")
+app.add_typer(task_app, name="task")
 
 
 def run() -> None:
@@ -176,7 +495,7 @@ def run() -> None:
             console.print(f"[red]Error:[/red] {exc} (status {exc.status_code})")
         else:
             console.print(f"[red]Error:[/red] {exc}")
-        raise typer.Exit(code=1)
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

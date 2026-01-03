@@ -43,7 +43,7 @@ class ChecklistItem(ApiModel):
     id: str | None = Field(default=None, description="子任务标识。")
     title: str | None = Field(default=None, description="子任务标题。")
     status: int | None = Field(default=None, description="子任务状态（0 未完成，1 已完成）。")
-    completedTime: str | None = Field(default=None, description="子任务完成时间。")
+    completedTime: str | int | None = Field(default=None, description="子任务完成时间。")
     isAllDay: bool | None = Field(default=None, description="是否为全天任务。")
     sortOrder: int | None = Field(default=None, description="子任务排序值。")
     startDate: str | None = Field(default=None, description="子任务开始时间。")
@@ -180,7 +180,8 @@ class TicktickApiClient:
 
     def _url(self, path: str) -> str:
         """拼接完整请求 URL。"""
-        return f"{self.config.base_url.rstrip('/')}/{path.lstrip('/')}"
+        base_url = str(self.config.base_url)
+        return f"{base_url.rstrip('/')}/{path.lstrip('/')}"
 
     def _request(
         self,
