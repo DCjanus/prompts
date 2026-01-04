@@ -51,3 +51,6 @@ description: 查看/更新 GitHub Issue、PR（含评论与 diff），并按团�
    - 多行正文只能通过 `--body-file` 传入，避免在 `--body` 中写 `\n`。
 6. `gh pr edit` 与 `gh pr new` 参数一致，需修改时复用。
 7. PR 创建成功后，在终端**单独一行**输出 CLI 返回的完整 PR URL。
+
+## 更新 Issue/PR 标题或描述（前置要求）
+在更新 Issue 或 PR 的标题/描述之前，必须先读取当前标题/正文（即将被修改的内容），再进行修改。
