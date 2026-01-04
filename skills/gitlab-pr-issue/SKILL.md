@@ -20,7 +20,7 @@ description: 查看/更新 GitLab Issue、MR（含评论与 diff），并按团�
 - 添加评论：`glab issue note <id> -m "comment"`。
 
 ## MR 快速查看
-- 基本信息：`glab mr view <id|branch|url> [--comments|--system-logs]`。
+- MR 概览（按需取字段）：`glab mr view <id|branch|url> --output json | jq -r '.title,.state,.author.username,.web_url,.description'`。
 - 查看 diff：`glab mr diff <id|branch> --color=never`；需要原始 patch 用 `--raw`。
 - 相关 issue：`glab mr issues <id>`。
 
