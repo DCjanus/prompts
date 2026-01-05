@@ -1,9 +1,9 @@
 ---
-name: gitlab-pr-issue
+name: gitlab-mr-issue
 description: 查看/更新 GitLab Issue、MR（含评论与 diff），并按团队规范非交互创建或修改 MR/Issue；涉及 GitLab（含自建实例）Issue/MR 的操作时使用。
 ---
 
-# GitLab CLI Skill（Issue/MR）
+# GitLab CLI Skill（MR/Issue）
 
 ## 基本准备
 - 确认身份与认证：

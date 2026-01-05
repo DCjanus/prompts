@@ -29,7 +29,7 @@ alias codex='codex --dangerously-bypass-approvals-and-sandbox'
 | 技能 | 说明 |
 | --- | --- |
 | [`github-pr-issue`](skills/github-pr-issue/SKILL.md) | GitHub CLI 使用指引（issue/PR 查看、编辑与创建，含团队 PR 规范） |
-| [`gitlab-pr-issue`](skills/gitlab-pr-issue/SKILL.md) | GitLab CLI（glab）使用指引（issue/MR 查看、编辑与创建，含团队 MR/issue 规范） |
+| [`gitlab-mr-issue`](skills/gitlab-mr-issue/SKILL.md) | GitLab CLI（glab）使用指引（issue/MR 查看、编辑与创建，含团队 MR/issue 规范） |
 | [`golang-lo`](skills/golang-lo/SKILL.md) | Go ≥ 1.18 项目使用 samber/lo 的速用指南 |
 | [`pwdebug`](skills/pwdebug/SKILL.md) | 通过命令行复用浏览器会话进行前端调试 |
 | [`tech-doc`](skills/tech-doc/SKILL.md) | 技术协作文档的统一写作指南 |
