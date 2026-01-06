@@ -5,7 +5,7 @@ description: 使用 Exa 搜索与代码上下文命令行进行信息检索与�
 
 ## 使用方式
 
-说明：以下调用方式均以当前 `SKILL.md` 文件所在文件夹为 workdir。
+说明：以下调用方式均以当前 `SKILL.md` 文件所在文件夹为 workdir。必须直接当作可执行文件执行。
 
 - 运行脚本：`scripts/exa-cli.py`
 - 网页搜索：`scripts/exa-cli.py web-search-exa <query>`

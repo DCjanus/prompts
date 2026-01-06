@@ -7,10 +7,11 @@ description: 查看/更新 GitHub Issue、PR（含评论与 diff），并按团�
 
 ## 链接快速查看
 - Issue：`gh issue view <url>`。
-- PR 详细信息（YAML，推荐）：使用脚本 [read_pr.py](scripts/read_pr.py)。
+- PR 详细信息（YAML，推荐）：直接调用脚本 [read_pr.py](scripts/read_pr.py)。
   - 说明：`gh` 没有简单的一条命令可一次性获取多类 PR 信息，因此封装 `read_pr.py` 按需拉取并拼接输出。
   - 建议：查看 PR 时尽量一次性调用该脚本获取所需信息，避免多次调用 `gh` 带来的额外开销。
   - 在当前 `SKILL.md` 所在目录执行：`./scripts/read_pr.py https://github.com/OWNER/REPO/pull/123`
+  - 必须直接当作可执行文件执行。
   - 可选参数示例：
     - `--with-diff`：包含 diff。
     - `--with-body`：包含 PR body。

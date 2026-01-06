@@ -3,7 +3,8 @@ name: fetch-url
 description: 渲染网页 URL，去噪提取正文并输出为 Markdown（默认）或其他格式/原始 HTML，以减少 Token。
 ---
 
-在当前文件所在目录运行：`./scripts/fetch_url.py URL`（仅支持 `http` / `https`）。
+在当前文件所在目录运行：`./scripts/fetch_url.py URL`（仅支持 `http` / `https`）。  
+说明：必须直接当作可执行文件执行。
 
 默认自动探测本地 Chromium 系浏览器路径；未探测到时需安装 Playwright 浏览器：
 
