@@ -1,7 +1,3 @@
-# Python
-
-## 偏好库与使用场景
-
 - fastapi: 现代、高性能的 Python API 框架，基于类型注解；适用于构建 REST/HTTP API、服务端应用、需要自动生成 OpenAPI 文档的场景。
 - pydantic: 基于类型注解的数据验证与序列化工具；适用于 API 入参/出参校验、配置加载、复杂数据模型的解析与校验。
 - blake3: 默认 hash 算法选择，在无严格性能约束或需要密码学安全时优先使用；支持任意长度输出与并行 hash。Python 使用 `blake3`（PyPI 包名）。
