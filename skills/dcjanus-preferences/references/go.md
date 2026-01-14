@@ -1,0 +1,4 @@
+- github.com/cockroachdb/errors：这是 Go 的错误处理库，强调可携带上下文与堆栈信息，适合需要更强错误诊断能力的服务端项目。
+- lukechampine.com/blake3: 默认 hash 算法选择，在无严格性能约束或需要密码学安全时优先使用；支持任意长度输出与并行 hash。Go 建议使用 `lukechampine.com/blake3`（高性能实现，含 AVX 加速）。
+- github.com/samber/lo: 基于 Go 1.18+ 泛型的 Lodash 风格工具库，适合集合操作、函数式辅助工具、减少样板代码。
+- github.com/sourcegraph/conc: 结构化并发库，提供各类 pool，降低 goroutine 管理与 panic 处理的样板代码，适合复杂并发任务编排。

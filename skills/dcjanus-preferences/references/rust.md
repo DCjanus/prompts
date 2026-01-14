@@ -1,0 +1,11 @@
+- tracing: 结构化的应用级诊断/追踪框架，适合异步系统的日志与链路诊断。
+- tracing-subscriber: `tracing` 的订阅器实现与组合工具，适合将 tracing 事件输出到日志/外部系统。
+- blake3: 默认 hash 算法选择，在无严格性能约束或需要密码学安全时优先使用；支持任意长度输出与并行 hash。
+- time: 日期与时间处理库，标准库兼容且支持 `no_std` 场景。
+- clap: Rust 命令行参数解析库，适合构建 CLI 工具与子命令解析。
+- serde: Rust 结构体序列化/反序列化框架，适合配置、网络传输、持久化等场景。
+- serde_json: Serde 生态的 JSON 处理库，适合 JSON 的解析、校验与序列化。
+- ratatui: Rust 的 TUI（终端用户界面）框架，适合构建终端交互应用与仪表盘。
+- anyhow / thiserror: 统一错误处理与错误类型建模，适合搭配 `tracing` 做错误追踪。
+- reqwest: 常用 HTTP 客户端，API 现代且与 `serde`/`tokio` 组合顺畅。
+- tokio: 事实上的异步运行时标准，与 `tracing`/`serde` 生态匹配。
