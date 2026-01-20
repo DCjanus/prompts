@@ -99,6 +99,71 @@ class ConfluenceApiClient:
             expand=expand,
         )
 
+    def get_page_attachments(
+        self,
+        page_id: str,
+        start: int = 0,
+        limit: int = 25,
+        expand: str | None = None,
+    ) -> Any:
+        """获取页面附件列表。"""
+        params: dict[str, Any] = {"start": start, "limit": limit}
+        if expand:
+            params["expand"] = expand
+        return self.client.get(
+            f"rest/api/content/{page_id}/child/attachment",
+            params=params,
+        )
+
+    def create_page(
+        self,
+        space_key: str,
+        title: str,
+        body: str,
+        parent_id: str | None = None,
+        representation: str = "storage",
+    ) -> Any:
+        """创建页面。"""
+        return self.client.create_page(
+            space=space_key,
+            title=title,
+            body=body,
+            parent_id=parent_id,
+            representation=representation,
+        )
+
+    def update_page(
+        self,
+        page_id: str,
+        title: str,
+        body: str,
+        parent_id: str | None = None,
+        representation: str = "storage",
+    ) -> Any:
+        """更新页面。"""
+        return self.client.update_page(
+            page_id=page_id,
+            title=title,
+            body=body,
+            parent_id=parent_id,
+            representation=representation,
+        )
+
+    def attach_file(
+        self,
+        page_id: str,
+        file_path: str,
+        title: str | None = None,
+        comment: str | None = None,
+    ) -> Any:
+        """上传附件到页面。"""
+        return self.client.attach_file(
+            filename=file_path,
+            page_id=page_id,
+            title=title,
+            comment=comment,
+        )
+
     def search_cql(
         self,
         cql: str,
