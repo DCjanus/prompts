@@ -12,9 +12,13 @@
 
 from __future__ import annotations
 
+import base64
+import html
+import re
 import sys
-from pathlib import Path
+import urllib.request
 from enum import Enum
+from pathlib import Path
 from typing import Any, Callable
 
 import typer
@@ -31,6 +35,7 @@ from confluence_api_client import ConfluenceApiClient, ConfluenceConfig  # noqa:
 app = typer.Typer(no_args_is_help=True)
 space_app = typer.Typer(no_args_is_help=True, help="空间相关操作。")
 page_app = typer.Typer(no_args_is_help=True, help="页面相关操作。")
+attachment_app = typer.Typer(no_args_is_help=True, help="附件相关操作。")
 console = Console()
 
 ENV_BASE_URL = "CONFLUENCE_BASE_URL"
@@ -160,6 +165,23 @@ def render_page_list(payload: Any, title: str = "Pages") -> None:
     render_table(title, ["id", "title", "space", "type"], rows)
 
 
+def render_attachment_list(payload: Any, title: str = "Attachments") -> None:
+    """渲染附件列表。"""
+    rows = []
+    for item in normalize_results(payload):
+        metadata = item.get("metadata") or {}
+        extensions = item.get("extensions") or {}
+        rows.append(
+            [
+                str(item.get("id", "")),
+                str(item.get("title", "")),
+                str(metadata.get("mediaType", "")),
+                str(extensions.get("fileSize", "")),
+            ]
+        )
+    render_table(title, ["id", "title", "mediaType", "fileSize"], rows)
+
+
 def ensure_json_output(
     payload: Any,
     json_output: bool,
@@ -184,6 +206,111 @@ def build_expand(body_format: BodyFormat | None, expand: str | None) -> str | No
     return None
 
 
+def escape_keep_breaks(text: str) -> str:
+    """转义文本并保留 <br> 标签。"""
+    normalized = text.replace("<br>", "<br />")
+    placeholder = "__CONFLUENCE_BR__"
+    normalized = normalized.replace("<br />", placeholder)
+    escaped = html.escape(normalized)
+    return escaped.replace(placeholder, "<br />")
+
+
+def convert_inline_markdown(text: str, image_map: dict[str, str]) -> str:
+    """转换行内 Markdown（仅处理图片/链接/换行）。"""
+    image_tokens: list[str] = []
+
+    def image_repl(match: re.Match[str]) -> str:
+        alt_text = match.group(1)
+        raw_path = match.group(2)
+        filename = Path(raw_path).name
+        token = f"__CONFLUENCE_IMAGE_{len(image_tokens)}__"
+        image_tokens.append(
+            f'<ac:image ac:alt="{html.escape(alt_text)}"><ri:attachment ri:filename="{html.escape(filename)}" /></ac:image>'
+        )
+        image_map[filename] = raw_path
+        return token
+
+    def link_repl(match: re.Match[str]) -> str:
+        label = match.group(1)
+        url = match.group(2)
+        return f'<a href="{html.escape(url)}">{escape_keep_breaks(label)}</a>'
+
+    text = re.sub(r"!\[([^\]]*)\]\(([^)]+)\)", image_repl, text)
+    text = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", link_repl, text)
+    text = escape_keep_breaks(text)
+    for idx, token in enumerate(image_tokens):
+        text = text.replace(f"__CONFLUENCE_IMAGE_{idx}__", token)
+    return text
+
+
+def parse_markdown_table(rows: list[str], image_map: dict[str, str]) -> str:
+    """解析 Markdown 表格为 storage HTML。"""
+    def split_row(row: str) -> list[str]:
+        raw = row.strip().strip("|")
+        cells = [cell.strip() for cell in raw.split("|")]
+        return [convert_inline_markdown(cell, image_map) for cell in cells]
+
+    header_cells = split_row(rows[0])
+    body_rows = [split_row(row) for row in rows[2:]]
+    if not header_cells:
+        return ""
+    header_html = "".join(f"<th>{cell}</th>" for cell in header_cells)
+    body_html = ""
+    for body in body_rows:
+        if not body:
+            continue
+        while len(body) < len(header_cells):
+            body.append("")
+        body_html += "<tr>" + "".join(f"<td>{cell}</td>" for cell in body) + "</tr>"
+    return f"<table><thead><tr>{header_html}</tr></thead><tbody>{body_html}</tbody></table>"
+
+
+def markdown_to_storage(markdown: str, image_map: dict[str, str]) -> str:
+    """将简单 Markdown 转换为 Confluence storage。"""
+    lines = markdown.splitlines()
+    blocks: list[str] = []
+    idx = 0
+    while idx < len(lines):
+        line = lines[idx]
+        stripped = line.strip()
+        if not stripped:
+            idx += 1
+            continue
+        if stripped.startswith("#"):
+            level = len(stripped) - len(stripped.lstrip("#"))
+            title = stripped[level:].strip()
+            level = min(max(level, 1), 6)
+            blocks.append(f"<h{level}>{escape_keep_breaks(title)}</h{level}>")
+            idx += 1
+            continue
+        if stripped.startswith("|") and "|" in stripped:
+            table_rows = []
+            while idx < len(lines):
+                row = lines[idx].strip()
+                if not row.startswith("|"):
+                    break
+                table_rows.append(lines[idx])
+                idx += 1
+            if len(table_rows) >= 2:
+                blocks.append(parse_markdown_table(table_rows, image_map))
+            continue
+        paragraph_lines = []
+        while idx < len(lines):
+            current = lines[idx]
+            if not current.strip():
+                break
+            if current.strip().startswith("#"):
+                break
+            if current.strip().startswith("|") and "|" in current:
+                break
+            paragraph_lines.append(current)
+            idx += 1
+        paragraph_text = "\n".join(paragraph_lines)
+        paragraph_text = convert_inline_markdown(paragraph_text, image_map)
+        blocks.append(f"<p>{paragraph_text}</p>")
+    return "\n".join(blocks)
+
+
 def get_client(state: AppState) -> ConfluenceApiClient:
     """构建 Confluence API 客户端。"""
     timeout_seconds = parse_timeout(state.timeout)
@@ -199,6 +326,90 @@ def get_client(state: AppState) -> ConfluenceApiClient:
             verify_ssl=state.verify_ssl,
         )
     )
+
+
+def resolve_parent_space_key(client: ConfluenceApiClient, parent_id: str) -> str:
+    """从父页面获取 space key。"""
+    parent = client.get_page(parent_id, expand="space")
+    space = parent.get("space") if isinstance(parent, dict) else {}
+    if not isinstance(space, dict) or not space.get("key"):
+        raise ApiError(f"Failed to resolve space key from parent page {parent_id}")
+    return str(space.get("key"))
+
+
+def find_child_page_id(client: ConfluenceApiClient, parent_id: str, title: str) -> str | None:
+    """在父页面下查找同名子页面。"""
+    start = 0
+    limit = 50
+    while True:
+        payload = client.get_page_children(parent_id, start=start, limit=limit, expand="space")
+        results = normalize_results(payload)
+        for item in results:
+            if str(item.get("title", "")) == title:
+                return str(item.get("id", ""))
+        if not isinstance(payload, dict):
+            break
+        if payload.get("size", 0) < limit:
+            break
+        start += limit
+    return None
+
+
+def upload_attachments(
+    client: ConfluenceApiClient,
+    page_id: str,
+    markdown_path: Path,
+    image_map: dict[str, str],
+) -> None:
+    """上传 Markdown 引用的附件。"""
+    base_dir = markdown_path.parent
+    for filename, raw_path in image_map.items():
+        path = Path(raw_path)
+        if not path.is_absolute():
+            path = base_dir / path
+        if not path.exists():
+            raise ApiError(f"Attachment not found: {path}")
+        client.attach_file(page_id=page_id, file_path=str(path), title=filename)
+
+
+def build_auth_headers(state: AppState) -> dict[str, str]:
+    """构造 Confluence API 认证头。"""
+    if state.username:
+        raw = f"{state.username}:{state.token}".encode("utf-8")
+        encoded = base64.b64encode(raw).decode("utf-8")
+        return {"Authorization": f"Basic {encoded}"}
+    return {"Authorization": f"Bearer {state.token}"}
+
+
+def collect_attachments(
+    client: ConfluenceApiClient,
+    page_id: str,
+    start: int,
+    limit: int,
+    expand: str | None,
+    fetch_all: bool,
+) -> list[dict[str, Any]]:
+    """分页拉取附件列表。"""
+    attachments: list[dict[str, Any]] = []
+    current_start = start
+    while True:
+        payload = client.get_page_attachments(
+            page_id,
+            start=current_start,
+            limit=limit,
+            expand=expand,
+        )
+        items = normalize_results(payload)
+        for item in items:
+            if isinstance(item, dict):
+                attachments.append(item)
+        if not fetch_all:
+            break
+        links = payload.get("_links") if isinstance(payload, dict) else None
+        if not isinstance(links, dict) or not links.get("next"):
+            break
+        current_start += limit
+    return attachments
 
 
 @app.callback()
@@ -358,6 +569,168 @@ def get_page_children(
     ensure_json_output(payload, state.json_output, render_page_list)
 
 
+@attachment_app.command("list")
+def list_attachments(
+    ctx: typer.Context,
+    page_id: str = typer.Option(..., "--page-id", help="页面 ID。"),
+    start: int = typer.Option(0, "--start", help="分页起始索引。"),
+    limit: int = typer.Option(25, "--limit", help="分页大小。"),
+    expand: str | None = typer.Option(None, "--expand", help="扩展字段。"),
+) -> None:
+    """列出页面附件。"""
+    state = ctx.obj
+    if not isinstance(state, AppState):
+        raise ApiError("App config not initialized.")
+    client = get_client(state)
+    payload = client.get_page_attachments(page_id, start=start, limit=limit, expand=expand)
+    ensure_json_output(payload, state.json_output, render_attachment_list)
+
+
+@attachment_app.command("download")
+def download_attachments(
+    ctx: typer.Context,
+    page_id: str = typer.Option(..., "--page-id", help="页面 ID。"),
+    output_dir: Path = typer.Option(
+        Path("attachments"),
+        "--output-dir",
+        help="下载目录（默认 ./attachments）。",
+    ),
+    names: list[str] | None = typer.Option(
+        None,
+        "--name",
+        help="仅下载指定附件，可重复传入。",
+    ),
+    name_filter: str | None = typer.Option(
+        None,
+        "--filter",
+        help="使用正则匹配附件名。",
+    ),
+    fetch_all: bool = typer.Option(
+        False,
+        "--all",
+        help="下载全部附件（自动分页）。",
+    ),
+    start: int = typer.Option(0, "--start", help="分页起始索引。"),
+    limit: int = typer.Option(25, "--limit", help="分页大小。"),
+    expand: str | None = typer.Option(None, "--expand", help="扩展字段。"),
+) -> None:
+    """下载页面附件。"""
+    state = ctx.obj
+    if not isinstance(state, AppState):
+        raise ApiError("App config not initialized.")
+    client = get_client(state)
+    attachments = collect_attachments(
+        client,
+        page_id=page_id,
+        start=start,
+        limit=limit,
+        expand=expand,
+        fetch_all=fetch_all,
+    )
+    if names:
+        name_set = set(names)
+        attachments_map = {item.get("title"): item for item in attachments}
+        attachments = [
+            attachments_map[name]
+            for name in names
+            if name in attachments_map and isinstance(attachments_map[name], dict)
+        ]
+        missing = [name for name in names if name not in attachments_map]
+    else:
+        missing = []
+    if name_filter:
+        pattern = re.compile(name_filter)
+        attachments = [
+            item
+            for item in attachments
+            if isinstance(item, dict) and pattern.search(str(item.get("title", "")))
+        ]
+    output_dir.mkdir(parents=True, exist_ok=True)
+    headers = build_auth_headers(state)
+    timeout_seconds = parse_timeout(state.timeout)
+    downloaded: list[str] = []
+    skipped: list[str] = []
+    for item in attachments:
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title", ""))
+        download_link = (item.get("_links") or {}).get("download")
+        if not download_link:
+            skipped.append(title)
+            continue
+        target_url = f"{state.base_url.rstrip('/')}{download_link}"
+        target_path = output_dir / title
+        request = urllib.request.Request(target_url, headers=headers)
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+            with target_path.open("wb") as f:
+                while True:
+                    chunk = response.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+        downloaded.append(title)
+    summary = {
+        "output_dir": str(output_dir),
+        "downloaded": downloaded,
+        "skipped": skipped,
+        "missing": missing,
+    }
+    ensure_json_output(summary, state.json_output)
+
+
+@page_app.command("publish-markdown")
+def publish_markdown(
+    ctx: typer.Context,
+    parent_id: str = typer.Option(..., "--parent-id", help="父页面 ID。"),
+    title: str = typer.Option(..., "--title", help="页面标题。"),
+    markdown_path: Path = typer.Option(..., "--markdown-path", exists=True, help="Markdown 文件路径。"),
+    body_format: BodyFormat = typer.Option(BodyFormat.storage, "--body-format", help="内容格式。"),
+    update_if_exists: bool = typer.Option(True, "--update-if-exists", help="存在同名子页面时更新。"),
+    expand: str | None = typer.Option(None, "--expand", help="扩展字段。"),
+) -> None:
+    """发布 Markdown 到 Confluence（自动上传附件）。"""
+    state = ctx.obj
+    if not isinstance(state, AppState):
+        raise ApiError("App config not initialized.")
+
+    client = get_client(state)
+    space_key = resolve_parent_space_key(client, parent_id)
+
+    markdown_content = markdown_path.read_text(encoding="utf-8")
+    image_map: dict[str, str] = {}
+    storage_body = markdown_to_storage(markdown_content, image_map)
+
+    page_id = None
+    if update_if_exists:
+        page_id = find_child_page_id(client, parent_id, title)
+
+    if page_id:
+        result = client.update_page(
+            page_id=page_id,
+            title=title,
+            body=storage_body,
+            parent_id=parent_id,
+            representation=body_format.value,
+        )
+    else:
+        result = client.create_page(
+            space_key=space_key,
+            title=title,
+            body=storage_body,
+            parent_id=parent_id,
+            representation=body_format.value,
+        )
+        page_id = str(result.get("id")) if isinstance(result, dict) else None
+
+    if not page_id:
+        raise ApiError("Failed to resolve page id after publish.")
+
+    if image_map:
+        upload_attachments(client, page_id, markdown_path, image_map)
+
+    ensure_json_output(result, state.json_output)
+
+
 @app.command("search")
 def search_cql(
     ctx: typer.Context,
@@ -387,6 +760,7 @@ def search_cql(
 
 app.add_typer(space_app, name="space")
 app.add_typer(page_app, name="page")
+app.add_typer(attachment_app, name="attachment")
 
 
 def main_entry() -> None:
