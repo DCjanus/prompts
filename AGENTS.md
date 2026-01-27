@@ -17,6 +17,7 @@
 - 有疑义：必须先向用户确认，等待明确指令后再执行。
 - Git Commit Message 使用简洁、精确、描述性强的英文，遵循[语义化提交规范](https://www.conventionalcommits.org/en/v1.0.0/)，且在可行时尽量包含 scope 信息。
 - 创建分支时尽量遵循[Conventional Branch](https://conventional-branch.github.io/) 规范。
+- 每次提交用 `git commit --trailer "Co-authored-by: OpenAI Codex <codex@openai.com>" -m "commit message"`。
 
 ## 依赖管理
 - 通用原则
