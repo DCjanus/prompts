@@ -36,4 +36,3 @@ alias codex='codex --dangerously-bypass-approvals-and-sandbox'
 | [`tech-doc`](skills/tech-doc/SKILL.md) | 技术协作文档的统一写作指南 |
 | [`fetch-url`](skills/fetch-url/SKILL.md) | 渲染 URL 并输出多格式内容或原始 HTML（Playwright + trafilatura） |
 | [`ticktick-cli`](skills/ticktick-cli/SKILL.md) | 通过 CLI 调用滴答清单 Open API 管理任务与项目（API 文档：[Dida365 Open API](https://developer.dida365.com/docs/index.html#/openapi)） |
-| [`ui-ux-pro-max`](skills/ui-ux-pro-max/SKILL.md) | UI/UX 设计情报库（样式、配色、字体、图表、UX 指南、栈最佳实践）；来源：[ui-ux-pro-max-skill](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill) |
