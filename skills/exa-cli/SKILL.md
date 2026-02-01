@@ -7,6 +7,16 @@ description: 使用 Exa 搜索与代码上下文命令行进行信息检索与�
 
 说明：以下调用方式均以当前 `SKILL.md` 文件所在文件夹为 workdir。必须直接当作可执行文件执行。
 
+脚本调用方式示例（不要用 `uv run python` 或 `python`）：
+```bash
+cd skills/exa-cli && ./scripts/exa-cli.py web-search-exa "site:golang.org context.WithCancel example"
+```
+错误示例：
+```bash
+uv run python skills/exa-cli/scripts/exa-cli.py web-search-exa "site:golang.org context.WithCancel example"
+python skills/exa-cli/scripts/exa-cli.py web-search-exa "site:golang.org context.WithCancel example"
+```
+
 - 运行脚本：`scripts/exa-cli.py`
 - 网页搜索：`scripts/exa-cli.py web-search-exa <query>`
 - 编程检索：`scripts/exa-cli.py get-code-context-exa <query>`

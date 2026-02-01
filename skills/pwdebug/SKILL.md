@@ -12,52 +12,63 @@ description: 用于需要通过命令行操作真实浏览器实例进行前端�
 ## 快速开始
 
 > 工作目录应为本文件所在目录，示例命令默认从该目录执行。
+> 说明：必须直接执行脚本，不要用 `uv run python` 或 `python`。
+
+脚本调用方式示例：
+```bash
+cd skills/pwdebug && ./scripts/pwdebug.py start
+```
+错误示例：
+```bash
+uv run python skills/pwdebug/scripts/pwdebug.py start
+python skills/pwdebug/scripts/pwdebug.py start
+```
 
 1. 启动浏览器服务（常驻进程）：
 
 ```bash
-scripts/pwdebug.py start
+./scripts/pwdebug.py start
 ```
 
 2. 在新标签页打开页面：
 
 ```bash
-scripts/pwdebug.py nav https://example.com --new
+./scripts/pwdebug.py nav https://example.com --new
 ```
 
 3. 执行 JS 表达式：
 
 ```bash
-scripts/pwdebug.py evaluate "document.title"
+./scripts/pwdebug.py evaluate "document.title"
 ```
 
 4. 截图：
 
 ```bash
-scripts/pwdebug.py screenshot --full
+./scripts/pwdebug.py screenshot --full
 ```
 
 5. 交互式拾取元素：
 
 ```bash
-scripts/pwdebug.py pick "点击登录按钮"
+./scripts/pwdebug.py pick "点击登录按钮"
 ```
 
 6. 监听控制台日志：
 
 ```bash
-scripts/pwdebug.py watch-logs
+./scripts/pwdebug.py watch-logs
 ```
 
 7. 查看最近日志：
 
 ```bash
-scripts/pwdebug.py logs 100
+./scripts/pwdebug.py logs 100
 ```
 
 ## 说明
 
-- CLI 入口：`scripts/pwdebug.py`
+- CLI 入口：`./scripts/pwdebug.py`
 - 日志路径：`~/.cache/pwdebug/console.log.jsonl`
 - 状态路径：`~/.cache/pwdebug/server.json`
 
