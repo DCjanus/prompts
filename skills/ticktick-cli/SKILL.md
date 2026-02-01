@@ -5,6 +5,16 @@ description: 使用 Python CLI 与 Dida365 Open API 交互以管理滴答清单�
 
 说明：以下调用方式均以当前 `SKILL.md` 文件所在文件夹为 workdir。
 
+脚本调用方式示例（不要用 `uv run python` 或 `python`）：
+```bash
+cd skills/ticktick-cli && ./scripts/ticktick_cli.py --json project list
+```
+错误示例：
+```bash
+uv run python skills/ticktick-cli/scripts/ticktick_cli.py --json project list
+python skills/ticktick-cli/scripts/ticktick_cli.py --json project list
+```
+
 1) 常用子命令（覆盖日常场景）
 - `project`
   - `list`

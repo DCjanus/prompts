@@ -12,6 +12,15 @@ description: 查看/更新 GitHub Issue、PR（含评论与 diff），并按团�
   - 建议：查看 PR 时尽量一次性调用该脚本获取所需信息，避免多次调用 `gh` 带来的额外开销。
   - 在当前 `SKILL.md` 所在目录执行：`./scripts/read_pr.py https://github.com/OWNER/REPO/pull/123`
   - 必须直接当作可执行文件执行。
+  - 调用示例（不要用 `uv run python` 或 `python`）：
+    ```bash
+    cd skills/github-pr-issue && ./scripts/read_pr.py https://github.com/OWNER/REPO/pull/123 --with-diff --with-files
+    ```
+  - 错误示例：
+    ```bash
+    uv run python skills/github-pr-issue/scripts/read_pr.py https://github.com/OWNER/REPO/pull/123 --with-diff --with-files
+    python skills/github-pr-issue/scripts/read_pr.py https://github.com/OWNER/REPO/pull/123 --with-diff --with-files
+    ```
   - 可选参数示例：
     - `--with-diff`：包含 diff。
     - `--with-body`：包含 PR body。

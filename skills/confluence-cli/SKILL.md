@@ -5,6 +5,16 @@ description: 查询、检索与阅读 Confluence 文档/页面。
 
 说明：以下调用方式均以当前 `SKILL.md` 文件所在文件夹为 workdir。
 
+脚本调用方式（必须直接执行，不要用 `uv run python` 或 `python`）：
+```bash
+cd skills/confluence-cli && ./scripts/confluence_cli.py --json page get --page-id 3060336952
+```
+错误示例：
+```bash
+uv run python skills/confluence-cli/scripts/confluence_cli.py --json page get --page-id 3060336952
+python skills/confluence-cli/scripts/confluence_cli.py --json page get --page-id 3060336952
+```
+
 1) 常用子命令（覆盖日常场景）
 - `space`
   - `list [--start --limit --expand]`
