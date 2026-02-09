@@ -87,7 +87,26 @@ cd skills/your-skill-name && ./scripts/your_tool.py --help
 
 本仓库对 Python 脚本的约定（SKILL.md 里要写清楚）：
 - 统一通过 `./scripts/...` 直接执行（不要用 `uv run python ...` / `python ...`）
-- 示例命令写明工作目录（通常 `cd skills/<skill-name>`）
+- workdir 约定：默认以当前 `SKILL.md` 所在目录作为 workdir；示例命令如需 `cd`，应写清楚（通常 `cd skills/<skill-name>`）
+- 在 `SKILL.md` 中引用脚本/资源文件时，优先使用 Markdown URL（链接文本尽量只写文件名）
+
+Python 脚本规范要点：
+- **运行模式**：必须使用 uv script 模式（shebang 为 `#!/usr/bin/env -S uv run --script`）。
+- **初始化**：新建脚本用 `uv init --script scripts/foo.py`（生成 shebang 与空的 `/// script` 元数据块）。
+- **依赖声明（强约束）**：
+  - 脚本头部 `/// script` 元数据块是唯一依赖声明位置。
+  - 禁止手工编辑依赖块；依赖增删必须通过 `uv add --script ...` / `uv remove --script ...` 完成。
+  - 移除依赖引用后，若确认不再使用，应同步移除该依赖。
+- **CLI 形态**：
+  - 命令行参数优先用 Typer。
+  - 输出提示/表格优先用 rich（提升可读性）。
+  - 数据模型与参数校验优先用 pydantic（失败信息清晰可定位）。
+  - Typer 应用实例变量名使用小写 `app`。
+  - 若仅一个 command，优先使用 `typer.run(main)`，避免 `tool.py foo <arg>` 这种多一层子命令。
+- **可维护性**：每个模块、函数与类型都应包含简短中文 docstring。
+- **质量检查**：完成后建议执行：
+  - `uv run ruff check <path>`
+  - `uv run ruff format <path>`
 
 常用 `uv --script` 工作流（用于新建/维护脚本依赖）：
 
@@ -126,17 +145,20 @@ chmod +x scripts/foo.py
 ## 5) 内容长度（token）
 
 - `SKILL.md` 正文推荐 < 5000 tokens
-- 可用 [token_count.py](../../scripts/token_count.py) 统计 token 数：
+- 可用 [token_count.py](../../scripts/token_count.py) 统计 token 数（脚本与参数不依赖 workdir，只要路径写对即可）：
 
 ```bash
-./scripts/token_count.py skills/<skill-name>/SKILL.md
+cd skills/<skill-name>
+../../scripts/token_count.py SKILL.md
 ```
 
 ## 6) 提交前自检清单
 
 - 目录名 == `SKILL.md` 的 `name`
 - frontmatter 至少包含 `name` / `description`，且 `description` 写清楚 “做什么 + 何时用（关键词）”
-- `SKILL.md` 有可复制的 Quick start，且包含正确的 workdir
+- `SKILL.md` 有可复制的 Quick start（如依赖工作目录或环境变量，需要在示例中写清楚）
 - 如有脚本：示例使用 `./scripts/...` 直接执行（不使用 `uv run python`/`python`）
+- 如有脚本：依赖只在 `/// script` 里声明（不手改依赖块）；模块/函数/类型有简短中文 docstring
+- 如有脚本：建议跑 ruff（`uv run ruff check ...` / `uv run ruff format ...`）
 - `references/`/`assets/` 的引用清晰，且 `SKILL.md` 能一跳到达目标文件
 - `SKILL.md` token 数在建议范围内
