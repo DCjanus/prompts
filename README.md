@@ -20,7 +20,7 @@ alias codex='codex --dangerously-bypass-approvals-and-sandbox'
 
 - [`AGENTS.md`](AGENTS.md)：Codex 中所有代理共享的基础约束与工作流
 - [`skills/`](skills)：按功能分类的技能库，详情见下方技能列表
-- [`scripts/`](scripts)：放置 uv script 模式的工具脚本（约束见 [scripts/AGENTS.md](scripts/AGENTS.md)）
+- [`scripts/`](scripts)：放置 uv script 模式的工具脚本（规范见 [SKILL.md（create-skill）](skills/create-skill/SKILL.md) 的 scripts 章节）
   - [`token_count.py`](scripts/token_count.py)：基于 [tiktoken](https://github.com/openai/tiktoken) 的 token 计数 CLI
   - [`token_tree.py`](scripts/token_tree.py)：统计仓库内所有 Git 跟踪文本文件的 token 数，按树状结构输出；支持全局比例进度条、对齐条形显示与百分比，可用 `--bar-width` 调整条形宽度
 
@@ -36,3 +36,4 @@ alias codex='codex --dangerously-bypass-approvals-and-sandbox'
 | [`tech-doc`](skills/tech-doc/SKILL.md) | 技术协作文档的统一写作指南 |
 | [`fetch-url`](skills/fetch-url/SKILL.md) | 渲染 URL 并输出多格式内容或原始 HTML（Playwright + trafilatura） |
 | [`ticktick-cli`](skills/ticktick-cli/SKILL.md) | 通过 CLI 调用滴答清单 Open API 管理任务与项目（API 文档：[Dida365 Open API](https://developer.dida365.com/docs/index.html#/openapi)） |
+| [`create-skill`](skills/create-skill/SKILL.md) | 编写/新增本仓库 skills 的规范与最小模板（SKILL.md / scripts / references / assets / token 控制） |
