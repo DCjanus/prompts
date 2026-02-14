@@ -15,7 +15,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Literal
 from time import monotonic
+from urllib.error import URLError
 from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 
 import typer
 from playwright.sync_api import Error as PlaywrightError
@@ -147,6 +149,48 @@ def extract_content(html: str, url: str, output_format: OutputFormat, verbose: b
     return content
 
 
+def fetch_agent_markdown(url: str, timeout_ms: int, verbose: bool) -> str | None:
+    """通过 Accept 协商优先请求 text/markdown，命中则直接返回。"""
+
+    if verbose:
+        CONSOLE.print("[cyan]Trying Markdown for Agents negotiation[/cyan]", highlight=False)
+
+    request = Request(
+        url,
+        headers={
+            "Accept": "text/markdown, text/html;q=0.9, */*;q=0.1",
+            "User-Agent": "fetch-url/1.0 (+https://github.com/cloudflare/markdown-for-agents)",
+        },
+    )
+    try:
+        with urlopen(request, timeout=max(timeout_ms / 1000.0, 1.0)) as response:
+            content_type = response.headers.get_content_type()
+            if verbose:
+                CONSOLE.print(
+                    f"[cyan]Negotiated content-type[/cyan] {content_type}",
+                    highlight=False,
+                )
+            if content_type != "text/markdown":
+                return None
+            charset = response.headers.get_content_charset() or "utf-8"
+            markdown = response.read().decode(charset, errors="replace")
+            if not markdown.strip():
+                return None
+            if verbose:
+                CONSOLE.print(
+                    f"[green]Markdown for Agents hit[/green] {len(markdown)} chars",
+                    highlight=False,
+                )
+            return markdown
+    except (URLError, OSError) as exc:
+        if verbose:
+            CONSOLE.print(
+                f"[yellow]Markdown negotiation failed, fallback to browser render[/yellow] ({exc})",
+                highlight=False,
+            )
+        return None
+
+
 @APP.command()
 def fetch(
     url: str = typer.Argument(..., help="Target URL to render into content."),
@@ -160,6 +204,11 @@ def fetch(
         "markdown",
         help="Output format: csv, html, json, markdown, raw-html, txt, xml, xmltei.",
     ),
+    prefer_agent_markdown: bool = typer.Option(
+        True,
+        "--prefer-agent-markdown/--no-prefer-agent-markdown",
+        help="For markdown output, first try Accept: text/markdown negotiation before browser rendering.",
+    ),
     verbose: bool = typer.Option(False, "--verbose", help="Print progress and diagnostic logs."),
 ) -> None:
     """通过 Playwright 渲染并用 trafilatura 提取内容。"""
@@ -169,17 +218,21 @@ def fetch(
 
     resolved_browser_path = str(browser_path) if browser_path else detect_browser_path()
     try:
-        html = render_html(
-            url,
-            timeout_ms=timeout_ms,
-            browser_path=resolved_browser_path,
-            verbose=verbose,
-        )
-        content = (
-            html
-            if output_format == "raw-html"
-            else extract_content(html, url, output_format, verbose=verbose)
-        )
+        content: str | None = None
+        if output_format == "markdown" and prefer_agent_markdown:
+            content = fetch_agent_markdown(url, timeout_ms=timeout_ms, verbose=verbose)
+        if content is None:
+            html = render_html(
+                url,
+                timeout_ms=timeout_ms,
+                browser_path=resolved_browser_path,
+                verbose=verbose,
+            )
+            content = (
+                html
+                if output_format == "raw-html"
+                else extract_content(html, url, output_format, verbose=verbose)
+            )
     except PlaywrightTimeoutError as exc:
         CONSOLE.print(
             Panel.fit(

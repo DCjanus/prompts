@@ -27,6 +27,7 @@ uv run playwright install chromium
 - `--timeout-ms`：Playwright 导航超时（毫秒，默认 60000）。
 - `--browser-path`：指定本地 Chromium 系浏览器路径（默认自动探测）。
 - `--output-format`：输出格式（默认 `markdown`），支持 `csv`、`html`、`json`、`markdown`、`raw-html`、`txt`、`xml`、`xmltei`；`raw-html` 直接输出渲染后的 HTML（不经 trafilatura）。
+- `--prefer-agent-markdown/--no-prefer-agent-markdown`：在 `markdown` 输出下，先尝试通过 `Accept: text/markdown` 协商获取原站 Markdown（命中则不再走浏览器渲染），默认开启。
 
 示例：
 
