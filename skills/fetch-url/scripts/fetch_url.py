@@ -204,11 +204,6 @@ def fetch(
         "markdown",
         help="Output format: csv, html, json, markdown, raw-html, txt, xml, xmltei.",
     ),
-    prefer_agent_markdown: bool = typer.Option(
-        True,
-        "--prefer-agent-markdown/--no-prefer-agent-markdown",
-        help="For markdown output, first try Accept: text/markdown negotiation before browser rendering.",
-    ),
     verbose: bool = typer.Option(False, "--verbose", help="Print progress and diagnostic logs."),
 ) -> None:
     """通过 Playwright 渲染并用 trafilatura 提取内容。"""
@@ -219,7 +214,7 @@ def fetch(
     resolved_browser_path = str(browser_path) if browser_path else detect_browser_path()
     try:
         content: str | None = None
-        if output_format == "markdown" and prefer_agent_markdown:
+        if output_format == "markdown":
             content = fetch_agent_markdown(url, timeout_ms=timeout_ms, verbose=verbose)
         if content is None:
             html = render_html(
