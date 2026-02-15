@@ -37,3 +37,4 @@ alias codex='codex --dangerously-bypass-approvals-and-sandbox'
 | [`fetch-url`](skills/fetch-url/SKILL.md) | 渲染 URL 并输出多格式内容或原始 HTML（Playwright + trafilatura） |
 | [`ticktick-cli`](skills/ticktick-cli/SKILL.md) | 通过 CLI 调用滴答清单 Open API 管理任务与项目（API 文档：[Dida365 Open API](https://developer.dida365.com/docs/index.html#/openapi)） |
 | [`create-skill`](skills/create-skill/SKILL.md) | 编写/新增本仓库 skills 的规范与最小模板（SKILL.md / scripts / references / assets / token 控制） |
+| [`pr-review-packet`](skills/pr-review-packet/SKILL.md) | GitHub PR 人类 review 加速：生成 Review Packet（上下文/变更地图/阅读顺序/验证清单/待确认问题） |
