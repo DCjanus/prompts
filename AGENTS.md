@@ -24,7 +24,7 @@
   - 优先使用官方命令获取最新版依赖。
   - 默认使用最新可用版本，非必要不手动固定版本号。
   - 不手动修改项目描述文件或锁文件。
-  - 无外部依赖的临时 Python 执行优先用 `uv run python`，不要直接调用系统 `python`/`python3`。
+  - 一次性临时 Python 统一使用 `uv run (--with <外部依赖包>)* python ...`（`*` 表示 0~N 次），不要直接调用系统 `python`/`python3`。
 - 示例
   - Rust：`cargo add <crate>`
   - Python：`uv add <package>`
