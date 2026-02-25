@@ -9,3 +9,4 @@
 - anyhow / thiserror: 统一错误处理与错误类型建模，适合搭配 `tracing` 做错误追踪。
 - reqwest: 常用 HTTP 客户端，API 现代且与 `serde`/`tokio` 组合顺畅。
 - tokio: 事实上的异步运行时标准，与 `tracing`/`serde` 生态匹配。
+- teloxide: Telegram Bot 开发框架，适合快速构建基于 Telegram Bot API 的 Rust 机器人服务；自定义 Bot Command 时优先使用 `#[derive(BotCommands)]` 的 `enum` 形式，维护强类型命令列表（统一解析、帮助描述与命令注册）。
