@@ -212,8 +212,8 @@ def extract_twitter_status_id(url: str) -> str | None:
 
     path = parsed.path.rstrip("/")
     patterns = (
-        r"^/i/status/(\d{2,20})$",
-        r"^/[A-Za-z0-9_]+/status(?:es)?/(\d{2,20})$",
+        r"^/i/status/(\d{2,20})(?:/(?:photo|video)/\d+)?$",
+        r"^/[A-Za-z0-9_]+/status(?:es)?/(\d{2,20})(?:/(?:photo|video)/\d+)?$",
     )
     for pattern in patterns:
         matched = re.match(pattern, path)
