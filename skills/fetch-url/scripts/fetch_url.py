@@ -233,7 +233,7 @@ def fetch_fxtwitter_status(status_id: str, timeout_ms: int, verbose: bool) -> di
         api_url,
         headers={
             "Accept": "application/json",
-            "User-Agent": "fetch-url/1.0 (+https://github.com/FxEmbed/FxEmbed)",
+            "User-Agent": "fetch-url/1.0 (+https://github.com/DCjanus/prompts/tree/master/skills/fetch-url)",
         },
     )
     try:
