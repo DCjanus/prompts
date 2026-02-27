@@ -166,7 +166,7 @@ def fetch_agent_markdown(url: str, timeout_ms: int, verbose: bool) -> str | None
     if verbose:
         CONSOLE.print("[cyan]Trying Markdown for Agents negotiation[/cyan]", highlight=False)
 
-    request = Request(
+    request = Request(  # noqa: S310 - 本地 CLI 可信输入，URL 由用户主动提供
         url,
         headers={
             "Accept": "text/markdown, text/html;q=0.9, */*;q=0.1",
@@ -174,7 +174,7 @@ def fetch_agent_markdown(url: str, timeout_ms: int, verbose: bool) -> str | None
         },
     )
     try:
-        with urlopen(request, timeout=max(timeout_ms / 1000.0, 1.0)) as response:
+        with urlopen(request, timeout=max(timeout_ms / 1000.0, 1.0)) as response:  # noqa: S310
             content_type = response.headers.get_content_type()
             if verbose:
                 CONSOLE.print(
@@ -229,7 +229,7 @@ def fetch_fxtwitter_status(status_id: str, timeout_ms: int, verbose: bool) -> di
     if verbose:
         CONSOLE.print(f"[cyan]Fetching FxTwitter API[/cyan] {api_url}", highlight=False)
 
-    request = Request(
+    request = Request(  # noqa: S310 - 固定 HTTPS API 根地址 + 数字 status id
         api_url,
         headers={
             "Accept": "application/json",
@@ -237,7 +237,7 @@ def fetch_fxtwitter_status(status_id: str, timeout_ms: int, verbose: bool) -> di
         },
     )
     try:
-        with urlopen(request, timeout=max(timeout_ms / 1000.0, 1.0)) as response:
+        with urlopen(request, timeout=max(timeout_ms / 1000.0, 1.0)) as response:  # noqa: S310
             payload = json.loads(response.read().decode("utf-8", errors="replace"))
     except (URLError, OSError, json.JSONDecodeError) as exc:
         if verbose:
