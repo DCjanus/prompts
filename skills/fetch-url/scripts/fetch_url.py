@@ -268,7 +268,12 @@ def render_fxtwitter_markdown(payload: dict[str, Any], source_url: str) -> str:
     screen_name = str(author.get("screen_name") or "unknown")
     status_url = str(status.get("url") or source_url)
     created_at = str(status.get("created_at") or "N/A")
-    text = str(status.get("text") or status.get("raw_text", {}).get("text") or "").strip()
+    raw_text = status.get("raw_text")
+    if isinstance(raw_text, dict):
+        fallback_text = raw_text.get("text")
+    else:
+        fallback_text = raw_text
+    text = str(status.get("text") or fallback_text or "").strip()
     if not text:
         text = "_(No text content returned by FxTwitter API)_"
 
