@@ -44,6 +44,12 @@ TWITTER_HOSTS = {
 FXTWITTER_API_ROOT = "https://api.fxtwitter.com/2/status"
 
 
+def escape_markdown_text(value: str) -> str:
+    """Escape common Markdown control characters for plain-text rendering."""
+
+    return re.sub(r"([\\`*_{}\[\]()#+\-.!|>])", r"\\\1", value)
+
+
 def detect_browser_path() -> str | None:
     """Try common local browser paths to avoid Playwright download."""
 
@@ -276,6 +282,9 @@ def render_fxtwitter_markdown(payload: dict[str, Any], source_url: str) -> str:
     text = str(status.get("text") or fallback_text or "").strip()
     if not text:
         text = "_(No text content returned by FxTwitter API)_"
+    safe_author_name = escape_markdown_text(author_name)
+    safe_screen_name = escape_markdown_text(screen_name)
+    safe_text = escape_markdown_text(text)
 
     likes = status.get("likes")
     reposts = status.get("reposts")
@@ -290,14 +299,14 @@ def render_fxtwitter_markdown(payload: dict[str, Any], source_url: str) -> str:
 
     lines = [
         f"<!-- Source: FxTwitter API (not direct page access); Original URL: {source_url} -->",
-        f"# {author_name} (@{screen_name})",
+        f"# {safe_author_name} (@{safe_screen_name})",
         "",
         f"- Original: {status_url}",
         f"- Created: {created_at}",
         f"- Stats: {stats}",
         "",
         "## Text",
-        text,
+        safe_text,
     ]
 
     media = status.get("media")
