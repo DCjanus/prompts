@@ -1,6 +1,6 @@
 ---
 name: fetch-url
-description: 渲染网页 URL，去噪提取正文并输出为 Markdown（默认）或其他格式/原始 HTML，以减少 Token。
+description: 获取并提取链接正文（默认 Markdown）；内置 X/Twitter URL 处理，提升受限页面的抓取成功率。
 ---
 
 在当前文件所在目录运行：`./scripts/fetch_url.py URL`（仅支持 `http` / `https`）。  
