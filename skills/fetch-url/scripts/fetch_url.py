@@ -298,9 +298,10 @@ def render_fxtwitter_markdown(payload: dict[str, Any], source_url: str) -> str:
     )
 
     lines = [
-        f"<!-- Source: FxTwitter API (not direct page access); Original URL: {source_url} -->",
         f"# {safe_author_name} (@{safe_screen_name})",
         "",
+        "- Source: FxTwitter API (not direct page access)",
+        f"- Original URL: {source_url}",
         f"- Original: {status_url}",
         f"- Created: {created_at}",
         f"- Stats: {stats}",
