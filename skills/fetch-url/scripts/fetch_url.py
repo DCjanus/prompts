@@ -263,7 +263,7 @@ def render_fxtwitter_markdown(payload: dict[str, Any], source_url: str) -> str:
     """将 FxTwitter API 响应渲染为 Markdown。"""
 
     status = payload.get("status", {})
-    author = payload.get("author", {})
+    author = status.get("author", {})
     author_name = str(author.get("name") or "Unknown")
     screen_name = str(author.get("screen_name") or "unknown")
     status_url = str(status.get("url") or source_url)
