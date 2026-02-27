@@ -166,7 +166,7 @@ def fetch_agent_markdown(url: str, timeout_ms: int, verbose: bool) -> str | None
     if verbose:
         CONSOLE.print("[cyan]Trying Markdown for Agents negotiation[/cyan]", highlight=False)
 
-    request = Request(  # noqa: S310 - 本地 CLI 可信输入，URL 由用户主动提供
+    request = Request(  # noqa: S310 - 本地 CLI 可信输入, URL 由用户主动提供
         url,
         headers={
             "Accept": "text/markdown, text/html;q=0.9, */*;q=0.1",
