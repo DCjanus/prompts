@@ -12,7 +12,9 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
+import re
 from typing import Any, Literal
 from time import monotonic
 from urllib.error import URLError
@@ -31,6 +33,21 @@ APP = typer.Typer(add_completion=False)
 CONSOLE = Console()
 
 OutputFormat = Literal["csv", "html", "json", "markdown", "raw-html", "txt", "xml", "xmltei"]
+TWITTER_HOSTS = {
+    "x.com",
+    "www.x.com",
+    "twitter.com",
+    "www.twitter.com",
+    "mobile.x.com",
+    "mobile.twitter.com",
+}
+FXTWITTER_API_ROOT = "https://api.fxtwitter.com/2/status"
+
+
+def escape_markdown_text(value: str) -> str:
+    """Escape common Markdown control characters for plain-text rendering."""
+
+    return re.sub(r"([\\`*_{}\[\]()#+\-.!|>])", r"\\\1", value)
 
 
 def detect_browser_path() -> str | None:
@@ -155,7 +172,7 @@ def fetch_agent_markdown(url: str, timeout_ms: int, verbose: bool) -> str | None
     if verbose:
         CONSOLE.print("[cyan]Trying Markdown for Agents negotiation[/cyan]", highlight=False)
 
-    request = Request(
+    request = Request(  # noqa: S310 - 本地 CLI 可信输入, URL 由用户主动提供
         url,
         headers={
             "Accept": "text/markdown, text/html;q=0.9, */*;q=0.1",
@@ -163,7 +180,7 @@ def fetch_agent_markdown(url: str, timeout_ms: int, verbose: bool) -> str | None
         },
     )
     try:
-        with urlopen(request, timeout=max(timeout_ms / 1000.0, 1.0)) as response:
+        with urlopen(request, timeout=max(timeout_ms / 1000.0, 1.0)) as response:  # noqa: S310
             content_type = response.headers.get_content_type()
             if verbose:
                 CONSOLE.print(
@@ -191,6 +208,123 @@ def fetch_agent_markdown(url: str, timeout_ms: int, verbose: bool) -> str | None
         return None
 
 
+def extract_twitter_status_id(url: str) -> str | None:
+    """从 x.com/twitter.com 推文链接提取 status id。"""
+
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    if host not in TWITTER_HOSTS:
+        return None
+
+    path = parsed.path.rstrip("/")
+    patterns = (
+        r"^/i/status/(\d{2,20})(?:/(?:photo|video)/\d+)?$",
+        r"^/[A-Za-z0-9_]+/status(?:es)?/(\d{2,20})(?:/(?:photo|video)/\d+)?$",
+    )
+    for pattern in patterns:
+        matched = re.match(pattern, path)
+        if matched:
+            return matched.group(1)
+    return None
+
+
+def fetch_fxtwitter_status(status_id: str, timeout_ms: int, verbose: bool) -> dict[str, Any] | None:
+    """调用 FxTwitter API 获取结构化推文数据。"""
+
+    api_url = f"{FXTWITTER_API_ROOT}/{status_id}"
+    if verbose:
+        CONSOLE.print(f"[cyan]Fetching FxTwitter API[/cyan] {api_url}", highlight=False)
+
+    request = Request(  # noqa: S310 - 固定 HTTPS API 根地址 + 数字 status id
+        api_url,
+        headers={
+            "Accept": "application/json",
+            "User-Agent": "fetch-url/1.0 (+https://github.com/DCjanus/prompts/tree/master/skills/fetch-url)",
+        },
+    )
+    try:
+        with urlopen(request, timeout=max(timeout_ms / 1000.0, 1.0)) as response:  # noqa: S310
+            payload = json.loads(response.read().decode("utf-8", errors="replace"))
+    except (URLError, OSError, json.JSONDecodeError) as exc:
+        if verbose:
+            CONSOLE.print(
+                f"[yellow]FxTwitter API request failed[/yellow] ({exc})",
+                highlight=False,
+            )
+        return None
+
+    if not isinstance(payload, dict):
+        return None
+    if payload.get("code") != 200 or not isinstance(payload.get("status"), dict):
+        if verbose:
+            CONSOLE.print(
+                "[yellow]FxTwitter payload invalid[/yellow]",
+                highlight=False,
+            )
+        return None
+    return payload
+
+
+def render_fxtwitter_markdown(payload: dict[str, Any], source_url: str) -> str:
+    """将 FxTwitter API 响应渲染为 Markdown。"""
+
+    status = payload.get("status", {})
+    author = status.get("author", {})
+    author_name = str(author.get("name") or "Unknown")
+    screen_name = str(author.get("screen_name") or "unknown")
+    status_url = str(status.get("url") or source_url)
+    created_at = str(status.get("created_at") or "N/A")
+    raw_text = status.get("raw_text")
+    if isinstance(raw_text, dict):
+        fallback_text = raw_text.get("text")
+    else:
+        fallback_text = raw_text
+    text = str(status.get("text") or fallback_text or "").strip()
+    if not text:
+        text = "_(No text content returned by FxTwitter API)_"
+    safe_author_name = escape_markdown_text(author_name)
+    safe_screen_name = escape_markdown_text(screen_name)
+    safe_text = escape_markdown_text(text)
+
+    likes = status.get("likes")
+    reposts = status.get("reposts")
+    replies = status.get("replies")
+    views = status.get("views")
+    stats = (
+        f"❤️ {likes if likes is not None else 'N/A'} | "
+        f"🔁 {reposts if reposts is not None else 'N/A'} | "
+        f"💬 {replies if replies is not None else 'N/A'} | "
+        f"👀 {views if views is not None else 'N/A'}"
+    )
+
+    lines = [
+        f"# {safe_author_name} (@{safe_screen_name})",
+        "",
+        "- Source: FxTwitter API (not direct page access)",
+        f"- Canonical URL: {status_url}",
+        f"- Created: {created_at}",
+        f"- Stats: {stats}",
+        "",
+        "## Text",
+        safe_text,
+    ]
+
+    media = status.get("media")
+    if isinstance(media, dict):
+        all_media = media.get("all")
+        if isinstance(all_media, list) and all_media:
+            lines.extend(["", "## Media"])
+            for item in all_media:
+                if not isinstance(item, dict):
+                    continue
+                media_type = str(item.get("type") or "media")
+                media_url = str(item.get("url") or item.get("thumbnail_url") or "").strip()
+                if media_url:
+                    lines.append(f"- {media_type}: {media_url}")
+
+    return "\n".join(lines).strip() + "\n"
+
+
 @APP.command()
 def fetch(
     url: str = typer.Argument(..., help="Target URL to render into content."),
@@ -204,6 +338,11 @@ def fetch(
         "markdown",
         help="Output format: csv, html, json, markdown, raw-html, txt, xml, xmltei.",
     ),
+    disable_twitter_api: bool = typer.Option(
+        False,
+        "--disable-twitter-api",
+        help="Disable FxTwitter API optimization for x.com/twitter.com links in markdown mode.",
+    ),
     verbose: bool = typer.Option(False, "--verbose", help="Print progress and diagnostic logs."),
 ) -> None:
     """通过 Playwright 渲染并用 trafilatura 提取内容。"""
@@ -214,8 +353,25 @@ def fetch(
     resolved_browser_path = str(browser_path) if browser_path else detect_browser_path()
     try:
         content: str | None = None
+        if output_format == "markdown" and not disable_twitter_api:
+            twitter_status_id = extract_twitter_status_id(url)
+            if twitter_status_id:
+                payload = fetch_fxtwitter_status(
+                    twitter_status_id,
+                    timeout_ms=timeout_ms,
+                    verbose=verbose,
+                )
+                if payload is None:
+                    raise ValueError(
+                        "FxTwitter API request failed for this Twitter/X URL. "
+                        "Use --disable-twitter-api to skip this path."
+                    )
+                content = render_fxtwitter_markdown(payload, source_url=url)
+                if verbose:
+                    CONSOLE.print("[green]Using FxTwitter API markdown path[/green]", highlight=False)
         if output_format == "markdown":
-            content = fetch_agent_markdown(url, timeout_ms=timeout_ms, verbose=verbose)
+            if content is None:
+                content = fetch_agent_markdown(url, timeout_ms=timeout_ms, verbose=verbose)
         if content is None:
             html = render_html(
                 url,
