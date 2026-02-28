@@ -17,7 +17,8 @@
 - 未收到用户当次明确“提交/commit”指令时：不得执行 `git commit`、`git push`（即便工作区已准备好）。
 - 严禁：主动请求提交/推送授权；沿用任何历史授权。
 - 有疑义：必须先向用户确认，等待明确指令后再执行。
-- 进入仓库后先读项目规范（如 `CONTRIBUTING.md`、`README`、`.github/`）：默认提交加 `Co-authored-by: OpenAI Codex <codex@openai.com>` trailer；若项目规范禁止 AI/Co-authored-by（或要求互斥 trailer），按项目规范执行，并在回复中说明原因。
+- 进入仓库后先读项目规范（如 `CONTRIBUTING.md`、`README`、`.github/`）。
+- 项目规范优先级：以项目规范为最高优先级；若项目规范未明确相关要求，默认提交加 `Co-authored-by: OpenAI Codex <codex@openai.com>` trailer；若项目规范与我们的默认规范不一致，按项目规范执行，并在回复中说明原因。
 - Git Commit Message 使用简洁、精确、描述性强的英文，遵循[语义化提交规范](https://www.conventionalcommits.org/en/v1.0.0/)，且在可行时尽量包含 scope 信息。
 - 创建分支时尽量遵循[Conventional Branch](https://conventional-branch.github.io/) 规范。
 
