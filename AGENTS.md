@@ -1,7 +1,7 @@
 # Codex 代理基础约束（AGENTS）
 
 ## 1. 适用范围与覆盖规则
-本文件用于约束 Codex 在仓库内的通用行为与默认策略。
+本文件定义 Codex 的全局默认规则。
 
 本文件中：第 2 章为硬规则；第 3 章为默认策略。冲突处理见 1.1。
 
@@ -9,8 +9,8 @@
 当多份规范同时存在且出现冲突时，按以下优先级（从高到低）执行：
 
 1. 用户当次明确指令（针对当前任务的具体要求）
-2. 项目级规范（同一层级：项目内 [AGENTS.md](AGENTS.md)、[CONTRIBUTING.md](CONTRIBUTING.md)、[README.md](README.md)、[.github/](.github/) 内规范、团队/仓库政策等）
-3. 个人全局 [AGENTS.md](AGENTS.md)（本文件）
+2. 项目级规范（同一层级：项目内 [AGENTS.md](AGENTS.md)、[CONTRIBUTING.md](CONTRIBUTING.md)、[README.md](README.md)、[.github](.github/) 内规范、团队/仓库政策等）
+3. 全局默认规范（如全局 AGENTS.md）
 4. 其它默认习惯或通用最佳实践
 
 同一优先级内的冲突处理：
