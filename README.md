@@ -6,11 +6,18 @@
 
 ## 使用方式
 
-为了方便在当前环境中调用 Codex，可以在 shell 中新增以下 alias：
+我当前在 fish 里使用两条 Codex alias（定义在 `~/.config/fish/config.fish`）：
 
-```bash
-alias codex='codex --dangerously-bypass-approvals-and-sandbox'
+```fish
+alias codex='env EDITOR="zed" command codex --dangerously-bypass-approvals-and-sandbox -m gpt-5.3-codex -c model_reasoning_effort="medium"'
+alias codex_deep='env EDITOR="zed" command codex --dangerously-bypass-approvals-and-sandbox -m gpt-5.2 -c model_reasoning_effort="high"'
 ```
+
+这样配置的原因：
+
+- `EDITOR="zed"`：让 Codex 在需要打开编辑器时统一使用 zed，便于我直接用鼠标做复制粘贴和局部修改。
+- 手动 `-m` 指定模型：我使用的是 API 接入 Codex。新模型发布后的前几周，常常不会立刻出现在 API 的 model list 里；但我用的中转服务一般会及时支持这些模型，所以会直接手动指定模型名。
+- `codex` 与 `codex_deep` 分工：前者使用 codex 后缀模型 + `medium` 思考强度，适合日常开发；后者使用非 codex 模型 + `high` 思考强度，适合复杂、需要深入推理的任务。
 
 ## 运行前提
 
