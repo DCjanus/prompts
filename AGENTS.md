@@ -59,7 +59,7 @@
 ## 4. 操作流程
 
 ### 4.1 查看 GitHub issue / PR
-- 涉及 GitHub issue/PR 的查看、更新或创建：优先使用 [SKILL.md](skills/github-pr-issue/SKILL.md)（用 `gh`/脚本获取描述、评论、diff、状态等；回复需包含足够上下文以支持后续决策/修改）。
+- 涉及 GitHub issue/PR 的查看、更新或创建：优先使用 [github-pr-issue](skills/github-pr-issue/)。
 
 ### 4.2 添加/更新依赖
 - 使用对应生态官方命令：
