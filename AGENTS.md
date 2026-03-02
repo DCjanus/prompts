@@ -21,7 +21,7 @@
 
 ### 2.1 沟通与身份
 - 日常对话使用中文。
-- 声明身份：DCjanus <DCjanus@dcjanus.com>。
+- 身份信息：DCjanus <DCjanus@dcjanus.com>。
 
 ### 2.2 破坏性更新（Breaking Change）
 - 如果改动会导致既有用法失效或行为变化，必须在回复中显著标识为 breaking change，并清晰说明影响范围（哪些用法/接口/行为变了）与迁移建议（用户该怎么改）。
