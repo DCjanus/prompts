@@ -42,6 +42,7 @@ TWITTER_HOSTS = {
     "mobile.twitter.com",
 }
 FXTWITTER_API_ROOT = "https://api.fxtwitter.com/2/status"
+# FxTwitter source repository: https://github.com/allnodes/FxTwitter
 
 
 def escape_markdown_text(value: str) -> str:
@@ -265,6 +266,92 @@ def fetch_fxtwitter_status(status_id: str, timeout_ms: int, verbose: bool) -> di
     return payload
 
 
+def _extract_thread_entries(payload: dict[str, Any], root_status_id: str) -> list[dict[str, Any]]:
+    """从 FxTwitter payload 中提取 thread 条目并去重。"""
+
+    thread = payload.get("thread")
+    raw_entries: list[Any] = []
+    if isinstance(thread, list):
+        raw_entries.extend(thread)
+    elif isinstance(thread, dict):
+        for key in ("tweets", "statuses", "items", "entries", "thread", "posts"):
+            value = thread.get(key)
+            if isinstance(value, list):
+                raw_entries.extend(value)
+        if not raw_entries:
+            status_value = thread.get("status")
+            if isinstance(status_value, dict):
+                raw_entries.append(status_value)
+            else:
+                # Best effort fallback: some payloads may store id->status dictionaries.
+                dict_values = [value for value in thread.values() if isinstance(value, dict)]
+                raw_entries.extend(dict_values)
+
+    entries: list[dict[str, Any]] = []
+    seen_ids: set[str] = {root_status_id}
+    for raw_item in raw_entries:
+        if not isinstance(raw_item, dict):
+            continue
+        item = raw_item.get("status")
+        if not isinstance(item, dict):
+            item = raw_item.get("tweet")
+        if not isinstance(item, dict):
+            item = raw_item
+
+        item_id = str(item.get("id") or "").strip()
+        if not item_id or item_id in seen_ids:
+            continue
+        seen_ids.add(item_id)
+        entries.append(item)
+
+    return entries
+
+
+def _render_thread_item_markdown(item: dict[str, Any], index: int) -> list[str]:
+    author = item.get("author", {})
+    author_name = escape_markdown_text(str(author.get("name") or "Unknown"))
+    screen_name = escape_markdown_text(str(author.get("screen_name") or "unknown"))
+    item_id = escape_markdown_text(str(item.get("id") or "N/A"))
+    item_url = str(item.get("url") or "").strip()
+    created_at = escape_markdown_text(str(item.get("created_at") or "N/A"))
+    raw_text = item.get("raw_text")
+    if isinstance(raw_text, dict):
+        fallback_text = raw_text.get("text")
+    else:
+        fallback_text = raw_text
+    text = str(item.get("text") or fallback_text or "").strip()
+    if not text:
+        text = "_(No text content returned by FxTwitter API)_"
+    safe_text = escape_markdown_text(text)
+
+    lines = [
+        f"### {index}. {author_name} (@{screen_name})",
+        f"- ID: {item_id}",
+        f"- Created: {created_at}",
+    ]
+    if item_url:
+        lines.append(f"- URL: {item_url}")
+    lines.extend(["", safe_text])
+
+    media = item.get("media")
+    if isinstance(media, dict):
+        all_media = media.get("all")
+        if isinstance(all_media, list) and all_media:
+            lines.append("")
+            lines.append("Media:")
+            for media_item in all_media:
+                if not isinstance(media_item, dict):
+                    continue
+                media_type = str(media_item.get("type") or "media")
+                media_url = str(
+                    media_item.get("url") or media_item.get("thumbnail_url") or ""
+                ).strip()
+                if media_url:
+                    lines.append(f"- {media_type}: {media_url}")
+    lines.append("")
+    return lines
+
+
 def render_fxtwitter_markdown(payload: dict[str, Any], source_url: str) -> str:
     """将 FxTwitter API 响应渲染为 Markdown。"""
 
@@ -285,6 +372,7 @@ def render_fxtwitter_markdown(payload: dict[str, Any], source_url: str) -> str:
     safe_author_name = escape_markdown_text(author_name)
     safe_screen_name = escape_markdown_text(screen_name)
     safe_text = escape_markdown_text(text)
+    root_status_id = str(status.get("id") or "").strip()
 
     likes = status.get("likes")
     reposts = status.get("reposts")
@@ -321,6 +409,12 @@ def render_fxtwitter_markdown(payload: dict[str, Any], source_url: str) -> str:
                 media_url = str(item.get("url") or item.get("thumbnail_url") or "").strip()
                 if media_url:
                     lines.append(f"- {media_type}: {media_url}")
+
+    thread_entries = _extract_thread_entries(payload, root_status_id=root_status_id)
+    if thread_entries:
+        lines.extend(["", "## Thread"])
+        for index, thread_item in enumerate(thread_entries, start=1):
+            lines.extend(_render_thread_item_markdown(thread_item, index=index))
 
     return "\n".join(lines).strip() + "\n"
 
