@@ -52,6 +52,8 @@
 
 ### 3.3 Git 约定
 - 提交追加 `Co-authored-by: OpenAI Codex <codex@openai.com>` trailer。
+- 日常操作优先使用 `git switch`（分支/HEAD 切换）与 `git restore`（文件恢复），尽量避免使用语义混杂的 `git checkout`。
+- 常见替代：切分支用 `git switch <branch>`；新建并切换用 `git switch -c <new-branch>`；丢弃工作区改动用 `git restore <path>`；取消暂存用 `git restore --staged <path>`。
 
 ### 3.4 依赖版本策略
 - 使用最新可用版本；非必要不手动固定版本号。
