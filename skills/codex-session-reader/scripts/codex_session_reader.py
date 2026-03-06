@@ -559,6 +559,8 @@ def parse_turn_slice_expr(expr: str) -> tuple[int | None, int | None]:
             raise CodexSessionReaderError(
                 "`--turns` 只支持单个整数或 `start:end` 形式。"
             ) from exc
+        if index == -1:
+            return index, None
         return index, index + 1
     raw_start, raw_end = value.split(":", 1)
     try:
