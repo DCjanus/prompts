@@ -59,6 +59,9 @@
 ### 3.4 依赖版本策略
 - 使用最新可用版本；非必要不手动固定版本号。
 
+### 3.5 Codex 安装偏好
+- Codex CLI 安装命令：`npm i -g @openai/codex@alpha`。
+
 ## 4. 操作流程
 
 ### 4.1 查看 GitHub issue / PR
