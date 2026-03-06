@@ -233,7 +233,11 @@ class CodexAppServerClient:
             daemon=True,
         )
         self._stderr_thread.start()
-        self.initialize()
+        try:
+            self.initialize()
+        except BaseException:
+            self.__exit__(None, None, None)
+            raise
         return self
 
     def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
