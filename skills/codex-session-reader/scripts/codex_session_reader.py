@@ -280,15 +280,23 @@ class CodexAppServerClient:
         if self._process is None:
             return
 
-        if self._process.stdin:
-            self._process.stdin.close()
-        if self._process.poll() is None:
-            self._process.terminate()
-            try:
-                self._process.wait(timeout=3)
-            except subprocess.TimeoutExpired:
-                self._process.kill()
-                self._process.wait(timeout=3)
+        process = self._process
+        try:
+            if process.stdin:
+                process.stdin.close()
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=3)
+        finally:
+            if process.stdout:
+                process.stdout.close()
+            if process.stderr:
+                process.stderr.close()
+            self._process = None
 
     def _drain_stderr(self) -> None:
         """持续读取 stderr，避免阻塞并保留最近日志。"""
