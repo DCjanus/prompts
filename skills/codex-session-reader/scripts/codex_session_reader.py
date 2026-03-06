@@ -369,6 +369,11 @@ class CodexAppServerClient:
                 if detail := self._stderr_tail():
                     message += f"\nstderr:\n{detail}"
                 raise CodexSessionReaderError(message) from exc
+            if not isinstance(payload, dict):
+                message = f"{APP_SERVER_INVALID_JSON_ERROR} 顶层必须是对象。"
+                if detail := self._stderr_tail():
+                    message += f"\nstderr:\n{detail}"
+                raise CodexSessionReaderError(message)
             if "method" in payload:
                 return validate_model_or_raise(
                     JsonRpcNotification, payload, "app-server 通知"
