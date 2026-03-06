@@ -220,10 +220,9 @@ def validate_model_or_raise(
 class CodexAppServerClient:
     """`codex app-server` 的极薄同步 JSON-RPC client。"""
 
-    def __init__(self, codex_bin: str = "codex", request_timeout: float = 30.0) -> None:
+    def __init__(self, request_timeout: float = 30.0) -> None:
         """初始化 client 配置。"""
 
-        self.codex_bin = codex_bin
         self.request_timeout = request_timeout
         self._process: subprocess.Popen[str] | None = None
         self._next_id = 1
@@ -237,7 +236,7 @@ class CodexAppServerClient:
 
         try:
             process = subprocess.Popen(
-                [self.codex_bin, "app-server"],
+                ["codex", "app-server"],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -247,7 +246,7 @@ class CodexAppServerClient:
             )
         except OSError as exc:
             if isinstance(exc, FileNotFoundError):
-                message = f"未找到 `{self.codex_bin}`，无法启动 `codex app-server`。"
+                message = "未找到 `codex`，无法启动 `codex app-server`。"
             else:
                 reason = exc.strerror or str(exc)
                 message = f"无法启动 `codex app-server` ({reason})。"
@@ -749,13 +748,12 @@ def read_thread_command(
             help="0-based turns 切片，如 `:5`、`-5:`、`10:-1`、`13:15`、`13`。",
         ),
     ] = None,
-    codex_bin: Annotated[str, typer.Option(help="Codex 可执行文件路径。")] = "codex",
 ) -> None:
     """读取单个 Codex thread。"""
 
     normalized_thread_id = validate_thread_id(thread_id)
 
-    with CodexAppServerClient(codex_bin=codex_bin) as client:
+    with CodexAppServerClient() as client:
         result = client.read_thread(
             ThreadReadParams(
                 thread_id=normalized_thread_id,
