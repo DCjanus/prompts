@@ -254,6 +254,8 @@ class CodexAppServerClient:
             raise CodexSessionReaderError(message) from exc
 
         self._process = process
+        self._stderr_lines.clear()
+        self._stdout_queue = Queue()
         self._stdout_thread = threading.Thread(
             target=self._drain_stdout,
             name="codex-session-reader-stdout",
