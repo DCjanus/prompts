@@ -187,6 +187,10 @@ class CodexSessionReaderError(RuntimeError):
     """skill 运行失败时的统一异常。"""
 
 
+APP_SERVER_SEND_ERROR = "向 app-server 发送请求失败。"
+APP_SERVER_INVALID_JSON_ERROR = "app-server 返回了非法 JSON。"
+
+
 THREAD_ID_PATTERN = re.compile(
     r"^(?:urn:uuid:)?[0-9a-fA-F]{8}-"
     r"[0-9a-fA-F]{4}-"
@@ -286,8 +290,14 @@ class CodexAppServerClient:
         if process.stdin is None:
             raise CodexSessionReaderError("app-server stdin 不可用。")
 
-        process.stdin.write(json.dumps(payload, ensure_ascii=False) + "\n")
-        process.stdin.flush()
+        try:
+            process.stdin.write(json.dumps(payload, ensure_ascii=False) + "\n")
+            process.stdin.flush()
+        except OSError as exc:
+            message = APP_SERVER_SEND_ERROR
+            if detail := self._stderr_tail():
+                message += f"\nstderr:\n{detail}"
+            raise CodexSessionReaderError(message) from exc
 
     def _read_message(self) -> JsonRpcResponse | JsonRpcNotification:
         """读取一条来自 app-server 的 JSON-RPC 消息。"""
@@ -298,7 +308,13 @@ class CodexAppServerClient:
 
         line = process.stdout.readline()
         if line:
-            payload = json.loads(line)
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError as exc:
+                message = f"{APP_SERVER_INVALID_JSON_ERROR} {line.strip()}"
+                if detail := self._stderr_tail():
+                    message += f"\nstderr:\n{detail}"
+                raise CodexSessionReaderError(message) from exc
             if "method" in payload:
                 return JsonRpcNotification.model_validate(payload)
             return JsonRpcResponse.model_validate(payload)
