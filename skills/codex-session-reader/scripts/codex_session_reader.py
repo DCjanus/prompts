@@ -21,9 +21,9 @@ import subprocess
 import sys
 import threading
 from time import monotonic
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from rich.console import Console
 import typer
 
@@ -202,6 +202,19 @@ THREAD_ID_PATTERN = re.compile(
     r"[0-9a-fA-F]{12}$"
 )
 
+AppModelType = TypeVar("AppModelType", bound=BaseModel)
+
+
+def validate_model_or_raise(
+    model_type: type[AppModelType], payload: Any, label: str
+) -> AppModelType:
+    """将 schema 校验失败统一转换为 CLI 友好的错误。"""
+
+    try:
+        return model_type.model_validate(payload)
+    except ValidationError as exc:
+        raise CodexSessionReaderError(f"{label} 结构不合法。") from exc
+
 
 class CodexAppServerClient:
     """`codex app-server` 的极薄同步 JSON-RPC client。"""
@@ -333,8 +346,10 @@ class CodexAppServerClient:
                     message += f"\nstderr:\n{detail}"
                 raise CodexSessionReaderError(message) from exc
             if "method" in payload:
-                return JsonRpcNotification.model_validate(payload)
-            return JsonRpcResponse.model_validate(payload)
+                return validate_model_or_raise(
+                    JsonRpcNotification, payload, "app-server 通知"
+                )
+            return validate_model_or_raise(JsonRpcResponse, payload, "app-server 响应")
 
         return_code = process.poll()
         stderr_tail = self._stderr_tail()
@@ -360,7 +375,7 @@ class CodexAppServerClient:
             ),
         )
         self.notify("initialized", None)
-        return InitializeResponse.model_validate(response)
+        return validate_model_or_raise(InitializeResponse, response, "initialize 响应")
 
     def notify(self, method: str, params: Any | None) -> None:
         """发送 JSON-RPC 通知。"""
@@ -402,7 +417,7 @@ class CodexAppServerClient:
         """调用 `thread/read`。"""
 
         result = self.request("thread/read", params)
-        return ThreadReadResponse.model_validate(result)
+        return validate_model_or_raise(ThreadReadResponse, result, "thread/read 响应")
 
 
 def unix_ts_to_text(value: int) -> str:
