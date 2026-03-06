@@ -187,7 +187,13 @@ class CodexSessionReaderError(RuntimeError):
     """skill 运行失败时的统一异常。"""
 
 
-THREAD_ID_PATTERN = re.compile(r"^(?:urn:uuid:)?[0-9a-fA-F-]+$")
+THREAD_ID_PATTERN = re.compile(
+    r"^(?:urn:uuid:)?[0-9a-fA-F]{8}-"
+    r"[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{12}$"
+)
 
 
 class CodexAppServerClient:
