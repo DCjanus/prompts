@@ -415,12 +415,17 @@ class CodexAppServerClient:
         self.notify("initialized", None)
         return validate_model_or_raise(InitializeResponse, response, "initialize 响应")
 
-    def notify(self, method: str, params: Any | None) -> None:
+    def notify(
+        self, method: str, params: AppModel | dict[str, Any] | None
+    ) -> None:
         """发送 JSON-RPC 通知。"""
 
         payload: dict[str, Any] = {"method": method}
         if params is not None:
-            payload["params"] = params
+            if isinstance(params, AppModel):
+                payload["params"] = params.model_dump(by_alias=True, exclude_none=True)
+            else:
+                payload["params"] = params
         self._send_json(payload)
 
     def request(self, method: str, params: AppModel | dict[str, Any] | None) -> Any:
