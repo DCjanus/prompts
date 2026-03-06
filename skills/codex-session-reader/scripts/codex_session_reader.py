@@ -225,10 +225,13 @@ class CodexAppServerClient:
                 encoding="utf-8",
                 bufsize=1,
             )
-        except FileNotFoundError as exc:
-            raise CodexSessionReaderError(
-                f"未找到 `{self.codex_bin}`，无法启动 `codex app-server`。"
-            ) from exc
+        except OSError as exc:
+            if isinstance(exc, FileNotFoundError):
+                message = f"未找到 `{self.codex_bin}`，无法启动 `codex app-server`。"
+            else:
+                reason = exc.strerror or str(exc)
+                message = f"无法启动 `codex app-server` ({reason})。"
+            raise CodexSessionReaderError(message) from exc
 
         self._process = process
         self._stderr_thread = threading.Thread(
