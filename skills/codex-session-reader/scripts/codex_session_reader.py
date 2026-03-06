@@ -16,9 +16,11 @@ from collections import deque
 from datetime import UTC, datetime
 import json
 import re
+import select
 import subprocess
 import sys
 import threading
+from time import monotonic
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -189,6 +191,7 @@ class CodexSessionReaderError(RuntimeError):
 
 APP_SERVER_SEND_ERROR = "向 app-server 发送请求失败。"
 APP_SERVER_INVALID_JSON_ERROR = "app-server 返回了非法 JSON。"
+APP_SERVER_TIMEOUT_ERROR = "等待 app-server 响应超时。"
 
 
 THREAD_ID_PATTERN = re.compile(
@@ -203,10 +206,11 @@ THREAD_ID_PATTERN = re.compile(
 class CodexAppServerClient:
     """`codex app-server` 的极薄同步 JSON-RPC client。"""
 
-    def __init__(self, codex_bin: str = "codex") -> None:
+    def __init__(self, codex_bin: str = "codex", request_timeout: float = 30.0) -> None:
         """初始化 client 配置。"""
 
         self.codex_bin = codex_bin
+        self.request_timeout = request_timeout
         self._process: subprocess.Popen[str] | None = None
         self._next_id = 1
         self._stderr_lines: deque[str] = deque(maxlen=200)
@@ -302,12 +306,22 @@ class CodexAppServerClient:
                 message += f"\nstderr:\n{detail}"
             raise CodexSessionReaderError(message) from exc
 
-    def _read_message(self) -> JsonRpcResponse | JsonRpcNotification:
+    def _read_message(
+        self, deadline: float | None = None
+    ) -> JsonRpcResponse | JsonRpcNotification:
         """读取一条来自 app-server 的 JSON-RPC 消息。"""
 
         process = self._ensure_running()
         if process.stdout is None:
             raise CodexSessionReaderError("app-server stdout 不可用。")
+
+        if deadline is not None:
+            timeout = deadline - monotonic()
+            if timeout <= 0:
+                raise CodexSessionReaderError(APP_SERVER_TIMEOUT_ERROR)
+            ready, _, _ = select.select([process.stdout], [], [], timeout)
+            if not ready:
+                raise CodexSessionReaderError(APP_SERVER_TIMEOUT_ERROR)
 
         line = process.stdout.readline()
         if line:
@@ -361,6 +375,7 @@ class CodexAppServerClient:
 
         request_id = self._next_id
         self._next_id += 1
+        deadline = monotonic() + self.request_timeout
 
         payload: dict[str, Any] = {"id": request_id, "method": method}
         if params is not None:
@@ -371,7 +386,7 @@ class CodexAppServerClient:
         self._send_json(payload)
 
         while True:
-            message = self._read_message()
+            message = self._read_message(deadline=deadline)
             if isinstance(message, JsonRpcNotification):
                 continue
             if message.id != request_id:
