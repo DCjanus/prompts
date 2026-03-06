@@ -710,6 +710,9 @@ def read_thread_command(
         effective_result.thread.turns = []
 
     if format_name == "json":
+        is_truncated = include_turns and (
+            selected_start != 0 or selected_end != len(result.thread.turns)
+        )
         payload = (
             json.dumps(
                 {
@@ -722,7 +725,7 @@ def read_thread_command(
                             "endTurn": selected_end,
                             "turns": turns_expr,
                         }
-                        if include_turns
+                        if is_truncated
                         else None
                     ),
                 },
