@@ -22,10 +22,10 @@ description: 指导如何使用 CodeRabbit CLI 进行 Code Review。
 
 ```bash
 coderabbit review --prompt-only --type uncommitted # 审查当前未提交改动
-coderabbit review --prompt-only --base main # 审查当前分支相对 main 的改动
+coderabbit review --prompt-only --base <default-branch> # 审查当前分支相对仓库默认分支的改动
 coderabbit review --prompt-only --base-commit HEAD~3 # 审查 HEAD~3 之后引入的改动
-coderabbit review --prompt-only --base main --config coderabbit.yaml # 追加仓库内 review 指令文件
-coderabbit review --prompt-only --cwd /abs/path/to/repo --base main # 指定目标仓库目录
+coderabbit review --prompt-only --base <default-branch> --config coderabbit.yaml # 基于默认分支审查，并追加仓库内 review 指令文件
+coderabbit review --prompt-only --cwd /abs/path/to/repo --base <default-branch> # 指定目标仓库目录，并相对默认分支审查
 ```
 
 ## 参考
