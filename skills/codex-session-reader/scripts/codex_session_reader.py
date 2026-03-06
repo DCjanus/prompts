@@ -15,8 +15,8 @@ from __future__ import annotations
 from collections import deque
 from datetime import UTC, datetime
 import json
+from queue import Empty, Queue
 import re
-import select
 import subprocess
 import sys
 import threading
@@ -203,6 +203,7 @@ THREAD_ID_PATTERN = re.compile(
 )
 
 AppModelType = TypeVar("AppModelType", bound=BaseModel)
+STDOUT_EOF = object()
 
 
 def validate_model_or_raise(
@@ -227,6 +228,8 @@ class CodexAppServerClient:
         self._process: subprocess.Popen[str] | None = None
         self._next_id = 1
         self._stderr_lines: deque[str] = deque(maxlen=200)
+        self._stdout_queue: Queue[str | object] = Queue()
+        self._stdout_thread: threading.Thread | None = None
         self._stderr_thread: threading.Thread | None = None
 
     def __enter__(self) -> "CodexAppServerClient":
@@ -251,11 +254,17 @@ class CodexAppServerClient:
             raise CodexSessionReaderError(message) from exc
 
         self._process = process
+        self._stdout_thread = threading.Thread(
+            target=self._drain_stdout,
+            name="codex-session-reader-stdout",
+            daemon=True,
+        )
         self._stderr_thread = threading.Thread(
             target=self._drain_stderr,
             name="codex-session-reader-stderr",
             daemon=True,
         )
+        self._stdout_thread.start()
         self._stderr_thread.start()
         try:
             self.initialize()
@@ -288,6 +297,16 @@ class CodexAppServerClient:
 
         for line in self._process.stderr:
             self._stderr_lines.append(line.rstrip("\n"))
+
+    def _drain_stdout(self) -> None:
+        """持续读取 stdout，并转交给主线程消费。"""
+
+        if self._process is None or self._process.stdout is None:
+            return
+
+        for line in self._process.stdout:
+            self._stdout_queue.put(line)
+        self._stdout_queue.put(STDOUT_EOF)
 
     def _stderr_tail(self) -> str:
         """返回最近的 stderr 摘要。"""
@@ -325,18 +344,23 @@ class CodexAppServerClient:
         """读取一条来自 app-server 的 JSON-RPC 消息。"""
 
         process = self._ensure_running()
-        if process.stdout is None:
-            raise CodexSessionReaderError("app-server stdout 不可用。")
-
         if deadline is not None:
             timeout = deadline - monotonic()
             if timeout <= 0:
                 raise CodexSessionReaderError(APP_SERVER_TIMEOUT_ERROR)
-            ready, _, _ = select.select([process.stdout], [], [], timeout)
-            if not ready:
-                raise CodexSessionReaderError(APP_SERVER_TIMEOUT_ERROR)
+        else:
+            timeout = None
 
-        line = process.stdout.readline()
+        try:
+            line = self._stdout_queue.get(timeout=timeout)
+        except Empty as exc:
+            raise CodexSessionReaderError(APP_SERVER_TIMEOUT_ERROR) from exc
+
+        if line is STDOUT_EOF:
+            line = ""
+        if not isinstance(line, str):
+            raise CodexSessionReaderError("app-server stdout 返回了未知消息。")
+
         if line:
             try:
                 payload = json.loads(line)
