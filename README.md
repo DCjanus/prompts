@@ -43,3 +43,5 @@ alias codex_deep='env EDITOR="zed" command codex --dangerously-bypass-approvals-
 | [`fetch-url`](skills/fetch-url/SKILL.md) | 渲染 URL 并输出多格式内容或原始 HTML（Playwright + trafilatura） |
 | [`ticktick-cli`](skills/ticktick-cli/SKILL.md) | 通过 CLI 调用滴答清单 Open API 管理任务与项目（API 文档：[Dida365 Open API](https://developer.dida365.com/docs/index.html#/openapi)） |
 | [`create-skill`](skills/create-skill/SKILL.md) | 编写/新增本仓库 skills 的规范与最小模板（SKILL.md / scripts / references / assets / token 控制） |
+| [`coderabbit-cli`](skills/coderabbit-cli/SKILL.md) | 指导如何使用 CodeRabbit CLI 进行代码审查 |
+| [`codex-session-reader`](skills/codex-session-reader/SKILL.md) | 通过 `codex app-server` 读取指定的 Codex session/thread（只读，灵感来自 xurl） |
