@@ -756,19 +756,17 @@ def read_thread_command(
             )
         )
 
-    selected_turns, selected_start, selected_end = select_turns_by_expr(
-        result.thread.turns,
-        include_turns=include_turns,
-        turns_expr=turns_expr,
-    )
-
-    effective_result = result.model_copy(deep=True)
-    if include_turns:
-        effective_result.thread.turns = selected_turns
-    else:
-        effective_result.thread.turns = []
-
     if format_name == "json":
+        selected_turns, selected_start, selected_end = select_turns_by_expr(
+            result.thread.turns,
+            include_turns=include_turns,
+            turns_expr=turns_expr,
+        )
+        effective_result = result.model_copy(deep=True)
+        if include_turns:
+            effective_result.thread.turns = selected_turns
+        else:
+            effective_result.thread.turns = []
         is_truncated = include_turns and (
             selected_start != 0 or selected_end != len(result.thread.turns)
         )
