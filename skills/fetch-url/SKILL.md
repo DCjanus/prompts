@@ -43,7 +43,8 @@ Markdown 抓取顺序：
   - `--fetch-strategy browser`：直接走本地 Playwright。
 
 限流或挑战页：
-- 当前不会主动识别或过滤限流、验证码、挑战页内容；如果 reader 成功返回了这类内容，脚本会直接输出。
+- 当前只会对 Jina Reader 做非常保守的明显限流页识别；只有命中少数高置信度特征时，才会继续回退到后续流程。
+- 为避免误伤正常正文，这个判定刻意做得很窄；部分限流页没有被识别出来而直接输出是可接受的。
 - 如果明确知道某个 reader 的结果不可用，agent 可以直接切换到更兜底的 `--fetch-strategy browser`。
 
 Jina Reader：

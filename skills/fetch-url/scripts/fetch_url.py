@@ -46,6 +46,14 @@ TWITTER_HOSTS = {
 FXTWITTER_API_ROOT = "https://api.fxtwitter.com/2/status"
 JINA_READER_API_ROOT = "https://r.jina.ai/"
 JINA_API_KEY_ENV = "JINA_API_KEY"
+JINA_BLOCK_PAGE_SIGNALS = (
+    ("rate limit", "jina"),
+    ("too many requests", "jina"),
+    ("rate limit exceeded", "jina"),
+    ("retry after", "jina"),
+    ("request limit reached", "jina"),
+    ("security verification", "jina"),
+)
 # FxTwitter source repository: https://github.com/allnodes/FxTwitter
 
 
@@ -242,6 +250,13 @@ def fetch_jina_reader_markdown(url: str, timeout_ms: int, verbose: bool) -> str 
             markdown = response.read().decode(charset, errors="replace")
             if not markdown.strip():
                 return None
+            if is_obvious_jina_block_page(markdown):
+                if verbose:
+                    CONSOLE.print(
+                        "[yellow]Jina Reader returned a probable rate-limit page, continue fallback[/yellow]",
+                        highlight=False,
+                    )
+                return None
             if verbose:
                 CONSOLE.print(
                     f"[green]Jina Reader hit[/green] {len(markdown)} chars",
@@ -255,6 +270,13 @@ def fetch_jina_reader_markdown(url: str, timeout_ms: int, verbose: bool) -> str 
                 highlight=False,
             )
         return None
+
+
+def is_obvious_jina_block_page(content: str) -> bool:
+    """识别少数非常明显的 Jina 限流或挑战页。"""
+
+    snippet = content[:4000].lower()
+    return any(all(part in snippet for part in signal) for signal in JINA_BLOCK_PAGE_SIGNALS)
 
 
 def extract_twitter_status_id(url: str) -> str | None:
