@@ -27,20 +27,26 @@ uv run playwright install chromium
 - `--timeout-ms`：Playwright 导航超时（毫秒，默认 60000）。
 - `--browser-path`：指定本地 Chromium 系浏览器路径（默认自动探测）。
 - `--output-format`：输出格式（默认 `markdown`），支持 `csv`、`html`、`json`、`markdown`、`raw-html`、`txt`、`xml`、`xmltei`；`raw-html` 直接输出渲染后的 HTML（不经 trafilatura）。
-- `--disable-twitter-api`：关闭 Twitter/X 的 FxTwitter API 优化路径。
+- `--fetch-strategy`：仅 `markdown` 可用，支持 `auto`、`agent`、`jina`、`browser`。默认 `auto`。
 
-Twitter/X 特化（仅 `markdown`）：
-- 当 URL 命中 `x.com`/`twitter.com` 推文链接且未设置 `--disable-twitter-api`，脚本会优先调用 `https://api.fxtwitter.com/2/status/{id}`。
-- 当 FxTwitter 返回 `thread` 数据时，Markdown 会附加 `## Thread` 小节，按顺序列出 thread 内其它推文（自动去重主推文）。
-- 输出的 Markdown 首行会包含注释，明确标记内容来自 FxTwitter API，而非直接访问页面。
-- 若 FxTwitter API 请求失败，命令会直接报错（不降级到网页抓取）；如需跳过该逻辑，请显式传入 `--disable-twitter-api`。
+`--fetch-strategy` 常用值：
+- `auto`：默认选择。
+- `agent`：优先用原站 Markdown 协商。
+- `jina`：优先用 Jina Reader。
+- `browser`：直接用本地 Playwright。
+
+环境变量：
+- 可设置 `JINA_API_KEY` 提升 Jina Reader 限流：`JINA_API_KEY=your-token ./scripts/fetch_url.py ...`
 
 示例：
 
 ```bash
 ./scripts/fetch_url.py https://example.com --output ./page.md --timeout-ms 60000
+./scripts/fetch_url.py https://example.com --fetch-strategy jina
+JINA_API_KEY=your-token ./scripts/fetch_url.py https://example.com --fetch-strategy jina
+./scripts/fetch_url.py https://example.com --fetch-strategy browser
 ./scripts/fetch_url.py https://x.com/jack/status/20 --output-format markdown
-./scripts/fetch_url.py https://x.com/jack/status/20 --output-format markdown --disable-twitter-api
+./scripts/fetch_url.py https://x.com/jack/status/20 --output-format markdown --fetch-strategy browser
 ```
 
 Reference：[`scripts/fetch_url.py`](scripts/fetch_url.py)
