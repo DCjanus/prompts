@@ -253,7 +253,7 @@ def fetch_jina_reader_markdown(url: str, timeout_ms: int, verbose: bool) -> str 
             if is_obvious_jina_block_page(markdown):
                 if verbose:
                     CONSOLE.print(
-                        "[yellow]Jina Reader returned a probable rate-limit page, continue fallback[/yellow]",
+                        "[yellow]Jina Reader returned a probable rate-limit page[/yellow]",
                         highlight=False,
                     )
                 return None
