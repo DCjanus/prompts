@@ -266,7 +266,7 @@ def fetch_jina_reader_markdown(url: str, timeout_ms: int, verbose: bool) -> str 
     except (URLError, OSError) as exc:
         if verbose:
             CONSOLE.print(
-                f"[yellow]Jina Reader failed, fallback to browser render[/yellow] ({exc})",
+                f"[yellow]Jina Reader failed[/yellow] ({exc})",
                 highlight=False,
             )
         return None

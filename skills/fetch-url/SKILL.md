@@ -49,8 +49,8 @@ Markdown 抓取顺序：
 
 Jina Reader：
 - 脚本会读取环境变量 `JINA_API_KEY`；如果存在，就以 `Authorization: Bearer <token>` 方式传给 Jina Reader。
-- 不设置 `JINA_API_KEY` 也能用 Jina Reader，但官方公开配额较低；当前按更保守口径可认为无 Key 时大约 `20 RPM`。
-- 如果遇到 Jina Reader 限流，可提示用户配置 `JINA_API_KEY` 以提升配额；当前官方 Reader 产品页给出的普通 API Key 配额是 `500 RPM`，Premium 是 `5000 RPM`。
+- 不设置 `JINA_API_KEY` 也能用 Jina Reader，但默认限流更低。
+- 如果遇到 Jina Reader 限流，可提示用户配置 `JINA_API_KEY` 以提升配额；具体限流以 [Jina Reader 官方文档](https://jina.ai/reader/) 为准。
 
 Twitter/X 特化（仅 `markdown`）：
 - 当 URL 命中 `x.com`/`twitter.com` 推文链接且 `--fetch-strategy auto` 时，脚本会优先调用 [FxTwitter API](https://api.fxtwitter.com/)。
