@@ -27,7 +27,26 @@ uv run playwright install chromium
 - `--timeout-ms`：Playwright 导航超时（毫秒，默认 60000）。
 - `--browser-path`：指定本地 Chromium 系浏览器路径（默认自动探测）。
 - `--output-format`：输出格式（默认 `markdown`），支持 `csv`、`html`、`json`、`markdown`、`raw-html`、`txt`、`xml`、`xmltei`；`raw-html` 直接输出渲染后的 HTML（不经 trafilatura）。
+- `--fetch-strategy`：仅 `markdown` 可用，支持 `auto`、`agent`、`jina`、`browser`。默认 `auto`。
 - `--disable-twitter-api`：关闭 Twitter/X 的 FxTwitter API 优化路径。
+
+Markdown 抓取顺序：
+- Twitter/X 推文链接：默认先走 FxTwitter API。
+- 其它 Markdown 请求：`--fetch-strategy auto` 时先尝试原站 `Accept: text/markdown` 协商，再尝试 Jina Reader：`https://r.jina.ai/<URL>`，最后回退到本地 Playwright 渲染并提取。
+- 如需更明确控制兜底方式，可手工指定：
+  - `--fetch-strategy agent`：只尝试原站 Markdown 协商。
+  - `--fetch-strategy jina`：只尝试 Jina Reader。
+  - `--fetch-strategy browser`：直接走本地 Playwright。
+
+疑似限流/拦截页检测：
+- `auto` 模式下，如果原站协商或 Jina Reader 返回的其实是限流/验证码/拦截提示，而不是正文，脚本会把它视为不可用结果并继续兜底。
+- 当前会检测常见关键词，例如 `rate limit`、`too many requests`、`access denied`、`captcha`、`cloudflare`、`verify you are human`。
+- 如果明确知道某个 reader 的结果不可用，agent 可以直接切换到更兜底的 `--fetch-strategy browser`。
+
+Jina Reader：
+- 脚本会读取环境变量 `JINA_API_KEY`；如果存在，就以 `Authorization: Bearer <token>` 方式传给 Jina Reader。
+- 不设置 `JINA_API_KEY` 也能用 Jina Reader，但官方公开配额较低；当前按更保守口径可认为无 Key 时大约 `20 RPM`。
+- 如果遇到 Jina Reader 限流，可提示用户配置 `JINA_API_KEY` 以提升配额；当前官方 Reader 产品页给出的普通 API Key 配额是 `500 RPM`，Premium 是 `5000 RPM`。
 
 Twitter/X 特化（仅 `markdown`）：
 - 当 URL 命中 `x.com`/`twitter.com` 推文链接且未设置 `--disable-twitter-api`，脚本会优先调用 `https://api.fxtwitter.com/2/status/{id}`。
@@ -39,6 +58,9 @@ Twitter/X 特化（仅 `markdown`）：
 
 ```bash
 ./scripts/fetch_url.py https://example.com --output ./page.md --timeout-ms 60000
+./scripts/fetch_url.py https://example.com --fetch-strategy jina
+JINA_API_KEY=your-token ./scripts/fetch_url.py https://example.com --fetch-strategy jina
+./scripts/fetch_url.py https://example.com --fetch-strategy browser
 ./scripts/fetch_url.py https://x.com/jack/status/20 --output-format markdown
 ./scripts/fetch_url.py https://x.com/jack/status/20 --output-format markdown --disable-twitter-api
 ```

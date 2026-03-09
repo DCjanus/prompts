@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import re
 from typing import Any, Literal
@@ -33,6 +34,7 @@ APP = typer.Typer(add_completion=False)
 CONSOLE = Console()
 
 OutputFormat = Literal["csv", "html", "json", "markdown", "raw-html", "txt", "xml", "xmltei"]
+FetchStrategy = Literal["auto", "agent", "jina", "browser"]
 TWITTER_HOSTS = {
     "x.com",
     "www.x.com",
@@ -42,6 +44,21 @@ TWITTER_HOSTS = {
     "mobile.twitter.com",
 }
 FXTWITTER_API_ROOT = "https://api.fxtwitter.com/2/status"
+JINA_READER_API_ROOT = "https://r.jina.ai/"
+JINA_API_KEY_ENV = "JINA_API_KEY"
+BLOCKED_CONTENT_PATTERNS = (
+    r"\brate limit(?:ed|ing)?\b",
+    r"\btoo many requests\b",
+    r"\baccess denied\b",
+    r"\brequest blocked\b",
+    r"\btemporarily blocked\b",
+    r"\bverify you are human\b",
+    r"\bcaptcha\b",
+    r"\bcloudflare\b",
+    r"\bplease enable javascript and cookies\b",
+    r"\bunusual traffic\b",
+    r"\bsecurity check\b",
+)
 # FxTwitter source repository: https://github.com/allnodes/FxTwitter
 
 
@@ -207,6 +224,76 @@ def fetch_agent_markdown(url: str, timeout_ms: int, verbose: bool) -> str | None
                 highlight=False,
             )
         return None
+
+
+def fetch_jina_reader_markdown(url: str, timeout_ms: int, verbose: bool) -> str | None:
+    """通过 Jina Reader 获取 Markdown，命中则直接返回。"""
+
+    reader_url = f"{JINA_READER_API_ROOT}{url}"
+    api_key = os.getenv(JINA_API_KEY_ENV, "").strip()
+    headers = {
+        "Accept": "text/markdown, text/plain;q=0.9, */*;q=0.1",
+        "User-Agent": "fetch-url/1.0 (+https://github.com/DCjanus/prompts/tree/master/skills/fetch-url)",
+    }
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    if verbose:
+        auth_mode = f"with {JINA_API_KEY_ENV}" if api_key else "without API key"
+        CONSOLE.print(
+            f"[cyan]Trying Jina Reader[/cyan] {auth_mode}",
+            highlight=False,
+        )
+
+    request = Request(  # noqa: S310 - 本地 CLI 可信输入, URL 由用户主动提供
+        reader_url,
+        headers=headers,
+    )
+    try:
+        with urlopen(request, timeout=max(timeout_ms / 1000.0, 1.0)) as response:  # noqa: S310
+            charset = response.headers.get_content_charset() or "utf-8"
+            markdown = response.read().decode(charset, errors="replace")
+            if not markdown.strip():
+                return None
+            if verbose:
+                CONSOLE.print(
+                    f"[green]Jina Reader hit[/green] {len(markdown)} chars",
+                    highlight=False,
+                )
+            return markdown
+    except (URLError, OSError) as exc:
+        if verbose:
+            CONSOLE.print(
+                f"[yellow]Jina Reader failed, fallback to browser render[/yellow] ({exc})",
+                highlight=False,
+            )
+        return None
+
+
+def looks_like_blocked_content(content: str) -> bool:
+    """启发式识别限流、拦截或验证码提示页。"""
+
+    snippet = content[:4000].lower()
+    return any(re.search(pattern, snippet) for pattern in BLOCKED_CONTENT_PATTERNS)
+
+
+def validate_markdown_candidate(
+    content: str | None,
+    source_name: str,
+    verbose: bool,
+) -> str | None:
+    """过滤明显的空结果或限流提示页。"""
+
+    if content is None:
+        return None
+    if looks_like_blocked_content(content):
+        if verbose:
+            CONSOLE.print(
+                f"[yellow]{source_name} returned suspected blocked content, continue fallback[/yellow]",
+                highlight=False,
+            )
+        return None
+    return content
 
 
 def extract_twitter_status_id(url: str) -> str | None:
@@ -432,6 +519,10 @@ def fetch(
         "markdown",
         help="Output format: csv, html, json, markdown, raw-html, txt, xml, xmltei.",
     ),
+    fetch_strategy: FetchStrategy = typer.Option(
+        "auto",
+        help="Fetch strategy for markdown: auto, agent, jina, browser.",
+    ),
     disable_twitter_api: bool = typer.Option(
         False,
         "--disable-twitter-api",
@@ -443,6 +534,8 @@ def fetch(
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"}:
         raise typer.BadParameter("Only http or https URLs are supported.")
+    if output_format != "markdown" and fetch_strategy != "auto":
+        raise typer.BadParameter("Custom fetch strategy is only supported with markdown output.")
 
     resolved_browser_path = str(browser_path) if browser_path else detect_browser_path()
     try:
@@ -465,7 +558,43 @@ def fetch(
                     CONSOLE.print("[green]Using FxTwitter API markdown path[/green]", highlight=False)
         if output_format == "markdown":
             if content is None:
-                content = fetch_agent_markdown(url, timeout_ms=timeout_ms, verbose=verbose)
+                if fetch_strategy == "auto":
+                    content = validate_markdown_candidate(
+                        fetch_agent_markdown(url, timeout_ms=timeout_ms, verbose=verbose),
+                        source_name="Markdown negotiation",
+                        verbose=verbose,
+                    )
+                    if content is None:
+                        content = validate_markdown_candidate(
+                            fetch_jina_reader_markdown(url, timeout_ms=timeout_ms, verbose=verbose),
+                            source_name="Jina Reader",
+                            verbose=verbose,
+                        )
+                elif fetch_strategy == "agent":
+                    content = validate_markdown_candidate(
+                        fetch_agent_markdown(url, timeout_ms=timeout_ms, verbose=verbose),
+                        source_name="Markdown negotiation",
+                        verbose=verbose,
+                    )
+                    if content is None:
+                        raise ValueError(
+                            "Markdown negotiation did not return usable content. "
+                            "Try --fetch-strategy jina or --fetch-strategy browser."
+                        )
+                elif fetch_strategy == "jina":
+                    content = validate_markdown_candidate(
+                        fetch_jina_reader_markdown(url, timeout_ms=timeout_ms, verbose=verbose),
+                        source_name="Jina Reader",
+                        verbose=verbose,
+                    )
+                    if content is None:
+                        raise ValueError(
+                            "Jina Reader did not return usable content. "
+                            f"If this is rate limiting, configure {JINA_API_KEY_ENV} or try "
+                            "--fetch-strategy browser."
+                        )
+                elif fetch_strategy == "browser" and verbose:
+                    CONSOLE.print("[cyan]Skipping non-browser markdown readers[/cyan]", highlight=False)
         if content is None:
             html = render_html(
                 url,
