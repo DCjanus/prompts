@@ -18,6 +18,19 @@ alias codex_deep='env EDITOR="zed" command codex --dangerously-bypass-approvals-
 - `EDITOR="zed"`：让 Codex 在需要打开编辑器时统一使用 zed，便于我直接用鼠标做复制粘贴和局部修改。
 - 手动 `-m` 指定模型：我使用的是 API 接入 Codex。新模型发布后的前几周，常常不会立刻出现在 API 的 model list 里；但我用的中转服务一般会及时支持这些模型，所以会直接手动指定模型名。
 
+我当前在 `~/.codex/config.toml` 里还会额外打开 TUI 通知：
+
+```toml
+[tui]
+notifications = true
+notification_method = "bel"
+```
+
+这样配置的原因：
+
+- 我平时使用 Ghostty。对我来说，`bel` 比默认的 `auto` 更直观，因为 Ghostty 会在标签页标题栏展示一个 `🔔` 标记。
+- 并行开多个 Codex tab 做任务时，我可以很快看出哪些 tab 已经有通知、哪些任务已经就绪，不用来回切换逐个确认。
+
 ## 运行前提
 
 本仓库内的所有脚本与 skills 默认假设当前环境已安装最新版 [`uv`](https://github.com/astral-sh/uv)。
