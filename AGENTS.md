@@ -27,16 +27,7 @@
 ### 2.2 破坏性更新（Breaking Change）
 - 如果改动会导致既有用法失效或行为变化，必须在回复中显著标识为 breaking change，并清晰说明影响范围（哪些用法/接口/行为变了）与迁移建议（用户该怎么改）。
 
-### 2.3 Git 提交/推送
-- 未收到用户当次明确 `commit` 指令时，不得执行 `git commit`（即便工作区已准备好）。
-- 未收到用户当次明确 `push` 指令时，不得执行 `git push`（即便工作区已准备好）。
-- 如工作需要提交且用户未明确要求 `commit`，可以询问用户是否需要 `commit`；但不得沿用任何历史授权。
-- 禁止主动询问是否需要 `push`（例如“要不要顺便推送”）；只有用户当次明确要求 `push` 才能执行 `git push`。
-- 有疑义先向用户确认，等待明确指令后再执行（`push` 相关限制见上条）。
-- 提交信息使用简洁、精确、描述性强的英文，遵循 [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)；可行时尽量包含 scope。
-- 创建分支时尽量遵循 [Conventional Branch](https://conventional-branch.github.io/)。
-
-### 2.4 依赖管理
+### 2.3 依赖管理
 - 优先使用官方命令获取最新版依赖。
 - 禁止手动修改项目描述文件或锁文件。
 - 一次性临时 Python 统一使用 `uv run (--with <外部依赖包>)* python ...`（`*` 表示 0~N 次），不要直接调用系统 `python`/`python3`。
@@ -52,23 +43,21 @@
 - Markdown 链接优先使用 `[描述](URL)` 形式，避免裸露 `<URL>`；在 Markdown 中引用相对路径文件时，优先使用链接形式（链接文本仅保留文件名、路径放在链接目标里）。除非有歧义或明确要求，否则不要用 inline code 引用路径。
 - 输出文件路径只写纯路径/文件名，不附加 `:行号` 或 `#L行号`；仅当用户明确要求或任务必须精确定位（如代码评审/报错排查/同名文件消歧）时附加行号；新生成且需直接打开的文件一律不加行号。
 
-### 3.3 Git 约定
-- 提交追加 `Co-authored-by: OpenAI Codex <codex@openai.com>` trailer。
-- 日常操作优先使用 `git switch`（分支/HEAD 切换）与 `git restore`（文件恢复），尽量避免使用语义混杂的 `git checkout`。
-- 常见替代：切分支用 `git switch <branch>`；新建并切换用 `git switch -c <new-branch>`；丢弃工作区改动用 `git restore <path>`；取消暂存用 `git restore --staged <path>`。
-
-### 3.4 依赖版本策略
+### 3.3 依赖版本策略
 - 使用最新可用版本；非必要不手动固定版本号。
 
-### 3.5 Codex 安装偏好
+### 3.4 Codex 安装偏好
 - Codex CLI 安装命令：`npm i -g @openai/codex@alpha`。
 
 ## 4. 操作流程
 
-### 4.1 查看 GitHub issue / PR
+### 4.1 Git 提交相关操作
+- 涉及 `git commit`、`git push`、分支命名、提交信息或提交前整理时，优先使用 [git-commit](skills/git-commit/)。
+
+### 4.2 查看 GitHub issue / PR
 - 涉及 GitHub issue/PR 的查看、更新或创建：优先使用 [github-pr-issue](skills/github-pr-issue/)。
 
-### 4.2 添加/更新依赖
+### 4.3 添加/更新依赖
 - 使用对应生态官方命令：
   - Rust：`cargo add <crate>`
   - Python：`uv add <package>`
