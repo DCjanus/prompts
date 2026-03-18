@@ -47,14 +47,14 @@ notification_method = "bel"
 
 | 技能 | 说明 |
 | --- | --- |
+| [`codex-session-reader`](skills/codex-session-reader/SKILL.md) | 读取 Codex 的单个 session/thread；当已知 thread id 且需要查看或摘要会话内容时使用。 |
+| [`confluence-cli`](skills/confluence-cli/SKILL.md) | 查询、检索与阅读 Confluence 文档/页面。 |
+| [`create-skill`](skills/create-skill/SKILL.md) | 当你要创建/新增一个 skill，或重写/更新某个 skill 的 SKILL.md（结构、约定、模板）时使用。 |
+| [`dcjanus-preferences`](skills/dcjanus-preferences/SKILL.md) | 记录 DCjanus 在不同语言中偏好的第三方库与使用场景，供 AI 在选型、引入依赖或替换库时优先参考。适用于 Python/Rust/Go 的库选择、技术方案对比、或需要遵循 DCjanus 个人偏好进行开发的场景。 |
+| [`fetch-url`](skills/fetch-url/SKILL.md) | 获取并提取链接正文（默认 Markdown）；内置 X/Twitter URL 处理，提升受限页面的抓取成功率。 |
+| [`git-commit`](skills/git-commit/SKILL.md) | 处理 git 提交/推送/分支命名与提交信息规范；当用户要求 commit、push、起分支或整理 commit message 时使用。 |
 | [`github-pr-issue`](skills/github-pr-issue/SKILL.md) | GitHub CLI 使用指引（issue/PR 查看、编辑与创建，含团队 PR 规范） |
 | [`gitlab-mr-issue`](skills/gitlab-mr-issue/SKILL.md) | GitLab CLI（glab）使用指引（issue/MR 查看、编辑与创建，含团队 MR/issue 规范） |
-| [`dcjanus-preferences`](skills/dcjanus-preferences/SKILL.md) | DCjanus 在不同语言中偏好的第三方库与使用场景清单 |
-| [`golang-lo`](skills/golang-lo/SKILL.md) | Go ≥ 1.18 项目使用 samber/lo 的速用指南 |
-| [`pwdebug`](skills/pwdebug/SKILL.md) | 通过命令行复用浏览器会话进行前端调试 |
-| [`tech-doc`](skills/tech-doc/SKILL.md) | 技术协作文档的统一写作指南 |
-| [`fetch-url`](skills/fetch-url/SKILL.md) | 渲染 URL 并输出多格式内容或原始 HTML（Playwright + trafilatura） |
-| [`ticktick-cli`](skills/ticktick-cli/SKILL.md) | 通过 CLI 调用滴答清单 Open API 管理任务与项目（API 文档：[Dida365 Open API](https://developer.dida365.com/docs/index.html#/openapi)） |
-| [`create-skill`](skills/create-skill/SKILL.md) | 编写/新增本仓库 skills 的规范与最小模板（SKILL.md / scripts / references / assets / token 控制） |
-| [`coderabbit-cli`](skills/coderabbit-cli/SKILL.md) | 指导如何使用 CodeRabbit CLI 进行代码审查 |
-| [`codex-session-reader`](skills/codex-session-reader/SKILL.md) | 通过 `codex app-server` 读取指定的 Codex session/thread（只读，灵感来自 xurl） |
+| [`golang-lo`](skills/golang-lo/SKILL.md) | Go >= 1.18 项目中希望用 samber/lo（Lodash 风格泛型库）简化集合/映射/字符串、错误处理、重试/节流/防抖、通道并发或指针空值场景时使用。 |
+| [`pwdebug`](skills/pwdebug/SKILL.md) | 用于需要通过命令行操作真实浏览器实例进行前端调试（如导航、执行 JS、截图、元素拾取、控制台日志）且希望跨多次命令复用同一浏览器会话的场景。 |
+| [`ticktick-cli`](skills/ticktick-cli/SKILL.md) | 使用 Python CLI 与 Dida365 Open API 交互以管理滴答清单任务/项目，适用于需要通过脚本或命令行调用滴答清单接口的场景（如项目/任务的查询、创建、更新、完成、删除）。 |
