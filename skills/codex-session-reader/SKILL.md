@@ -14,6 +14,21 @@ cd skills/codex-session-reader
 ./scripts/codex_session_reader.py read <thread-id>
 ```
 
+## 环境注意事项
+
+- 这个 skill 依赖本机可直接执行的 `codex` 命令，底层会调用 `codex app-server`。
+- 对当前 Codex 环境，工具执行不一定沿用交互式 `fish`，可能回退到 `zsh -lc`。
+- 所以只在 `fish` 里设置 `PNPM_HOME` 不够；必须让 `zsh` 启动时的 `PATH` 里也包含 `PNPM_HOME`，否则会报“未找到 `codex`”。
+- 推荐按 pnpm 官方风格在 zsh 配置里同时设置：
+
+```zsh
+export PNPM_HOME="$HOME/Library/pnpm"
+case ":$PATH:" in
+  *":$PNPM_HOME:"*) ;;
+  *) export PATH="$PNPM_HOME:$PATH" ;;
+esac
+```
+
 ## 何时使用
 
 - 用户要求查看某个 Codex thread/session。
