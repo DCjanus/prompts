@@ -6,28 +6,31 @@
 
 ## 使用方式
 
-我当前在 fish 里使用两条 Codex alias（定义在 `~/.config/fish/config.fish`）：
+我当前在 fish 里使用三条 Codex alias（定义在 `~/.config/fish/config.fish`）：
 
 ```fish
-alias codex='env EDITOR="zed" command codex --dangerously-bypass-approvals-and-sandbox -m gpt-5.4 -c model_reasoning_effort="medium"'
-alias codex_deep='env EDITOR="zed" command codex --dangerously-bypass-approvals-and-sandbox -m gpt-5.4 -c model_reasoning_effort="high"'
+alias codex='env EDITOR="zed --wait --new" command codex --dangerously-bypass-approvals-and-sandbox -m gpt-5.4 -c model_reasoning_effort="medium"'
+alias codex_deep='env EDITOR="zed --wait --new" command codex --dangerously-bypass-approvals-and-sandbox -m gpt-5.4 -c model_reasoning_effort="high"'
+alias codex_tmp='env EDITOR="zed --wait --new" command codex --dangerously-bypass-approvals-and-sandbox -C /tmp -m gpt-5.4 -c model_reasoning_effort="medium"'
 ```
 
 这样配置的原因：
 
-- `EDITOR="zed"`：让 Codex 在需要打开编辑器时统一使用 zed，便于我直接用鼠标做复制粘贴和局部修改。
+- `EDITOR="zed --wait --new"`：让 Codex 在需要打开编辑器时统一使用 zed，并等待编辑器关闭后再继续，便于我直接用鼠标做复制粘贴和局部修改。
 - 手动 `-m` 指定模型：我使用的是 API 接入 Codex。新模型发布后的前几周，常常不会立刻出现在 API 的 model list 里；但我用的中转服务一般会及时支持这些模型，所以会直接手动指定模型名。
 
-我当前在 `~/.codex/config.toml` 里还会额外打开 TUI 通知：
+我当前在 `~/.codex/config.toml` 里还会额外配置 TUI 主题和通知：
 
 ```toml
 [tui]
+theme = "dracula"
 notifications = true
 notification_method = "bel"
 ```
 
 这样配置的原因：
 
+- `theme = "dracula"`：和我平时在终端与编辑器里的配色更接近，切到 Codex TUI 时视觉更统一。
 - 我平时使用 Ghostty。对我来说，`bel` 比默认的 `auto` 更直观，因为 Ghostty 会在标签页标题栏展示一个 `🔔` 标记。
 - 并行开多个 Codex tab 做任务时，我可以很快看出哪些 tab 已经有通知、哪些任务已经就绪，不用来回切换逐个确认。
 
