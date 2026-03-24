@@ -65,10 +65,11 @@
 ## 4. 操作流程
 
 ### 4.1 Git 提交相关操作
-- 涉及 `git commit`、`git push`、分支命名、提交信息或提交前整理时，优先使用 [git-commit](skills/git-commit/)。
+- 涉及 `git commit`、`git push`、分支命名、提交信息或提交前整理时，优先使用非交互命令，并遵循仓库内对应约定。
 
-### 4.2 查看 GitHub issue / PR
-- 涉及 GitHub issue/PR 的查看、更新或创建：优先使用 [github-pr-issue](skills/github-pr-issue/)。
+### 4.2 GitHub / GitLab 交互
+- 涉及 GitHub 资源或交互（如 repo、issue、PR、comment、release、workflow 等）的查看、更新或创建时，优先使用对应平台的官方 CLI 或 API，并尽量保持非交互。
+- 涉及 GitLab 资源或交互（如 project、issue、MR、comment、wiki 等）的查看、更新或创建时，优先使用对应平台的官方 CLI 或 API，并尽量保持非交互。
 
 ### 4.3 添加/更新依赖
 - 使用对应生态官方命令：

@@ -14,6 +14,8 @@ git add <paths>
 git commit -m "feat(scope): short summary"
 ```
 
+涉及 Git 写操作时，默认按串行顺序执行单条命令，避免并行触发多个 `git add`、`git commit`、`git push`，以免因为 `.git/index.lock` 导致部分命令失败。
+
 ## 使用约定
 
 - 未收到用户当次明确 `commit` 指令时，不执行 `git commit`。
@@ -25,6 +27,9 @@ git commit -m "feat(scope): short summary"
 - 提交时追加 `Co-authored-by: OpenAI Codex <codex@openai.com>` trailer。
 - 日常切换/恢复操作优先使用 `git switch` 与 `git restore`，尽量避免 `git checkout`。
 - 进行提交前，先确认工作区中哪些改动属于当前任务，避免把无关改动混入同一个提交。
+- 涉及 Git 写操作时，默认串行执行，不并行调用多个 Git 命令；尤其不要并行触发多个会写入 index 或引用的命令。
+- 如需连续执行 `git add`、`git commit`、`git push`，优先单次按顺序执行，前一步成功后再执行下一步；只有明确确认不存在锁竞争风险时才可例外。
+- 如果遇到 `.git/index.lock`，先判断是否有其他活跃 Git 进程；不要把并行执行当成默认方案。
 
 ## 常用场景
 
@@ -70,6 +75,14 @@ git restore <path>
 
 ```bash
 git restore --staged <path>
+```
+
+- 顺序执行 add / commit / push：
+
+```bash
+git add <paths>
+git commit -m "feat(scope): concise summary" -m "Co-authored-by: OpenAI Codex <codex@openai.com>"
+git push origin HEAD
 ```
 
 ## 提交信息约定
