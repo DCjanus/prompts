@@ -6,7 +6,7 @@ import base64
 from pathlib import Path
 from typing import Any
 
-import httpx
+import httpxyz
 from pydantic import BaseModel, Field
 
 DEFAULT_TIMEOUT_SECONDS = 30.0
@@ -47,7 +47,7 @@ class ConfluenceApiClient:
 
     def __init__(self, config: ConfluenceConfig) -> None:
         self.config = config
-        self.client = httpx.Client(
+        self.client = httpxyz.Client(
             base_url=config.base_url.rstrip("/") + "/",
             timeout=config.timeout_seconds,
             verify=config.verify_ssl,
@@ -65,7 +65,7 @@ class ConfluenceApiClient:
         return headers
 
     @staticmethod
-    def _raise_for_error(response: httpx.Response, context: str) -> None:
+    def _raise_for_error(response: httpxyz.Response, context: str) -> None:
         if response.is_success:
             return
         payload: Any

@@ -27,7 +27,7 @@ class FakeResponse:
         return self._payload
 
 
-class FakeHTTPXClient:
+class FakeHttpxyzClient:
     def __init__(self, *args, **kwargs):
         self.calls = []
         self.kwargs = kwargs
@@ -70,12 +70,12 @@ class ConfluenceApiClientTest(unittest.TestCase):
         self.assertTrue(headers["Authorization"].startswith("Basic "))
 
     def test_update_page_uses_version_increment_and_representation(self):
-        fake = FakeHTTPXClient()
+        fake = FakeHttpxyzClient()
         fake.queue({"id": "123", "version": {"number": 7}})
         fake.queue({"id": "123", "version": {"number": 8}})
 
-        original_client = self.mod.httpx.Client
-        self.mod.httpx.Client = lambda *args, **kwargs: fake
+        original_client = self.mod.httpxyz.Client
+        self.mod.httpxyz.Client = lambda *args, **kwargs: fake
         try:
             client = self.mod.ConfluenceApiClient(
                 self.mod.ConfluenceConfig(base_url="https://example.com", token="t")
@@ -87,7 +87,7 @@ class ConfluenceApiClientTest(unittest.TestCase):
                 representation="storage",
             )
         finally:
-            self.mod.httpx.Client = original_client
+            self.mod.httpxyz.Client = original_client
 
         self.assertEqual(result["version"]["number"], 8)
         self.assertEqual(fake.calls[0][0], "get")
@@ -101,19 +101,19 @@ class ConfluenceApiClientTest(unittest.TestCase):
             file_path = Path(temp_dir) / "a.txt"
             file_path.write_text("x", encoding="utf-8")
 
-            fake = FakeHTTPXClient()
+            fake = FakeHttpxyzClient()
             fake.queue({"results": []})
             fake.queue({"results": [{"title": "a.txt"}]})
 
-            original_client = self.mod.httpx.Client
-            self.mod.httpx.Client = lambda *args, **kwargs: fake
+            original_client = self.mod.httpxyz.Client
+            self.mod.httpxyz.Client = lambda *args, **kwargs: fake
             try:
                 client = self.mod.ConfluenceApiClient(
                     self.mod.ConfluenceConfig(base_url="https://example.com", token="t")
                 )
                 client.attach_file("123", str(file_path))
             finally:
-                self.mod.httpx.Client = original_client
+                self.mod.httpxyz.Client = original_client
 
         self.assertEqual(fake.calls[0][0], "get")
         method, path, _, _, extra = fake.calls[1]
@@ -126,19 +126,19 @@ class ConfluenceApiClientTest(unittest.TestCase):
             file_path = Path(temp_dir) / "a.txt"
             file_path.write_text("x", encoding="utf-8")
 
-            fake = FakeHTTPXClient()
+            fake = FakeHttpxyzClient()
             fake.queue({"results": [{"title": "a.txt", "id": "999"}]})
             fake.queue({"results": [{"title": "a.txt"}]})
 
-            original_client = self.mod.httpx.Client
-            self.mod.httpx.Client = lambda *args, **kwargs: fake
+            original_client = self.mod.httpxyz.Client
+            self.mod.httpxyz.Client = lambda *args, **kwargs: fake
             try:
                 client = self.mod.ConfluenceApiClient(
                     self.mod.ConfluenceConfig(base_url="https://example.com", token="t")
                 )
                 client.attach_file("123", str(file_path))
             finally:
-                self.mod.httpx.Client = original_client
+                self.mod.httpxyz.Client = original_client
 
         self.assertEqual(fake.calls[1][1], "rest/api/content/123/child/attachment/999/data")
 

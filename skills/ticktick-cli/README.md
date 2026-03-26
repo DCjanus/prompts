@@ -2,7 +2,7 @@
 
 ## 背景
 - 目标：通过 Python CLI（供 Codex 调用）管理滴答清单账号。
-- 技术栈：uv script + Typer + Pydantic + httpx。
+- 技术栈：uv script + Typer + Pydantic + httpxyz。
 - API 文档：[滴答清单 OpenAPI](https://developer.dida365.com/docs/index.html#/openapi)（更新较少，需自行验证）。
 - CLI 入口：[ticktick_cli.py](scripts/ticktick_cli.py)。
 
