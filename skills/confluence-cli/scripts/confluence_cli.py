@@ -2,10 +2,11 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#     "atlassian-python-api",
+#     "httpxyz>=0.28.2",
+#     "markdown-it-py>=4.0.0",
 #     "pydantic>=2.12.5",
-#     "rich",
-#     "typer",
+#     "rich>=14.1.0",
+#     "typer>=0.17.4",
 # ]
 # ///
 """Confluence CLI 工具入口。"""
@@ -16,11 +17,14 @@ import base64
 import html
 import re
 import sys
+import urllib.parse
 import urllib.request
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable
 
+from markdown_it import MarkdownIt
+from markdown_it.token import Token
 import typer
 from pydantic import BaseModel
 from rich.console import Console
@@ -31,7 +35,6 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from confluence_api_client import ConfluenceApiClient, ConfluenceConfig  # noqa: E402
-
 app = typer.Typer(no_args_is_help=True)
 space_app = typer.Typer(no_args_is_help=True, help="空间相关操作。")
 page_app = typer.Typer(no_args_is_help=True, help="页面相关操作。")
@@ -206,109 +209,316 @@ def build_expand(body_format: BodyFormat | None, expand: str | None) -> str | No
     return None
 
 
-def escape_keep_breaks(text: str) -> str:
-    """转义文本并保留 <br> 标签。"""
-    normalized = text.replace("<br>", "<br />")
-    placeholder = "__CONFLUENCE_BR__"
-    normalized = normalized.replace("<br />", placeholder)
-    escaped = html.escape(normalized)
-    return escaped.replace(placeholder, "<br />")
+MARKDOWN_PARSER = MarkdownIt("commonmark", {"html": True}).enable("table")
+
+SUPPORTED_BLOCK_OPEN_TOKENS = {
+    "blockquote_open",
+    "bullet_list_open",
+    "heading_open",
+    "list_item_open",
+    "ordered_list_open",
+    "paragraph_open",
+    "table_open",
+    "tbody_open",
+    "td_open",
+    "th_open",
+    "thead_open",
+    "tr_open",
+}
+
+SUPPORTED_INLINE_CONTAINER_TOKENS = {
+    "em_open",
+    "strong_open",
+}
+
+ALLOWED_TOKEN_ATTRIBUTES = {
+    "image": {"alt", "src", "title"},
+    "link_open": {"href", "title"},
+    "ordered_list_open": {"start"},
+}
 
 
-def convert_inline_markdown(text: str, image_map: dict[str, str]) -> str:
-    """转换行内 Markdown（仅处理图片/链接/换行）。"""
-    image_tokens: list[str] = []
-
-    def image_repl(match: re.Match[str]) -> str:
-        alt_text = match.group(1)
-        raw_path = match.group(2)
-        filename = Path(raw_path).name
-        token = f"__CONFLUENCE_IMAGE_{len(image_tokens)}__"
-        image_tokens.append(
-            f'<ac:image ac:alt="{html.escape(alt_text)}"><ri:attachment ri:filename="{html.escape(filename)}" /></ac:image>'
-        )
-        image_map[filename] = raw_path
-        return token
-
-    def link_repl(match: re.Match[str]) -> str:
-        label = match.group(1)
-        url = match.group(2)
-        return f'<a href="{html.escape(url)}">{escape_keep_breaks(label)}</a>'
-
-    text = re.sub(r"!\[([^\]]*)\]\(([^)]+)\)", image_repl, text)
-    text = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", link_repl, text)
-    text = escape_keep_breaks(text)
-    for idx, token in enumerate(image_tokens):
-        text = text.replace(f"__CONFLUENCE_IMAGE_{idx}__", token)
-    return text
+def escape_text(text: str) -> str:
+    """转义普通文本。"""
+    return html.escape(text, quote=False)
 
 
-def parse_markdown_table(rows: list[str], image_map: dict[str, str]) -> str:
-    """解析 Markdown 表格为 storage HTML。"""
-    def split_row(row: str) -> list[str]:
-        raw = row.strip().strip("|")
-        cells = [cell.strip() for cell in raw.split("|")]
-        return [convert_inline_markdown(cell, image_map) for cell in cells]
-
-    header_cells = split_row(rows[0])
-    body_rows = [split_row(row) for row in rows[2:]]
-    if not header_cells:
-        return ""
-    header_html = "".join(f"<th>{cell}</th>" for cell in header_cells)
-    body_html = ""
-    for body in body_rows:
-        if not body:
-            continue
-        while len(body) < len(header_cells):
-            body.append("")
-        body_html += "<tr>" + "".join(f"<td>{cell}</td>" for cell in body) + "</tr>"
-    return f"<table><thead><tr>{header_html}</tr></thead><tbody>{body_html}</tbody></table>"
-
-
-def markdown_to_storage(markdown: str, image_map: dict[str, str]) -> str:
-    """将简单 Markdown 转换为 Confluence storage。"""
+def strip_leading_title_heading(markdown: str) -> str:
+    """移除文首第一个 ATX H1，避免与 Confluence 页面标题重复。"""
     lines = markdown.splitlines()
-    blocks: list[str] = []
-    idx = 0
-    while idx < len(lines):
-        line = lines[idx]
-        stripped = line.strip()
-        if not stripped:
-            idx += 1
+    first_non_empty = next((idx for idx, line in enumerate(lines) if line.strip()), None)
+    if first_non_empty is None:
+        return markdown
+    if re.match(r"^#\s+.+$", lines[first_non_empty].strip()):
+        del lines[first_non_empty]
+        while first_non_empty < len(lines) and not lines[first_non_empty].strip():
+            del lines[first_non_empty]
+    return "\n".join(lines)
+
+
+def normalize_local_attachment_target(target: str) -> str | None:
+    """识别 Markdown 中的本地附件/文档链接。"""
+    if target.startswith("#"):
+        return None
+    parsed = urllib.parse.urlparse(target)
+    if parsed.scheme or parsed.netloc:
+        return None
+    if target.startswith("/"):
+        raise ApiError(f"Unsupported Markdown absolute path link: {target}")
+    if parsed.params or parsed.query or parsed.fragment:
+        raise ApiError(f"Unsupported Markdown local link with query/fragment: {target}")
+    normalized_path = urllib.parse.unquote(parsed.path)
+    if not normalized_path:
+        raise ApiError(f"Unsupported Markdown empty local link target: {target}")
+    return normalized_path
+
+
+def register_attachment_reference(attachment_map: dict[str, str], raw_target: str) -> str:
+    """记录 Markdown 中引用到的本地附件，并检查重名冲突。"""
+    normalized_target = normalize_local_attachment_target(raw_target)
+    if normalized_target is None:
+        raise ApiError(f"Expected a local attachment target, got: {raw_target}")
+    filename = Path(normalized_target).name
+    if not filename:
+        raise ApiError(f"Unsupported Markdown attachment target: {raw_target}")
+    existing = attachment_map.get(filename)
+    if existing is not None and existing != normalized_target:
+        raise ApiError(
+            f"Markdown 引用了多个同名本地附件 `{filename}`：`{existing}` 与 `{normalized_target}`。"
+        )
+    attachment_map[filename] = normalized_target
+    return filename
+
+
+def build_attachment_href(base_url: str, page_id: str, filename: str) -> str:
+    """构造页面附件下载链接。"""
+    encoded_filename = urllib.parse.quote(filename)
+    return f"{base_url.rstrip('/')}/download/attachments/{page_id}/{encoded_filename}"
+
+
+def get_token_attrs(token: Token) -> dict[str, str]:
+    """读取 token 属性。"""
+    return dict(token.attrs or {})
+
+
+def validate_token_attributes(token: Token) -> dict[str, str]:
+    """校验 token 属性，避免未处理的 Markdown 语义被静默忽略。"""
+    attrs = get_token_attrs(token)
+    allowed = ALLOWED_TOKEN_ATTRIBUTES.get(token.type, set())
+    unsupported = sorted(set(attrs) - allowed)
+    if unsupported:
+        attrs = ", ".join(unsupported)
+        raise ApiError(f"Unsupported Markdown attributes on token `{token.type}`: {attrs}")
+    return attrs
+
+
+def render_image_token(
+    token: Token,
+    attachment_map: dict[str, str],
+    *,
+    page_id: str | None,
+    base_url: str | None,
+) -> str:
+    """渲染图片 token。"""
+    attrs = validate_token_attributes(token)
+    src = attrs.get("src", "")
+    alt = token.content or ""
+    local_target = normalize_local_attachment_target(src)
+    if local_target is not None:
+        filename = register_attachment_reference(attachment_map, src)
+        return (
+            f'<ac:image ac:alt="{html.escape(alt)}">'
+            f'<ri:attachment ri:filename="{html.escape(filename)}" /></ac:image>'
+        )
+    rendered_attrs = [f'src="{html.escape(src)}"']
+    if alt:
+        rendered_attrs.append(f'alt="{html.escape(alt)}"')
+    title = attrs.get("title")
+    if title:
+        rendered_attrs.append(f'title="{html.escape(title)}"')
+    return f"<img {' '.join(rendered_attrs)} />"
+
+
+def render_inline_tokens(
+    tokens: list[Token],
+    attachment_map: dict[str, str],
+    *,
+    page_id: str | None,
+    base_url: str | None,
+    stop_type: str | None = None,
+    start_index: int = 0,
+) -> tuple[str, int]:
+    """将 inline token 序列转换为 storage。"""
+    parts: list[str] = []
+    index = start_index
+    while index < len(tokens):
+        token = tokens[index]
+        if stop_type is not None and token.type == stop_type:
+            return "".join(parts), index + 1
+        if token.type == "text":
+            parts.append(escape_text(token.content))
+            index += 1
             continue
-        if stripped.startswith("#"):
-            level = len(stripped) - len(stripped.lstrip("#"))
-            title = stripped[level:].strip()
-            level = min(max(level, 1), 6)
-            blocks.append(f"<h{level}>{escape_keep_breaks(title)}</h{level}>")
-            idx += 1
+        if token.type == "code_inline":
+            parts.append(f"<code>{escape_text(token.content)}</code>")
+            index += 1
             continue
-        if stripped.startswith("|") and "|" in stripped:
-            table_rows = []
-            while idx < len(lines):
-                row = lines[idx].strip()
-                if not row.startswith("|"):
-                    break
-                table_rows.append(lines[idx])
-                idx += 1
-            if len(table_rows) >= 2:
-                blocks.append(parse_markdown_table(table_rows, image_map))
+        if token.type == "softbreak":
+            parts.append("\n")
+            index += 1
             continue
-        paragraph_lines = []
-        while idx < len(lines):
-            current = lines[idx]
-            if not current.strip():
-                break
-            if current.strip().startswith("#"):
-                break
-            if current.strip().startswith("|") and "|" in current:
-                break
-            paragraph_lines.append(current)
-            idx += 1
-        paragraph_text = "\n".join(paragraph_lines)
-        paragraph_text = convert_inline_markdown(paragraph_text, image_map)
-        blocks.append(f"<p>{paragraph_text}</p>")
-    return "\n".join(blocks)
+        if token.type == "hardbreak":
+            parts.append("<br />")
+            index += 1
+            continue
+        if token.type == "image":
+            parts.append(
+                render_image_token(
+                    token,
+                    attachment_map,
+                    page_id=page_id,
+                    base_url=base_url,
+                )
+            )
+            index += 1
+            continue
+        if token.type in SUPPORTED_INLINE_CONTAINER_TOKENS:
+            tag = "em" if token.type == "em_open" else "strong"
+            inner, index = render_inline_tokens(
+                tokens,
+                attachment_map,
+                page_id=page_id,
+                base_url=base_url,
+                stop_type=token.type.replace("_open", "_close"),
+                start_index=index + 1,
+            )
+            parts.append(f"<{tag}>{inner}</{tag}>")
+            continue
+        if token.type == "link_open":
+            attrs = validate_token_attributes(token)
+            href = attrs.get("href", "")
+            local_target = normalize_local_attachment_target(href)
+            if local_target is not None:
+                filename = register_attachment_reference(attachment_map, href)
+                if page_id is None or base_url is None:
+                    href = "#"
+                else:
+                    href = build_attachment_href(base_url, page_id, filename)
+            inner, index = render_inline_tokens(
+                tokens,
+                attachment_map,
+                page_id=page_id,
+                base_url=base_url,
+                stop_type="link_close",
+                start_index=index + 1,
+            )
+            rendered_attrs = [f'href="{html.escape(href)}"']
+            title = attrs.get("title")
+            if title:
+                rendered_attrs.append(f'title="{html.escape(title)}"')
+            parts.append(f"<a {' '.join(rendered_attrs)}>{inner}</a>")
+            continue
+        if token.type in {"html_inline", "html_block"}:
+            raise ApiError("Unsupported Markdown raw HTML.")
+        raise ApiError(f"Unsupported Markdown inline token: {token.type}")
+
+    if stop_type is not None:
+        raise ApiError(f"Malformed Markdown: missing closing token `{stop_type}`.")
+    return "".join(parts), index
+
+
+def render_fence_token(token: Token) -> str:
+    """渲染围栏代码块。"""
+    info = token.info.strip()
+    language = info.split(None, 1)[0] if info else ""
+    language_attr = f' class="language-{html.escape(language)}"' if language else ""
+    return f"<pre><code{language_attr}>{escape_text(token.content)}</code></pre>"
+
+
+def render_block_tokens(
+    tokens: list[Token],
+    attachment_map: dict[str, str],
+    *,
+    page_id: str | None,
+    base_url: str | None,
+    stop_type: str | None = None,
+    start_index: int = 0,
+) -> tuple[str, int]:
+    """将 block token 序列转换为 storage。"""
+    parts: list[str] = []
+    index = start_index
+    while index < len(tokens):
+        token = tokens[index]
+        if stop_type is not None and token.type == stop_type:
+            return "".join(parts), index + 1
+        if token.type == "inline":
+            rendered, _ = render_inline_tokens(
+                token.children or [],
+                attachment_map,
+                page_id=page_id,
+                base_url=base_url,
+            )
+            parts.append(rendered)
+            index += 1
+            continue
+        if token.type in SUPPORTED_BLOCK_OPEN_TOKENS:
+            attrs = validate_token_attributes(token)
+            tag = token.tag
+            rendered_attrs = ""
+            if token.type == "ordered_list_open" and "start" in attrs:
+                rendered_attrs = f' start="{html.escape(attrs["start"])}"'
+            inner, index = render_block_tokens(
+                tokens,
+                attachment_map,
+                page_id=page_id,
+                base_url=base_url,
+                stop_type=token.type.replace("_open", "_close"),
+                start_index=index + 1,
+            )
+            parts.append(f"<{tag}{rendered_attrs}>{inner}</{tag}>")
+            continue
+        if token.type == "fence":
+            parts.append(render_fence_token(token))
+            index += 1
+            continue
+        if token.type == "code_block":
+            parts.append(f"<pre><code>{escape_text(token.content)}</code></pre>")
+            index += 1
+            continue
+        if token.type == "hr":
+            parts.append("<hr />")
+            index += 1
+            continue
+        if token.type in {"html_inline", "html_block"}:
+            raise ApiError("Unsupported Markdown raw HTML.")
+        raise ApiError(f"Unsupported Markdown block token: {token.type}")
+
+    if stop_type is not None:
+        raise ApiError(f"Malformed Markdown: missing closing token `{stop_type}`.")
+    return "\n".join(parts), index
+
+
+def markdown_to_storage(
+    markdown: str,
+    attachment_map: dict[str, str],
+    *,
+    page_id: str | None = None,
+    base_url: str | None = None,
+) -> str:
+    """将 Markdown 解析为 Confluence storage。
+
+    Markdown 语法解析完全交给 markdown-it-py；
+    这里只负责把已识别 token 严格映射到 Confluence storage。
+    若遇到未覆盖 token，则立即报错退出，避免静默发布错误内容。
+    """
+    tokens = MARKDOWN_PARSER.parse(markdown)
+    rendered, _ = render_block_tokens(
+        tokens,
+        attachment_map,
+        page_id=page_id,
+        base_url=base_url,
+    )
+    return rendered
 
 
 def get_client(state: AppState) -> ConfluenceApiClient:
@@ -359,11 +569,11 @@ def upload_attachments(
     client: ConfluenceApiClient,
     page_id: str,
     markdown_path: Path,
-    image_map: dict[str, str],
+    attachment_map: dict[str, str],
 ) -> None:
     """上传 Markdown 引用的附件。"""
     base_dir = markdown_path.parent
-    for filename, raw_path in image_map.items():
+    for filename, raw_path in attachment_map.items():
         path = Path(raw_path)
         if not path.is_absolute():
             path = base_dir / path
@@ -688,35 +898,46 @@ def publish_markdown(
     update_if_exists: bool = typer.Option(True, "--update-if-exists", help="存在同名子页面时更新。"),
     expand: str | None = typer.Option(None, "--expand", help="扩展字段。"),
 ) -> None:
-    """发布 Markdown 到 Confluence（自动上传附件）。"""
+    """发布 Markdown 到 Confluence（以 storage 写入，自动上传附件）。"""
     state = ctx.obj
     if not isinstance(state, AppState):
         raise ApiError("App config not initialized.")
+    if body_format is not BodyFormat.storage:
+        raise ApiError("publish-markdown 仅支持 storage。")
 
     client = get_client(state)
     space_key = resolve_parent_space_key(client, parent_id)
 
-    markdown_content = markdown_path.read_text(encoding="utf-8")
-    image_map: dict[str, str] = {}
-    storage_body = markdown_to_storage(markdown_content, image_map)
-
+    # 当前内部 Confluence 实例按 Data Center / Server 能力处理。
+    # 这类实例对 atlas_doc_format 的 REST 写入不稳定，实测会出现请求成功但页面内容不更新。
+    # 因此这里统一收敛为生成 storage 内容，保证发布结果可预期。
     page_id = None
     if update_if_exists:
         page_id = find_child_page_id(client, parent_id, title)
+
+    markdown_content = strip_leading_title_heading(markdown_path.read_text(encoding="utf-8"))
+    attachment_map: dict[str, str] = {}
+    body = markdown_to_storage(
+        markdown_content,
+        attachment_map,
+        page_id=page_id,
+        base_url=state.base_url if page_id else None,
+    )
 
     if page_id:
         result = client.update_page(
             page_id=page_id,
             title=title,
-            body=storage_body,
+            body=body,
             parent_id=parent_id,
             representation=body_format.value,
+            always_update=True,
         )
     else:
         result = client.create_page(
             space_key=space_key,
             title=title,
-            body=storage_body,
+            body=body,
             parent_id=parent_id,
             representation=body_format.value,
         )
@@ -725,8 +946,24 @@ def publish_markdown(
     if not page_id:
         raise ApiError("Failed to resolve page id after publish.")
 
-    if image_map:
-        upload_attachments(client, page_id, markdown_path, image_map)
+    if attachment_map:
+        upload_attachments(client, page_id, markdown_path, attachment_map)
+
+        final_body = markdown_to_storage(
+            markdown_content,
+            attachment_map,
+            page_id=page_id,
+            base_url=state.base_url,
+        )
+        if final_body != body:
+            result = client.update_page(
+                page_id=page_id,
+                title=title,
+                body=final_body,
+                parent_id=parent_id,
+                representation=body_format.value,
+                always_update=True,
+            )
 
     ensure_json_output(result, state.json_output)
 

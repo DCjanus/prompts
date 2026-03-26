@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Iterable
 
-import httpx
+import httpxyz
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field
 
 DEFAULT_BASE_URL = "https://api.dida365.com/open/v1"
@@ -158,7 +158,7 @@ class TicktickApiClient:
         token: str,
         base_url: str = DEFAULT_BASE_URL,
         timeout_seconds: float = 30.0,
-        session: httpx.Client | None = None,
+        session: httpxyz.Client | None = None,
         user_agent: str | None = None,
     ) -> None:
         """初始化 API 客户端。"""
@@ -168,7 +168,7 @@ class TicktickApiClient:
             timeout_seconds=timeout_seconds,
             user_agent=user_agent or "ticktick-cli/0.1",
         )
-        self.session = session or httpx.Client()
+        self.session = session or httpxyz.Client()
 
     def _headers(self) -> dict[str, str]:
         """构建请求头。"""
@@ -189,7 +189,7 @@ class TicktickApiClient:
         path: str,
         params: dict[str, str] | None = None,
         payload: dict[str, Any] | list[Any] | None = None,
-    ) -> httpx.Response:
+    ) -> httpxyz.Response:
         """发起原始 HTTP 请求并返回响应对象。"""
         return self.session.request(
             method=method.upper(),

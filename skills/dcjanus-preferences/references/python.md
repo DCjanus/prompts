@@ -2,7 +2,7 @@
 - pydantic: 基于类型注解的数据验证与序列化工具；适用于 API 入参/出参校验、配置加载、复杂数据模型的解析与校验。
 - blake3: 默认 hash 算法选择，在无严格性能约束或需要密码学安全时优先使用；支持任意长度输出与并行 hash；不适用于用户密码存储与校验等场景。Python 使用 `blake3`（PyPI 包名）。
 - uvicorn: FastAPI 常用的 ASGI 服务器实现，适合高性能异步 API 部署。
-- httpx: 现代化的同步/异步 HTTP 客户端，API 设计与 FastAPI/Pydantic 风格匹配。
+- httpxyz: 默认 HTTP 客户端选择；是 `httpx` 的维护分支，保留相近 API，并更符合对稳定维护节奏的偏好。
 - sqlmodel: 基于 Pydantic + SQLAlchemy 的 ORM/数据模型整合库，适合与 FastAPI 搭配。
 - typer: 以类型注解驱动的 CLI 框架，与 FastAPI 的设计理念一致。
 - rich: 终端富文本与美观格式化输出库，适合 CLI 输出增强、表格/进度条/语法高亮展示与调试可视化。
