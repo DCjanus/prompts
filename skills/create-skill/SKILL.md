@@ -92,6 +92,7 @@ cd skills/your-skill-name && ./scripts/your_tool.py --help
 
 Python 脚本规范要点：
 - **运行模式**：必须使用 uv script 模式（shebang 为 `#!/usr/bin/env -S uv run --script`）。
+- **适用范围**：以上 `uv script` 约定仅适用于“直接执行的入口脚本”（通常位于 `scripts/` 且会通过 `./scripts/...` 运行）。被入口脚本 import 的普通 Python 模块**不要**添加 shebang 或 `/// script` 元数据块，依赖统一声明在入口脚本头部。
 - **初始化**：新建脚本用 `uv init --script scripts/foo.py`（生成 shebang 与空的 `/// script` 元数据块）。
 - **依赖声明（强约束）**：
   - 脚本头部 `/// script` 元数据块是唯一依赖声明位置。
