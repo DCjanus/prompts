@@ -18,7 +18,8 @@ description: 使用 GitLab CLI（glab）与 GitLab 资源交互；适用于 proj
   - `glab auth status` 读取当前实例及 “Logged in to <host> as <user>” 行。
   - 直接取用户名：`GITLAB_HOST=<host> glab api /user | jq -r '.username'`（依赖本机 `jq`，若已设全局 `GITLAB_HOST` 可直接 `glab api /user`）。
   - 自建实例优先通过环境变量 `GITLAB_HOST` 指定；如需单次覆盖，可在命令前加 `GITLAB_HOST=<host>` 或用 `-R group/project`。
-- 输出格式默认够用，若需机器可读用 `--output json`。
+- 输出格式默认够用；若需机器可读，优先使用该子命令帮助里声明的格式参数，通常是 `--output json` 或 `-F json`。
+- `glab` 不同子命令的参数风格不完全统一；不要默认假设所有命令都支持 `--json`，先看 `glab <group> <subcommand> --help`。
 - 创建 MR 或 Issue 成功后，在终端**单独一行**输出 CLI 返回的完整 URL。
 
 ## 常用场景
