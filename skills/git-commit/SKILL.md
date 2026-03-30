@@ -30,6 +30,7 @@ git commit -m "feat(scope): short summary"
 - 涉及 Git 写操作时，默认串行执行，不并行调用多个 Git 命令；尤其不要并行触发多个会写入 index 或引用的命令。
 - 如需连续执行 `git add`、`git commit`、`git push`，优先单次按顺序执行，前一步成功后再执行下一步；只有明确确认不存在锁竞争风险时才可例外。
 - 如果遇到 `.git/index.lock`，先判断是否有其他活跃 Git 进程；不要把并行执行当成默认方案。
+- 用 shell 执行 `git commit -m ...` 时，提交标题或正文里不要直接放未转义的反引号 `` ` ``；它会触发命令替换并污染提交内容。需要内联代码时，优先改用单引号包裹整条命令并在内部使用双引号，或改用提交消息文件 / heredoc。
 
 ## 常用场景
 
@@ -51,6 +52,18 @@ git commit -m "feat(scope): concise summary" -m "Co-authored-by: OpenAI Codex <c
 
 ```bash
 git commit -m "refactor(scope): concise summary" -m "Explain the key intent or constraint." -m "Co-authored-by: OpenAI Codex <codex@openai.com>"
+```
+
+- 当提交正文需要包含反引号或多行内容时，优先使用消息文件或 `-F -`：
+
+```bash
+cat <<'EOF' | git commit -F -
+feat(scope): concise summary
+
+Explain the key intent with `inline code` safely.
+
+Co-authored-by: OpenAI Codex <codex@openai.com>
+EOF
 ```
 
 - 新建并切换分支：
