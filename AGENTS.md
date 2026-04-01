@@ -9,7 +9,7 @@
 当多份规范同时存在且出现冲突时，按以下优先级（从高到低）执行：
 
 1. 用户当次明确指令（针对当前任务的具体要求）
-2. 项目级规范（同一层级：项目内 [AGENTS.md](AGENTS.md)、[CONTRIBUTING.md](CONTRIBUTING.md)、[README.md](README.md)、[.github](.github/) 内规范、团队/仓库政策等）
+2. 项目级规范（同一层级：项目内 AGENTS.md、CONTRIBUTING.md、README.md、.github 内规范、团队/仓库政策等）
 3. 全局默认规范（如全局 AGENTS.md）
 4. 其它默认习惯或通用最佳实践
 
@@ -64,14 +64,19 @@
 
 ## 4. 操作流程
 
-### 4.1 Git 提交相关操作
+### 4.1 开始修改前
+- 只要要修改文件内容，开始动手前先读取与当前改动相关的仓库规范；若仓库另有要求，以仓库要求为准。
+- 优先检查：相关目录下的 CONTRIBUTING.md、README.md，以及与当前改动直接相关的其它说明。
+- 读完后再开始修改；若仓库对改动流程、测试方式、文档更新、提交粒度或分支策略有明确要求，先按要求规划，再执行修改。
+
+### 4.2 Git 提交相关操作
 - 涉及 `git commit`、`git push`、分支命名、提交信息或提交前整理时，优先使用非交互命令，并遵循仓库内对应约定。
+- 在正式提交前，复核本地状态是否与仓库要求一致，包括改动方式、当前分支、暂存内容、提交标题/正文、测试、文档与变更说明；未完成复核前不要直接提交。
 
-### 4.2 GitHub / GitLab 交互
-- 涉及 GitHub 资源或交互（如 repo、issue、PR、comment、release、workflow 等）的查看、更新或创建时，优先使用对应平台的官方 CLI 或 API，并尽量保持非交互。
-- 涉及 GitLab 资源或交互（如 project、issue、MR、comment、wiki 等）的查看、更新或创建时，优先使用对应平台的官方 CLI 或 API，并尽量保持非交互。
+### 4.3 GitHub / GitLab 交互
+- 涉及 GitHub、GitLab 等代码托管平台资源或交互（如 repo/project、issue、PR/MR、comment、release、workflow、wiki 等）的查看、更新或创建时，优先使用对应平台的官方 CLI 或 API，并尽量保持非交互。
 
-### 4.3 添加/更新依赖
+### 4.4 添加/更新依赖
 - 使用对应生态官方命令：
   - Rust：`cargo add <crate>`
   - Python：`uv add <package>`
