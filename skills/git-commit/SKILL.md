@@ -1,9 +1,9 @@
 ---
 name: git-commit
-description: 处理 git 提交/推送/分支命名与提交信息规范；当用户要求 commit、push、起分支或整理 commit message 时使用。
+description: 处理 git 提交/推送/分支命名与提交信息规范；当任务涉及 commit、push、起分支或整理 commit message 时使用。
 ---
 
-用于处理 git 提交相关操作与约定，重点是授权边界、提交信息、分支命名和常用非交互命令。
+用于处理 git 提交相关操作与约定，重点是提交信息、分支命名、变更筛选和常用非交互命令。
 
 ## Quick start
 
@@ -18,10 +18,8 @@ git commit -m "feat(scope): short summary"
 
 ## 使用约定
 
-- 未收到用户当次明确 `commit` 指令时，不执行 `git commit`。
-- 未收到用户当次明确 `push` 指令时，不执行 `git push`。
-- 可以在确有需要时询问是否需要 `commit`；不得主动询问是否需要 `push`。
-- 如存在授权歧义，先向用户确认，再执行相关 git 写操作。
+- 执行前先确认当前仓库或用户没有额外限制，例如受保护分支策略、发布流程要求或显式禁止自动推送。
+- 若操作目标或影响范围不清楚，例如不确定应提交哪些改动、推送到哪个远端/分支，或可能影响共享分支，先澄清再执行。
 - 提交信息使用简洁、精确、描述性强的英文，遵循 [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)；可行时尽量包含 scope。
 - 创建分支时尽量遵循 [Conventional Branch](https://conventional-branch.github.io/)。
 - 提交时追加 `Co-authored-by: OpenAI Codex <codex@openai.com>` trailer。
