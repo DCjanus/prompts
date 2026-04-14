@@ -22,7 +22,10 @@ git commit -m "feat(scope): short summary"
 - 若操作目标或影响范围不清楚，例如不确定应提交哪些改动、推送到哪个远端/分支，或可能影响共享分支，先澄清再执行。
 - 提交信息使用简洁、精确、描述性强的英文，遵循 [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)；可行时尽量包含 scope。
 - 创建分支时尽量遵循 [Conventional Branch](https://conventional-branch.github.io/)。
-- 提交时追加 `Co-authored-by: OpenAI Codex <codex@openai.com>` trailer。
+- 若提交内容存在 AI 编码助手的实质性参与，追加 `Assisted-by: AGENT_NAME:MODEL_VERSION [TOOL1] [TOOL2]` trailer；不要把 AI 助手写成 `Co-authored-by:`。
+- `AGENT_NAME` 与 `MODEL_VERSION` 由当前实际使用的 agent 和模型自行决定，不要写死成某个固定产品名或版本号。
+- `Co-authored-by:` 保留给真实的人类协作者；`Signed-off-by:` 只能由人类添加。
+- 方括号只是占位说明，不是字面量；基础开发工具（如 `git`、编译器、编辑器、常规测试命令）不应写入 trailer。
 - 日常切换/恢复操作优先使用 `git switch` 与 `git restore`，尽量避免 `git checkout`。
 - 进行提交前，先确认工作区中哪些改动属于当前任务，避免把无关改动混入同一个提交。
 - 涉及 Git 写操作时，默认串行执行，不并行调用多个 Git 命令；尤其不要并行触发多个会写入 index 或引用的命令。
@@ -43,13 +46,13 @@ git commit -m "fix(scope): concise summary"
 - 创建带 trailer 的提交：
 
 ```bash
-git commit -m "feat(scope): concise summary" -m "Co-authored-by: OpenAI Codex <codex@openai.com>"
+git commit -m "feat(scope): concise summary" -m "Assisted-by: <agent-name>:<model-version>"
 ```
 
 - 补充说明较多的提交：
 
 ```bash
-git commit -m "refactor(scope): concise summary" -m "Explain the key intent or constraint." -m "Co-authored-by: OpenAI Codex <codex@openai.com>"
+git commit -m "refactor(scope): concise summary" -m "Explain the key intent or constraint." -m "Assisted-by: <agent-name>:<model-version>"
 ```
 
 - 当提交正文需要包含反引号或多行内容时，优先使用消息文件或 `-F -`：
@@ -60,7 +63,7 @@ feat(scope): concise summary
 
 Explain the key intent with `inline code` safely.
 
-Co-authored-by: OpenAI Codex <codex@openai.com>
+Assisted-by: <agent-name>:<model-version>
 EOF
 ```
 
@@ -92,7 +95,7 @@ git restore --staged <path>
 
 ```bash
 git add <paths>
-git commit -m "feat(scope): concise summary" -m "Co-authored-by: OpenAI Codex <codex@openai.com>"
+git commit -m "feat(scope): concise summary" -m "Assisted-by: <agent-name>:<model-version>"
 git push origin HEAD
 ```
 
