@@ -1,12 +1,12 @@
 {
   "name": "prompts-personal",
   "version": "0.1.0",
-  "description": "DCjanus personal Codex skills and prompt helpers.",
+  "description": "DCjanus 的个人 skill 集合。",
   "skills": "./skills",
   "interface": {
     "displayName": "Prompts Personal",
-    "shortDescription": "Personal Codex skills and prompt helpers.",
-    "longDescription": "Personal Codex skill collection for day-to-day engineering, research, and local workflow automation.",
+    "shortDescription": "DCjanus 的个人 skill 集合。",
+    "longDescription": "收纳 DCjanus 日常在 Codex 中使用的个人 skills 与相关提示词。",
     "developerName": "DCjanus",
     "category": "Productivity",
     "capabilities": [
