@@ -63,7 +63,8 @@ description: 使用 GitLab CLI（glab）与 GitLab 资源交互；适用于 proj
 - `## Notes`：reviewers 需要特别关注的点，或后续计划。
 8) 特别强调：描述应聚焦 MR 合并前后系统的变化与影响，避免记录开发中的中间过程或修改步骤。
 9) MR 正文默认先写到本地 Markdown 文件；草稿优先放 `/tmp/*.md`。
-10) MR 常用 API 字段：
+
+MR 常用 API 字段：
 | 字段 | 作用 |
 | --- | --- |
 | `title` | MR 标题；draft MR 用 `Draft:` / `[Draft]` / `(Draft)` 前缀 |
@@ -95,7 +96,8 @@ glab api projects/:id/merge_requests \
 - 若仓库要求 issue 必须包含特定字段、标签、复现步骤、版本信息、最小示例或分类，先据此整理内容；不要跳过必填项。
 - 若 issue 与当前本地改动或分支上下文有关，先检查相关代码、分支与提交信息，确认 issue 描述与现状一致，不要提交已经过时或与代码不符的内容。
 - Issue 正文默认先写到本地 Markdown 文件；草稿优先放 `/tmp/*.md`。
-- Issue 常用 API 字段：
+
+Issue 常用 API 字段：
 | 字段 | 作用 |
 | --- | --- |
 | `title` | Issue 标题 |
