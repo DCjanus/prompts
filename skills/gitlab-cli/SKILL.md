@@ -83,12 +83,9 @@ glab api projects/:id/merge_requests \
   -F source_branch="$(git branch --show-current)" \
   -F target_branch=main \
   -F title="Draft: feat(scope): short summary" \
-  -F description=@/tmp/mr-body.md \
-  -F labels=bugfix \
-  -F remove_source_branch=true \
-  -F squash=true
+  -F description=@/tmp/mr-body.md
 ```
-- 修改已建 MR：`glab api projects/:id/merge_requests/<iid> --method PUT -F title="Draft: ..." -F description=@/tmp/mr-body.md -F labels=bugfix -F remove_source_branch=true -F squash=true`。
+- 修改已建 MR：`glab api projects/:id/merge_requests/<iid> --method PUT -F title="Draft: ..." -F description=@/tmp/mr-body.md`。
 - API 文档：[Merge requests API](https://docs.gitlab.com/api/merge_requests/)
 
 ## Issue 创建（非交互）
@@ -111,10 +108,9 @@ Issue 常用 API 字段：
 glab api projects/:id/issues \
   --method POST \
   -F title="feat: short summary" \
-  -F description=@/tmp/issue-body.md \
-  -F labels=backlog,team-x
+  -F description=@/tmp/issue-body.md
 ```
-- 修改已建 Issue：`glab api projects/:id/issues/<iid> --method PUT -F title="..." -F description=@/tmp/issue-body.md -F labels=backlog,team-x`。
+- 修改已建 Issue：`glab api projects/:id/issues/<iid> --method PUT -F title="..." -F description=@/tmp/issue-body.md`。
 - API 文档：[Issues API](https://docs.gitlab.com/api/issues/)
 
 ## 常见选项速记
