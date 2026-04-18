@@ -53,55 +53,65 @@ description: 使用 GitLab CLI（glab）与 GitLab 资源交互；适用于 proj
 2) 只有在确认仓库要求与本地代码/提交状态都满足后，才创建 MR；若发现不满足，应先修正，再创建。  
 3) 当前分支必须已推送，且 `git status` 干净。  
 4) 标题风格：英文、遵循语义化提交规范（如 `feat(scope): short summary`），保持简洁且描述核心目的；即使标题要求中文，语义化前缀（如 `feat`、`fix`）仍需英文。  
-5) 描述风格：英文、短句和项目符号，优先让不看代码的读者快速理解动机、改动与验证方式。重点是 what/why/testing，避免流水账与过多实现细节。若上下文不足以明确目标或约束，应主动向开发者确认后再撰写。涉及专有名词、函数名、方法名、类名、API 名称或配置键时，使用 inline code（反引号）包裹以提升可读性与准确性。  
+5) 描述风格：英文、短句和项目符号，优先让不看代码的读者快速理解动机、改动与验证方式。重点是 what/why/validation，避免流水账与过多实现细节。若上下文不足以明确目标或约束，应主动向开发者确认后再撰写。涉及专有名词、函数名、方法名、类名、API 名称或配置键时，使用 inline code（反引号）包裹以提升可读性与准确性。  
 6) 默认正文格式：
 - `## Why`：1-2 条短句说明为什么要做这次改动，聚焦问题背景或目标。
 - `## What`：1-3 条说明主要变更，聚焦功能或行为层面的变化，不罗列琐碎实现细节。
-- `## Testing`：说明验证方式、命令或场景；未测试需注明原因。
 7) 可选正文块：仅在确有必要时再添加。
+- `## Validation`：说明验证方式、命令或场景；未验证需注明原因。
 - `## Risks`：兼容性影响、潜在风险、回滚注意事项。
 - `## Notes`：reviewers 需要特别关注的点，或后续计划。
 8) 特别强调：描述应聚焦 MR 合并前后系统的变化与影响，避免记录开发中的中间过程或修改步骤。
-9) 用 heredoc 传多行描述，避免交互式编辑：
-```
-glab mr create \
-  --title "feat(scope): short summary" \
-  --description "$(cat <<'EOF'
-## Why
-- explain why
+9) MR 正文默认先写到本地 Markdown 文件；草稿优先放 `/tmp/*.md`。
 
-## What
-- summarize key changes
-
-## Testing
-- list validation steps
-EOF
-)" \
-  --target-branch main \
-  --source-branch $(git branch --show-current) \
-  --label bugfix \
-  --draft \
-  --yes
+MR 常用 API 字段：
+| 字段 | 作用 |
+| --- | --- |
+| `title` | MR 标题；draft MR 用 `Draft:` / `[Draft]` / `(Draft)` 前缀 |
+| `description` | MR 正文；本地草稿用 `-F description=@/tmp/mr-body.md` |
+| `source_branch` | 源分支名 |
+| `target_branch` | 目标分支名 |
+| `labels` | 标签，逗号分隔 |
+| `remove_source_branch` | 合并后删除源分支 |
+| `squash` | 合并时 squash commits |
+| `reviewer_ids` | reviewer 用户 ID 列表 |
+| `assignee_ids` | assignee 用户 ID 列表 |
+| `milestone_id` | 里程碑 ID |
 ```
-- 推荐参数（可按需开启）：`--remove-source-branch`（合并后删源分支）、`--squash-before-merge`（合并前压缩为单一 commit）；若团队偏好可省略。  
-- 其他常用参数：`--reviewer user1,user2`、`--allow-collaboration`。  
-- 修改已建 MR：`glab mr update <id> --title "..."
-  --description "$(cat <<'EOF'\n...\nEOF\n)" --label ... --yes`。
+glab api projects/:id/merge_requests \
+  --method POST \
+  -F source_branch="$(git branch --show-current)" \
+  -F target_branch=main \
+  -F title="Draft: feat(scope): short summary" \
+  -F description=@/tmp/mr-body.md
+```
+- 修改已建 MR：`glab api projects/:id/merge_requests/<iid> --method PUT -F title="Draft: ..." -F description=@/tmp/mr-body.md`。
+- API 文档：[Merge requests API](https://docs.gitlab.com/api/merge_requests/)
 
 ## Issue 创建（非交互）
 以下规范建立在“创建前检查”已完成的前提上。
 - 若仓库要求 issue 必须包含特定字段、标签、复现步骤、版本信息、最小示例或分类，先据此整理内容；不要跳过必填项。
 - 若 issue 与当前本地改动或分支上下文有关，先检查相关代码、分支与提交信息，确认 issue 描述与现状一致，不要提交已经过时或与代码不符的内容。
-- 命令模式与 MR 类似，使用 `--title` 与 heredoc 描述：  
+- Issue 正文默认先写到本地 Markdown 文件；草稿优先放 `/tmp/*.md`。
+
+Issue 常用 API 字段：
+| 字段 | 作用 |
+| --- | --- |
+| `title` | Issue 标题 |
+| `description` | Issue 正文；本地草稿用 `-F description=@/tmp/issue-body.md` |
+| `labels` | 标签，逗号分隔 |
+| `assignee_ids` | assignee 用户 ID 列表 |
+| `milestone_id` | 里程碑 ID |
+| `confidential` | 是否私密 |
+| `due_date` | 截止日期，格式 `YYYY-MM-DD` |
 ```
-glab issue create \
-  --title "feat: short summary" \
-  --description "$(cat <<'EOF'\n- context\n- expected\nEOF\n)" \
-  --label backlog,team-x \
-  --assignee user1 \
-  --yes
+glab api projects/:id/issues \
+  --method POST \
+  -F title="feat: short summary" \
+  -F description=@/tmp/issue-body.md
 ```
-- 若需私密：加 `--confidential`；截止日期 `--due-date YYYY-MM-DD`。
+- 修改已建 Issue：`glab api projects/:id/issues/<iid> --method PUT -F title="..." -F description=@/tmp/issue-body.md`。
+- API 文档：[Issues API](https://docs.gitlab.com/api/issues/)
 
 ## 常见选项速记
 - `-R group/project`：指定自建实例项目，等价于完整 URL。

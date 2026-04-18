@@ -6,7 +6,14 @@
 # ]
 # ///
 
-"""解析当前 Codex shell 环境对应的 agent/model 信息并输出 JSON。"""
+"""解析当前 Codex shell 环境对应的 agent/model 信息并输出 JSON。
+
+风险说明：
+- 本脚本当前只读取 SQLite `threads.model`，返回的是该 thread 最近一次已持久化的 model。
+- 如果在同一个 session 里刚切换 model，但切换后的 thread 状态还没有完成持久化，
+  这里读到的仍然可能是切换前的旧 model。
+- 因此，这个脚本更适合表达“最近一次已持久化的 model”，而不是“当前执行时绝对最新的 model”。
+"""
 
 from __future__ import annotations
 
@@ -94,48 +101,8 @@ def model_from_state_db(thread_id: str, sqlite_home: Path) -> str | None:
     return None
 
 
-def rollout_candidates(codex_home: Path, thread_id: str) -> list[Path]:
-    """在 Codex home 下查找 thread 对应的 rollout 文件。"""
-
-    pattern = f"rollout-*{thread_id}.jsonl"
-    return sorted(codex_home.rglob(pattern), reverse=True)
-
-
-def model_from_rollout(path: Path) -> str | None:
-    """从 rollout 文件尾部最近的 `TurnContext` 中提取 model。"""
-
-    try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return None
-
-    for line in reversed(lines):
-        trimmed = line.strip()
-        if not trimmed:
-            continue
-
-        try:
-            payload = json.loads(trimmed)
-        except json.JSONDecodeError:
-            continue
-
-        item = payload.get("item")
-        if not isinstance(item, dict) or item.get("type") != "turn_context":
-            continue
-
-        turn_context = item.get("payload")
-        if not isinstance(turn_context, dict):
-            continue
-
-        model = turn_context.get("model")
-        if isinstance(model, str) and model.strip():
-            return model.strip()
-
-    return None
-
-
 def resolve_model_name(thread_id: str) -> str:
-    """优先从 SQLite，再从 rollout 中解析 model 名。"""
+    """从 SQLite state DB 中解析 thread 最近一次已持久化的 model 名。"""
 
     codex_home = resolve_codex_home()
     sqlite_home = resolve_sqlite_home(codex_home)
@@ -143,11 +110,6 @@ def resolve_model_name(thread_id: str) -> str:
     model = model_from_state_db(thread_id, sqlite_home)
     if model:
         return model
-
-    for rollout_path in rollout_candidates(codex_home, thread_id):
-        model = model_from_rollout(rollout_path)
-        if model:
-            return model
 
     raise RuntimeError(f"failed to resolve model_name for CODEX_THREAD_ID={thread_id}")
 
