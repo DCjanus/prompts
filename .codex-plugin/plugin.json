@@ -1,10 +1,10 @@
 {
-  "name": "prompts-personal",
+  "name": "dcjanus-personal",
   "version": "0.1.0",
   "description": "DCjanus 的个人 skill 集合。",
   "skills": "./skills",
   "interface": {
-    "displayName": "Prompts Personal",
+    "displayName": "DCjanus Personal",
     "shortDescription": "DCjanus 的个人 skill 集合。",
     "longDescription": "收纳 DCjanus 日常在 Codex 中使用的个人 skills 与相关提示词。",
     "developerName": "DCjanus",
