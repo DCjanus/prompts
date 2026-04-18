@@ -1,0 +1,20 @@
+{
+  "name": "prompts-personal",
+  "version": "0.1.0",
+  "description": "DCjanus personal Codex skills and prompt helpers.",
+  "skills": "./skills",
+  "interface": {
+    "displayName": "Prompts Personal",
+    "shortDescription": "Personal Codex skills and prompt helpers.",
+    "longDescription": "Personal Codex skill collection for day-to-day engineering, research, and local workflow automation.",
+    "developerName": "DCjanus",
+    "category": "Productivity",
+    "capabilities": [
+      "Skills"
+    ],
+    "defaultPrompt": [
+      "Use my personal Codex skills for this task.",
+      "Prefer my local prompt helpers when they fit the request."
+    ]
+  }
+}
