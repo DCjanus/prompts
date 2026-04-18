@@ -6,18 +6,17 @@
 
 ## 使用方式
 
-我当前在 fish 里使用三条 Codex alias（定义在 `~/.config/fish/config.fish`）：
+我当前在 fish 里使用两条 Codex alias（定义在 `~/.config/fish/config.fish`）：
 
 ```fish
-alias codex='env EDITOR="zed --wait --new" command codex --dangerously-bypass-approvals-and-sandbox -m gpt-5.4 -c model_reasoning_effort="medium"'
-alias codex_deep='env EDITOR="zed --wait --new" command codex --dangerously-bypass-approvals-and-sandbox -m gpt-5.4 -c model_reasoning_effort="high"'
-alias codex_tmp='env EDITOR="zed --wait --new" command codex --dangerously-bypass-approvals-and-sandbox -C /tmp -m gpt-5.4 -c model_reasoning_effort="medium"'
+alias codex='env EDITOR="zed --wait --new" command codex --dangerously-bypass-approvals-and-sandbox'
+alias codex_tmp='env EDITOR="zed --wait --new" command codex --dangerously-bypass-approvals-and-sandbox -C /tmp'
 ```
 
 这样配置的原因：
 
 - `EDITOR="zed --wait --new"`：让 Codex 在需要打开编辑器时统一使用 zed，并等待编辑器关闭后再继续，便于我直接用鼠标做复制粘贴和局部修改。
-- 手动 `-m` 指定模型：我使用的是 API 接入 Codex。新模型发布后的前几周，常常不会立刻出现在 API 的 model list 里；但我用的中转服务一般会及时支持这些模型，所以会直接手动指定模型名。
+- `codex_tmp` 额外带上 `-C /tmp`：需要临时开新会话、做一次性实验或避免把工作目录绑在当前仓库时，我会直接切到 `/tmp` 启动。
 
 我当前在 `~/.codex/config.toml` 里还会额外配置 TUI 主题和通知：
 
@@ -59,5 +58,4 @@ notification_method = "bel"
 | [`github-cli`](skills/github-cli/SKILL.md) | GitHub CLI 使用指引，面向 GitHub 资源交互（如 repo、issue、PR、comment、release、workflow） |
 | [`gitlab-cli`](skills/gitlab-cli/SKILL.md) | GitLab CLI（glab）使用指引，面向 GitLab 资源交互（如 project、issue、MR、comment、wiki） |
 | [`golang-lo`](skills/golang-lo/SKILL.md) | Go >= 1.18 项目中希望用 samber/lo（Lodash 风格泛型库）简化集合/映射/字符串、错误处理、重试/节流/防抖、通道并发或指针空值场景时使用。 |
-| [`pwdebug`](skills/pwdebug/SKILL.md) | 用于需要通过命令行操作真实浏览器实例进行前端调试（如导航、执行 JS、截图、元素拾取、控制台日志）且希望跨多次命令复用同一浏览器会话的场景。 |
 | [`ticktick-cli`](skills/ticktick-cli/SKILL.md) | 使用 Python CLI 与 Dida365 Open API 交互以管理滴答清单任务/项目，适用于需要通过脚本或命令行调用滴答清单接口的场景（如项目/任务的查询、创建、更新、完成、删除）。 |
