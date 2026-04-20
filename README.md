@@ -41,7 +41,7 @@ notification_method = "bel"
 
 - [`AGENTS.md`](AGENTS.md)：Codex 中所有代理共享的基础约束与工作流
 - [`skills/`](skills)：按功能分类的技能库，详情见下方技能列表
-- [`scripts/`](scripts)：放置 uv script 模式的工具脚本（规范见 [SKILL.md（create-skill）](skills/create-skill/SKILL.md) 的 scripts 章节）
+- [`scripts/`](scripts)：放置 uv script 模式的工具脚本（规范见 [SKILL.md（uv-cli-creator）](skills/uv-cli-creator/SKILL.md)）
   - [`token_count.py`](scripts/token_count.py)：基于 [tiktoken](https://github.com/openai/tiktoken) 的 token 计数 CLI
   - [`token_tree.py`](scripts/token_tree.py)：统计仓库内所有 Git 跟踪文本文件的 token 数，按树状结构输出；支持全局比例进度条、对齐条形显示与百分比，可用 `--bar-width` 调整条形宽度
 
@@ -51,7 +51,7 @@ notification_method = "bel"
 | --- | --- |
 | [`codex-session-reader`](skills/codex-session-reader/SKILL.md) | 读取 Codex 的单个 session/thread；当已知 thread id 且需要查看或摘要会话内容时使用。 |
 | [`confluence-cli`](skills/confluence-cli/SKILL.md) | 查询、检索与阅读 Confluence 文档/页面。 |
-| [`create-skill`](skills/create-skill/SKILL.md) | 当你要创建/新增一个 skill，或重写/更新某个 skill 的 SKILL.md（结构、约定、模板）时使用。 |
+| [`uv-cli-creator`](skills/uv-cli-creator/SKILL.md) | 为本仓库创建或修改 uv --script 风格的 Python CLI；当需要把重复命令封装成 `./scripts/...` 直接执行的工具时使用。 |
 | [`dcjanus-preferences`](skills/dcjanus-preferences/SKILL.md) | 记录 DCjanus 在不同语言中偏好的第三方库与使用场景，供 AI 在选型、引入依赖或替换库时优先参考。适用于 Python/Rust/Go 的库选择、技术方案对比、或需要遵循 DCjanus 个人偏好进行开发的场景。 |
 | [`fetch-url`](skills/fetch-url/SKILL.md) | 获取并提取链接正文（默认 Markdown）；内置 X/Twitter URL 处理，提升受限页面的抓取成功率。 |
 | [`git-commit`](skills/git-commit/SKILL.md) | 处理 git 提交/推送/分支命名与提交信息规范；当任务涉及 commit、push、起分支或整理 commit message 时使用。 |

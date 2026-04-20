@@ -3,125 +3,92 @@ name: gitlab-cli
 description: 使用 GitLab CLI（glab）与 GitLab 资源交互；适用于 project、issue、MR、comment、wiki 等查看、更新或创建场景，含自建实例。
 ---
 
-# GitLab CLI Skill
+## 使用约定
 
-一句话说明：当任务核心是“和 GitLab 打交道”时，优先使用 `glab`，而不是把范围局限在 MR/Issue。
+说明：以下脚本调用均以当前 `SKILL.md` 所在文件夹为 workdir。
 
-## MR Review
-- 优先读取 MR discussions / notes / diff comments，再做统一整理。
-- 必要时可以查看本地对应分支的代码；查看前先 `git fetch`，确保分支是最新远端状态。
-- 当用户要求整理 MR 审查意见时，按严重程度从高到低排列，数字编号，方便用户回复。
-- 每次最多展示 10 条；若还有更多，在末尾提示“还剩 N 条未展示”。
+脚本调用方式（必须直接当作可执行命令运行，不要用 `uv run python` 或 `python`）：
 
-## 基本准备
-- 确认身份与认证：
-  - `glab auth status` 读取当前实例及 “Logged in to <host> as <user>” 行。
-  - 直接取用户名：`GITLAB_HOST=<host> glab api /user | jq -r '.username'`（依赖本机 `jq`，若已设全局 `GITLAB_HOST` 可直接 `glab api /user`）。
-  - 自建实例优先通过环境变量 `GITLAB_HOST` 指定；如需单次覆盖，可在命令前加 `GITLAB_HOST=<host>` 或用 `-R group/project`。
-- 输出格式默认够用；若需机器可读，优先使用该子命令帮助里声明的格式参数，通常是 `--output json` 或 `-F json`。
-- `glab` 不同子命令的参数风格不完全统一；不要默认假设所有命令都支持 `--json`，先看 `glab <group> <subcommand> --help`。
-- 创建 MR 或 Issue 成功后，在终端**单独一行**输出 CLI 返回的完整 URL。
-
-## 常用场景
-- project、issue、MR、comment、wiki 等资源，优先先用 `glab <group> --help` 确认是否有现成子命令，再执行。
-- 若 `glab` 没有直接子命令，但 GitLab API 支持该资源，优先改用 `glab api ...`。
-
-## Issue 快速查看
-- 只看正文：`glab issue view <id|url>`.
-- 带讨论：`glab issue view <id|url> --comments`（必要时加 `--system-logs`）。
-- 列表：`glab issue list --state opened --per-page 50 [-R group/project]`；过滤标签用 `--label foo,bar`。
-- 添加评论：`glab issue note <id> -m "comment"`。
-
-## MR 快速查看
-- MR 概览（按需取字段）：`glab mr view <id|branch|url> --output json | jq -r '.title,.state,.author.username,.web_url,.description'`。
-- 查看 diff：`glab mr diff <id|branch> --color=never`；需要原始 patch 用 `--raw`。
-- 相关 issue：`glab mr issues <id>`。
-
-## Wiki
-- 先检查命令：`glab wiki --help`
-- 若当前版本没有直接的 `wiki` 子命令，改用 `glab api` 访问对应项目 wiki API。
-- 访问前先确认 project 路径或 `project_id`；自建实例场景优先显式设置 `GITLAB_HOST=<host>`。
-
-## 创建前检查
-在创建 Issue 或 MR 前，先检查对应的 GitLab 模板、表单和当前资源状态。
-1. 优先检查 `.gitlab/merge_request_templates/`、`.gitlab/issue_templates/` 等 GitLab 专用模板；若仓库明确混用 GitHub 模板或在其它文件中引用等价模板，再按实际情况补查。
-2. 若仓库要求特定标题格式、描述模板、关联 issue、检查项、标签、目标分支或其它平台字段，先按要求准备，再补充本 skill 的默认格式。
-3. 在正式创建前检查当前代码、分支与提交状态是否和准备提交到平台上的内容一致，避免创建出与现状不符的 Issue 或 MR。
-## 创建 MR（非交互）
-以下标题与描述规范为默认推荐格式；如与团队/仓库/平台等既有约束冲突，以既有约束为准。若有明确要求（如需中文），则优先遵循；未覆盖的部分再按本规范补齐。
-1) 先完成“创建前检查”。  
-2) 只有在确认仓库要求与本地代码/提交状态都满足后，才创建 MR；若发现不满足，应先修正，再创建。  
-3) 当前分支必须已推送，且 `git status` 干净。  
-4) 标题风格：英文、遵循语义化提交规范（如 `feat(scope): short summary`），保持简洁且描述核心目的；即使标题要求中文，语义化前缀（如 `feat`、`fix`）仍需英文。  
-5) 描述风格：英文、短句和项目符号，优先让不看代码的读者快速理解动机、改动与验证方式。重点是 what/why/validation，避免流水账与过多实现细节。若上下文不足以明确目标或约束，应主动向开发者确认后再撰写。涉及专有名词、函数名、方法名、类名、API 名称或配置键时，使用 inline code（反引号）包裹以提升可读性与准确性。  
-6) 默认正文格式：
-- `## Why`：1-2 条短句说明为什么要做这次改动，聚焦问题背景或目标。
-- `## What`：1-3 条说明主要变更，聚焦功能或行为层面的变化，不罗列琐碎实现细节。
-7) 可选正文块：仅在确有必要时再添加。
-- `## Validation`：说明验证方式、命令或场景；未验证需注明原因。
-- `## Risks`：兼容性影响、潜在风险、回滚注意事项。
-- `## Notes`：reviewers 需要特别关注的点，或后续计划。
-8) 特别强调：描述应聚焦 MR 合并前后系统的变化与影响，避免记录开发中的中间过程或修改步骤。
-9) MR 正文默认先写到本地 Markdown 文件；草稿优先放 `/tmp/*.md`。
-
-MR 常用 API 字段：
-| 字段 | 作用 |
-| --- | --- |
-| `title` | MR 标题；draft MR 用 `Draft:` / `[Draft]` / `(Draft)` 前缀 |
-| `description` | MR 正文；本地草稿用 `-F description=@/tmp/mr-body.md` |
-| `source_branch` | 源分支名 |
-| `target_branch` | 目标分支名 |
-| `labels` | 标签，逗号分隔 |
-| `remove_source_branch` | 合并后删除源分支 |
-| `squash` | 合并时 squash commits |
-| `reviewer_ids` | reviewer 用户 ID 列表 |
-| `assignee_ids` | assignee 用户 ID 列表 |
-| `milestone_id` | 里程碑 ID |
+```bash
+cd skills/gitlab-cli && ./scripts/gitlab_cli.py --help
 ```
-glab api projects/:id/merge_requests \
-  --method POST \
-  -F source_branch="$(git branch --show-current)" \
-  -F target_branch=main \
-  -F title="Draft: feat(scope): short summary" \
-  -F description=@/tmp/mr-body.md
+
+错误示例：
+
+```bash
+uv run python skills/gitlab-cli/scripts/gitlab_cli.py --help
+python skills/gitlab-cli/scripts/gitlab_cli.py --help
 ```
-- 修改已建 MR：`glab api projects/:id/merge_requests/<iid> --method PUT -F title="Draft: ..." -F description=@/tmp/mr-body.md`。
-- API 文档：[Merge requests API](https://docs.gitlab.com/api/merge_requests/)
 
-## Issue 创建（非交互）
-以下规范建立在“创建前检查”已完成的前提上。
-- 若仓库要求 issue 必须包含特定字段、标签、复现步骤、版本信息、最小示例或分类，先据此整理内容；不要跳过必填项。
-- 若 issue 与当前本地改动或分支上下文有关，先检查相关代码、分支与提交信息，确认 issue 描述与现状一致，不要提交已经过时或与代码不符的内容。
-- Issue 正文默认先写到本地 Markdown 文件；草稿优先放 `/tmp/*.md`。
+- 目标 GitLab 仓库不是当前目录时，用 `--cwd <repo>` 指定实际执行目录。
+- 自建实例需要覆盖默认 host 时，用 `--hostname <host>`。
+- 不在目标仓库里、或当前目录不是 GitLab 仓库时，用 `--project <id|group/project>` 显式指定项目。
 
-Issue 常用 API 字段：
-| 字段 | 作用 |
-| --- | --- |
-| `title` | Issue 标题 |
-| `description` | Issue 正文；本地草稿用 `-F description=@/tmp/issue-body.md` |
-| `labels` | 标签，逗号分隔 |
-| `assignee_ids` | assignee 用户 ID 列表 |
-| `milestone_id` | 里程碑 ID |
-| `confidential` | 是否私密 |
-| `due_date` | 截止日期，格式 `YYYY-MM-DD` |
+## 什么时候直接用 glab
+
+- 查看与列表：`glab issue view`、`glab issue list`、`glab mr view`、`glab mr diff`
+- 评论：`glab issue note`
+- 审查意见整理：先读 MR discussions / notes / diff comments，再统一整理
+- 先确认能力边界：`glab <group> --help`、`glab <group> <subcommand> --help`
+- wiki：先看 `glab wiki --help`；若当前版本没有子命令，再考虑 `glab api`
+
+## 什么时候用脚本
+
+- 需要非交互地创建或更新 MR / Issue
+- 需要稳定地做 GitLab CI lint，而不是临时拼 `glab api` 参数
+- 需要同时指定 `--cwd`、`--hostname`、`--project`
+- 需要机器可读输出时，直接加 `--json`
+
+脚本入口：运行 [gitlab_cli.py](scripts/gitlab_cli.py)
+
+## 常用子命令
+
+- CI 校验：
+
+```bash
+./scripts/gitlab_cli.py ci lint --cwd /path/to/repo
+./scripts/gitlab_cli.py ci lint --cwd /path/to/repo --project group/project --ref main --dry-run --include-jobs
 ```
-glab api projects/:id/issues \
-  --method POST \
-  -F title="feat: short summary" \
-  -F description=@/tmp/issue-body.md
+
+- 创建 MR：
+
+```bash
+./scripts/gitlab_cli.py mr create \
+  --cwd /path/to/repo \
+  --title "feat(scope): short summary" \
+  --target-branch main \
+  --description-file /tmp/mr-body.md
 ```
-- 修改已建 Issue：`glab api projects/:id/issues/<iid> --method PUT -F title="..." -F description=@/tmp/issue-body.md`。
-- API 文档：[Issues API](https://docs.gitlab.com/api/issues/)
 
-## 常见选项速记
-- `-R group/project`：指定自建实例项目，等价于完整 URL。
-- `--per-page` 与 `--page`：分页查看列表或评论时使用。
+- 更新 MR：
 
-## 更新 Issue/MR 标题或描述（前置要求）
-在更新 Issue 或 MR 的标题/描述之前，必须先读取当前标题/正文（即将被修改的内容），再进行修改。
+```bash
+./scripts/gitlab_cli.py mr update \
+  --cwd /path/to/repo \
+  123 \
+  --description-file /tmp/mr-body.md
+```
 
-## 冷门参数怎么查
-- `glab --help`
-- `glab <group> --help`
-- `glab <group> <subcommand> --help`
-- API 字段不明确时：`glab api --help`
+- 创建 Issue：
+
+```bash
+./scripts/gitlab_cli.py issue create \
+  --cwd /path/to/repo \
+  --title "short summary" \
+  --description-file /tmp/issue-body.md
+```
+
+- 更新 Issue：
+
+```bash
+./scripts/gitlab_cli.py issue update \
+  --cwd /path/to/repo \
+  456 \
+  --title "updated title"
+```
+
+## 创建或更新前
+
+- 更新 Issue 或 MR 标题/正文前，先读取当前内容，再修改。
+- 创建 MR 前，先检查模板、目标分支、当前分支与工作区状态是否符合仓库要求。
+- 创建 Issue 前，先检查模板、标签、复现信息与现状是否一致。
