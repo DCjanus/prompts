@@ -237,10 +237,48 @@ ALLOWED_TOKEN_ATTRIBUTES = {
     "ordered_list_open": {"start"},
 }
 
+CONFLUENCE_CODE_LANGUAGE_ALIASES = {
+    "bash": "shell",
+    "console": "shell",
+    "fish": "shell",
+    "js": "javascript",
+    "proto": "protobuf",
+    "protobuf": "protobuf",
+    "py": "python",
+    "rb": "ruby",
+    "shell": "shell",
+    "sh": "shell",
+    "text": "plaintext",
+    "ts": "typescript",
+    "tsx": "tsx",
+    "yml": "yaml",
+    "zsh": "shell",
+}
+
 
 def escape_text(text: str) -> str:
     """转义普通文本。"""
     return html.escape(text, quote=False)
+
+
+def wrap_cdata(text: str) -> str:
+    """将文本包装成可安全嵌入 XML 的 CDATA。"""
+    return "<![CDATA[" + text.replace("]]>", "]]]]><![CDATA[>") + "]]>"
+
+
+def normalize_confluence_code_language(info: str) -> str | None:
+    """将 Markdown fence 的语言标记映射为 Confluence code macro 参数。"""
+    if not info:
+        return None
+    language = info.split(None, 1)[0].strip().lower()
+    if not language:
+        return None
+    return CONFLUENCE_CODE_LANGUAGE_ALIASES.get(language, language)
+
+
+def should_collapse_code_block(content: str) -> bool:
+    """仅对较长代码块默认折叠。"""
+    return len(content.splitlines()) > 5
 
 
 def strip_leading_title_heading(markdown: str) -> str:
@@ -429,10 +467,21 @@ def render_inline_tokens(
 
 def render_fence_token(token: Token) -> str:
     """渲染围栏代码块。"""
-    info = token.info.strip()
-    language = info.split(None, 1)[0] if info else ""
-    language_attr = f' class="language-{html.escape(language)}"' if language else ""
-    return f"<pre><code{language_attr}>{escape_text(token.content)}</code></pre>"
+    language = normalize_confluence_code_language(token.info.strip())
+    params: list[str] = []
+    if should_collapse_code_block(token.content):
+        params.append('<ac:parameter ac:name="collapse">true</ac:parameter>')
+    if language:
+        params.append(
+            f'<ac:parameter ac:name="language">{html.escape(language)}</ac:parameter>'
+        )
+    body = wrap_cdata(token.content)
+    return (
+        '<ac:structured-macro ac:name="code" ac:schema-version="1">'
+        + "".join(params)
+        + f"<ac:plain-text-body>{body}</ac:plain-text-body>"
+        + "</ac:structured-macro>"
+    )
 
 
 def render_block_tokens(
@@ -482,7 +531,7 @@ def render_block_tokens(
             index += 1
             continue
         if token.type == "code_block":
-            parts.append(f"<pre><code>{escape_text(token.content)}</code></pre>")
+            parts.append(render_fence_token(token))
             index += 1
             continue
         if token.type == "hr":

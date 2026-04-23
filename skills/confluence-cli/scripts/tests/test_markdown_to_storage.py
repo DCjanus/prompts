@@ -143,7 +143,52 @@ class MarkdownToStorageTest(unittest.TestCase):
 
     def test_supports_fenced_code_blocks(self):
         markdown = "```text\nhello <world>\n```"
-        expected = '<pre><code class="language-text">hello &lt;world&gt;\n</code></pre>'
+        expected = (
+            '<ac:structured-macro ac:name="code" ac:schema-version="1">'
+            '<ac:parameter ac:name="language">plaintext</ac:parameter>'
+            "<ac:plain-text-body><![CDATA[hello <world>\n]]></ac:plain-text-body>"
+            "</ac:structured-macro>"
+        )
+        self.assertEqual(self.render(markdown), expected)
+
+    def test_supports_common_language_aliases_for_code_blocks(self):
+        markdown = "```bash\necho hi\n```"
+        expected = (
+            '<ac:structured-macro ac:name="code" ac:schema-version="1">'
+            '<ac:parameter ac:name="language">shell</ac:parameter>'
+            "<ac:plain-text-body><![CDATA[echo hi\n]]></ac:plain-text-body>"
+            "</ac:structured-macro>"
+        )
+        self.assertEqual(self.render(markdown), expected)
+
+    def test_supports_indented_code_blocks_without_language(self):
+        markdown = "    hello <world>\n"
+        expected = (
+            '<ac:structured-macro ac:name="code" ac:schema-version="1">'
+            "<ac:plain-text-body><![CDATA[hello <world>\n]]></ac:plain-text-body>"
+            "</ac:structured-macro>"
+        )
+        self.assertEqual(self.render(markdown), expected)
+
+    def test_long_code_blocks_default_to_collapsed(self):
+        markdown = "```text\n1\n2\n3\n4\n5\n6\n```"
+        expected = (
+            '<ac:structured-macro ac:name="code" ac:schema-version="1">'
+            '<ac:parameter ac:name="collapse">true</ac:parameter>'
+            '<ac:parameter ac:name="language">plaintext</ac:parameter>'
+            "<ac:plain-text-body><![CDATA[1\n2\n3\n4\n5\n6\n]]></ac:plain-text-body>"
+            "</ac:structured-macro>"
+        )
+        self.assertEqual(self.render(markdown), expected)
+
+    def test_code_blocks_escape_cdata_terminator(self):
+        markdown = "```xml\nbefore ]]> after\n```"
+        expected = (
+            '<ac:structured-macro ac:name="code" ac:schema-version="1">'
+            '<ac:parameter ac:name="language">xml</ac:parameter>'
+            "<ac:plain-text-body><![CDATA[before ]]]]><![CDATA[> after\n]]></ac:plain-text-body>"
+            "</ac:structured-macro>"
+        )
         self.assertEqual(self.render(markdown), expected)
 
     def test_local_relative_links_become_attachments(self):
