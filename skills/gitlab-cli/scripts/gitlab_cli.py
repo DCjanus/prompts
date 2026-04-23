@@ -114,18 +114,6 @@ def read_text(path: Path) -> str:
         raise RuntimeError(f"failed to read file: {path}") from exc
 
 
-def resolve_description(
-    description: str | None, description_file: Path | None
-) -> str | None:
-    """解析 description 文本来源。"""
-
-    if description and description_file:
-        raise RuntimeError("use either --description or --description-file, not both")
-    if description_file:
-        return read_text(description_file)
-    return description
-
-
 def ensure_payload_fields(payload: dict[str, object]) -> dict[str, object]:
     """移除值为 `None` 的字段，并确保剩余字段非空。"""
 
@@ -310,7 +298,6 @@ def mr_create(
     source_branch: str | None = typer.Option(
         None, "--source-branch", help="源分支。未提供时自动读取当前分支。"
     ),
-    description: str | None = typer.Option(None, "--description", help="MR 正文。"),
     description_file: Path | None = typer.Option(
         None, "--description-file", resolve_path=True, help="从文件读取 MR 正文。"
     ),
@@ -347,7 +334,7 @@ def mr_create(
                 "title": resolved_title,
                 "target_branch": target_branch,
                 "source_branch": source_branch or current_branch(cwd),
-                "description": resolve_description(description, description_file),
+                "description": read_text(description_file) if description_file else None,
                 "labels": ",".join(label) if label else None,
                 "reviewer_ids": reviewer_id or None,
                 "assignee_ids": assignee_id or None,
@@ -389,9 +376,6 @@ def mr_update(
     ),
     hostname: str | None = typer.Option(None, "--hostname", help="GitLab 实例 host。"),
     title: str | None = typer.Option(None, "--title", help="新的 MR 标题。"),
-    description: str | None = typer.Option(
-        None, "--description", help="新的 MR 正文。"
-    ),
     description_file: Path | None = typer.Option(
         None, "--description-file", resolve_path=True, help="从文件读取新的 MR 正文。"
     ),
@@ -422,7 +406,7 @@ def mr_update(
         payload = ensure_payload_fields(
             {
                 "title": title,
-                "description": resolve_description(description, description_file),
+                "description": read_text(description_file) if description_file else None,
                 "labels": "" if clear_labels else ",".join(label) if label else None,
                 "reviewer_ids": reviewer_id or None,
                 "assignee_ids": assignee_id or None,
@@ -459,7 +443,6 @@ def issue_create(
         dir_okay=True,
         help="让 glab 在哪个仓库目录下执行。",
     ),
-    description: str | None = typer.Option(None, "--description", help="Issue 正文。"),
     description_file: Path | None = typer.Option(
         None, "--description-file", resolve_path=True, help="从文件读取 Issue 正文。"
     ),
@@ -486,7 +469,7 @@ def issue_create(
         payload = ensure_payload_fields(
             {
                 "title": title,
-                "description": resolve_description(description, description_file),
+                "description": read_text(description_file) if description_file else None,
                 "labels": ",".join(label) if label else None,
                 "assignee_ids": assignee_id or None,
                 "milestone_id": milestone_id,
@@ -527,9 +510,6 @@ def issue_update(
     ),
     hostname: str | None = typer.Option(None, "--hostname", help="GitLab 实例 host。"),
     title: str | None = typer.Option(None, "--title", help="新的 Issue 标题。"),
-    description: str | None = typer.Option(
-        None, "--description", help="新的 Issue 正文。"
-    ),
     description_file: Path | None = typer.Option(
         None,
         "--description-file",
@@ -560,7 +540,7 @@ def issue_update(
         payload = ensure_payload_fields(
             {
                 "title": title,
-                "description": resolve_description(description, description_file),
+                "description": read_text(description_file) if description_file else None,
                 "labels": "" if clear_labels else ",".join(label) if label else None,
                 "assignee_ids": assignee_id or None,
                 "milestone_id": milestone_id,
