@@ -49,58 +49,32 @@ python skills/git-commit/scripts/codex_git_commit.py
 - 如果遇到 `.git/index.lock`，先判断是否有其他活跃 Git 进程。
 - 用 shell 执行 `git commit -m ...` 时，不要在提交标题或正文里直接放未转义的反引号 `` ` ``。
 
-### 多 Agent 并行提交时的隔离方案
+### 多 Agent 共用 worktree 时的选择性提交
 
-当多个 Agent 可能同时在同一个 worktree 里准备提交时，提交阶段用仓库级锁串行化，仍然走普通 `git commit --only`。
+当同一个 worktree 里可能存在其他 Agent 或用户的未提交改动时，默认使用 `git commit --only` 做选择性提交，不依赖暂存区。
 
 推荐流程：
 
 ```bash
 git status -sb
 git diff --name-only
-git diff --cached --name-only
 
-(
-  lock_dir="$(git rev-parse --git-path codex-commit.lock.d)"
-  while ! mkdir "$lock_dir" 2>/dev/null; do
-    sleep 1
-  done
-  trap 'rmdir "$lock_dir"' EXIT
+(cd <skill_dir> && ./scripts/codex_git_commit.py)
 
-  git status -sb
-  git diff --cached --name-only
+git commit --only \
+  -m "type(scope): concise summary" \
+  -m "Assisted-by: <agent-name>:<model-name>" \
+  -- <paths-owned-by-current-task>
 
-  git add -- <paths-owned-by-current-task>
-
-  (cd <skill_dir> && ./scripts/codex_git_commit.py)
-
-  git commit --only \
-    -m "type(scope): concise summary" \
-    -m "Assisted-by: <agent-name>:<model-name>" \
-    -- <paths-owned-by-current-task>
-
-  git show --name-status --oneline --no-renames HEAD
-)
+git show --name-status --oneline --no-renames HEAD
 ```
 
 要求：
 
 - `<paths-owned-by-current-task>` 必须只包含当前任务负责的文件。
-- 只有加锁后的提交阶段可以写真实 index；读代码、改文件、跑测试不需要持有这把锁。
-- 锁目录通过 `git rev-parse --git-path` 放在当前仓库的 `.git` 目录下；如果上一次进程异常退出留下锁目录，确认没有其他提交进程后再手工删除。
-- 如果真实暂存区已有无关文件，不要执行 `git restore --staged :/` 这类全局操作。
-- 如果当前任务文件里混有用户或其他 Agent 的改动，先停止并说明冲突，不要强行拆提交。
-- 如果 `git commit --only` 因为 `HEAD` 已变化而无法直接提交，重新检查当前任务 diff，确认仍然只包含自己的改动后再重试。
-
-如果确认只有一个 Agent 在操作当前 worktree，也可以使用普通流程：
-
-```bash
-git add -- <paths-owned-by-current-task>
-git commit --only \
-  -m "type(scope): concise summary" \
-  -m "Assisted-by: <agent-name>:<model-name>" \
-  -- <paths-owned-by-current-task>
-```
+- 不要为了提交当前任务去清理、reset、restore 或 stash 无关文件。
+- 默认不需要提前 `git add`；`git commit --only -- <paths>` 会直接提交这些路径的当前工作区内容。
+- 如果同一个文件里混有用户或其他 Agent 的改动，先停止并说明情况，不要强行提交。
 
 ## 示例
 
@@ -108,7 +82,6 @@ git commit --only \
 
 ```bash
 git status -sb
-git add <paths>
 (cd <skill_dir> && ./scripts/codex_git_commit.py)
-git commit -m "fix(scope): concise summary" -m "Assisted-by: <agent-name>:<model-name>"
+git commit --only -m "fix(scope): concise summary" -m "Assisted-by: <agent-name>:<model-name>" -- <paths>
 ```
