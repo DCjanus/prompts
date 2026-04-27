@@ -49,9 +49,9 @@ python skills/git-commit/scripts/codex_git_commit.py
 - 如果遇到 `.git/index.lock`，先判断是否有其他活跃 Git 进程。
 - 用 shell 执行 `git commit -m ...` 时，不要在提交标题或正文里直接放未转义的反引号 `` ` ``。
 
-### 多 Agent 共用 worktree 时的选择性提交
+### 选择性提交
 
-当同一个 worktree 里可能存在其他 Agent 或用户的未提交改动时，默认使用 `git commit --only` 做选择性提交，不依赖暂存区。
+默认使用 `git commit --only` 做选择性提交，不依赖暂存区，避免混入无关文件。
 
 推荐流程：
 
@@ -74,6 +74,7 @@ git show --name-status --oneline --no-renames HEAD
 - `<paths-owned-by-current-task>` 必须只包含当前任务负责的文件。
 - 不要为了提交当前任务去清理、reset、restore 或 stash 无关文件。
 - 默认不需要提前 `git add`；`git commit --only -- <paths>` 会直接提交这些路径的当前工作区内容。
+- 多个 Agent 共用同一个 worktree 时，也按这个流程执行。
 - 如果同一个文件里混有用户或其他 Agent 的改动，先停止并说明情况，不要强行提交。
 
 ## 示例
