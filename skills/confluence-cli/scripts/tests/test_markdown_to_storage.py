@@ -1,5 +1,7 @@
 import importlib.util
+import struct
 import sys
+import tempfile
 import types
 from pathlib import Path
 import unittest
@@ -114,6 +116,14 @@ class MarkdownToStorageTest(unittest.TestCase):
         rendered = self.cli.markdown_to_storage(markdown, attachment_map, **kwargs)
         return rendered, attachment_map
 
+    def write_png(self, path: Path, width: int, height: int) -> None:
+        path.write_bytes(
+            b"\x89PNG\r\n\x1a\n"
+            + b"\x00\x00\x00\rIHDR"
+            + struct.pack(">II", width, height)
+            + b"\x08\x02\x00\x00\x00"
+        )
+
     def test_paragraph_followed_by_heading(self):
         markdown = "Hello world\n\n# Title"
         expected = "<p>Hello world</p>\n<h1>Title</h1>"
@@ -210,6 +220,73 @@ class MarkdownToStorageTest(unittest.TestCase):
         self.assertEqual(
             rendered,
             '<p><ac:image ac:alt="diagram"><ri:attachment ri:filename="diagram.png" /></ac:image></p>',
+        )
+        self.assertEqual(attachment_map, {"diagram.png": "./diagram.png"})
+
+    def test_large_wide_local_images_get_width_limit(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base_dir = Path(temp_dir)
+            self.write_png(base_dir / "diagram.png", 1800, 900)
+            rendered, attachment_map = self.render_with_assets(
+                "![diagram](./diagram.png)",
+                attachment_base_dir=base_dir,
+            )
+        self.assertEqual(
+            rendered,
+            '<p><ac:image ac:alt="diagram" ac:width="1000"><ri:attachment ri:filename="diagram.png" /></ac:image></p>',
+        )
+        self.assertEqual(attachment_map, {"diagram.png": "./diagram.png"})
+
+    def test_local_image_view_box_can_be_customized(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base_dir = Path(temp_dir)
+            self.write_png(base_dir / "diagram.png", 1800, 900)
+            rendered, attachment_map = self.render_with_assets(
+                "![diagram](./diagram.png)",
+                attachment_base_dir=base_dir,
+                image_max_width=1200,
+                image_max_height=600,
+            )
+        self.assertEqual(
+            rendered,
+            '<p><ac:image ac:alt="diagram" ac:width="1200"><ri:attachment ri:filename="diagram.png" /></ac:image></p>',
+        )
+        self.assertEqual(attachment_map, {"diagram.png": "./diagram.png"})
+
+    def test_large_tall_local_images_get_height_limit(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base_dir = Path(temp_dir)
+            self.write_png(base_dir / "diagram.png", 900, 1800)
+            rendered, attachment_map = self.render_with_assets(
+                "![diagram](./diagram.png)",
+                attachment_base_dir=base_dir,
+            )
+        self.assertEqual(
+            rendered,
+            '<p><ac:image ac:alt="diagram" ac:height="800"><ri:attachment ri:filename="diagram.png" /></ac:image></p>',
+        )
+        self.assertEqual(attachment_map, {"diagram.png": "./diagram.png"})
+
+    def test_small_local_images_keep_original_display_size(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base_dir = Path(temp_dir)
+            self.write_png(base_dir / "diagram.png", 640, 360)
+            rendered, attachment_map = self.render_with_assets(
+                "![diagram](./diagram.png)",
+                attachment_base_dir=base_dir,
+            )
+        self.assertEqual(
+            rendered,
+            '<p><ac:image ac:alt="diagram"><ri:attachment ri:filename="diagram.png" /></ac:image></p>',
+        )
+        self.assertEqual(attachment_map, {"diagram.png": "./diagram.png"})
+
+    def test_local_image_size_can_be_overridden_from_title(self):
+        markdown = '![diagram](./diagram.png "confluence-height=500")'
+        rendered, attachment_map = self.render_with_assets(markdown)
+        self.assertEqual(
+            rendered,
+            '<p><ac:image ac:alt="diagram" ac:height="500"><ri:attachment ri:filename="diagram.png" /></ac:image></p>',
         )
         self.assertEqual(attachment_map, {"diagram.png": "./diagram.png"})
 

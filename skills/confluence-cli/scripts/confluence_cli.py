@@ -16,6 +16,7 @@ from __future__ import annotations
 import base64
 import html
 import re
+import struct
 import sys
 import urllib.parse
 import urllib.request
@@ -255,6 +256,9 @@ CONFLUENCE_CODE_LANGUAGE_ALIASES = {
     "zsh": "shell",
 }
 
+DEFAULT_IMAGE_MAX_WIDTH = 1000
+DEFAULT_IMAGE_MAX_HEIGHT = 800
+
 
 def escape_text(text: str) -> str:
     """转义普通文本。"""
@@ -334,6 +338,187 @@ def build_attachment_href(base_url: str, page_id: str, filename: str) -> str:
     return f"{base_url.rstrip('/')}/download/attachments/{page_id}/{encoded_filename}"
 
 
+def parse_positive_int(raw: str, *, field_name: str) -> int:
+    """解析正整数配置。"""
+    try:
+        value = int(raw, 10)
+    except ValueError as exc:
+        raise ApiError(f"Invalid {field_name}: {raw}") from exc
+    if value <= 0:
+        raise ApiError(f"Invalid {field_name}: {raw}")
+    return value
+
+
+def parse_image_title_options(title: str | None) -> dict[str, int | bool]:
+    """解析 Markdown 图片 title 中的 Confluence 展示选项。"""
+    if not title:
+        return {}
+    options: dict[str, int | bool] = {}
+    for part in title.split():
+        if "=" not in part:
+            continue
+        key, raw_value = part.split("=", 1)
+        key = key.strip().lower()
+        value = raw_value.strip()
+        if key == "confluence-width":
+            options["width"] = parse_positive_int(value, field_name=key)
+        elif key == "confluence-height":
+            options["height"] = parse_positive_int(value, field_name=key)
+        elif key == "confluence-size" and value.lower() == "original":
+            options["original"] = True
+    if "width" in options and "height" in options:
+        raise ApiError("Use only one of confluence-width or confluence-height.")
+    return options
+
+
+def read_png_dimensions(data: bytes) -> tuple[int, int] | None:
+    if len(data) >= 24 and data.startswith(b"\x89PNG\r\n\x1a\n") and data[12:16] == b"IHDR":
+        return struct.unpack(">II", data[16:24])
+    return None
+
+
+def read_gif_dimensions(data: bytes) -> tuple[int, int] | None:
+    if len(data) >= 10 and data[:6] in {b"GIF87a", b"GIF89a"}:
+        return struct.unpack("<HH", data[6:10])
+    return None
+
+
+def read_webp_dimensions(data: bytes) -> tuple[int, int] | None:
+    if len(data) < 30 or data[:4] != b"RIFF" or data[8:12] != b"WEBP":
+        return None
+    chunk = data[12:16]
+    if chunk == b"VP8X" and len(data) >= 30:
+        width = int.from_bytes(data[24:27], "little") + 1
+        height = int.from_bytes(data[27:30], "little") + 1
+        return width, height
+    if chunk == b"VP8 " and len(data) >= 30:
+        width = struct.unpack("<H", data[26:28])[0] & 0x3FFF
+        height = struct.unpack("<H", data[28:30])[0] & 0x3FFF
+        return width, height
+    if chunk == b"VP8L" and len(data) >= 25:
+        bits = int.from_bytes(data[21:25], "little")
+        width = (bits & 0x3FFF) + 1
+        height = ((bits >> 14) & 0x3FFF) + 1
+        return width, height
+    return None
+
+
+def read_jpeg_dimensions(path: Path) -> tuple[int, int] | None:
+    try:
+        with path.open("rb") as file:
+            if file.read(2) != b"\xff\xd8":
+                return None
+            while True:
+                marker_prefix = file.read(1)
+                if not marker_prefix:
+                    return None
+                if marker_prefix != b"\xff":
+                    continue
+                marker = file.read(1)
+                while marker == b"\xff":
+                    marker = file.read(1)
+                if not marker:
+                    return None
+                marker_value = marker[0]
+                if marker_value in {0xD8, 0xD9} or 0xD0 <= marker_value <= 0xD7:
+                    continue
+                length_bytes = file.read(2)
+                if len(length_bytes) != 2:
+                    return None
+                segment_length = struct.unpack(">H", length_bytes)[0]
+                if segment_length < 2:
+                    return None
+                if marker_value in {
+                    0xC0,
+                    0xC1,
+                    0xC2,
+                    0xC3,
+                    0xC5,
+                    0xC6,
+                    0xC7,
+                    0xC9,
+                    0xCA,
+                    0xCB,
+                    0xCD,
+                    0xCE,
+                    0xCF,
+                }:
+                    segment = file.read(segment_length - 2)
+                    if len(segment) < 5:
+                        return None
+                    height, width = struct.unpack(">HH", segment[1:5])
+                    return width, height
+                file.seek(segment_length - 2, 1)
+    except OSError:
+        return None
+
+
+def read_image_dimensions(path: Path) -> tuple[int, int] | None:
+    """读取常见图片格式尺寸；失败时返回 None。"""
+    try:
+        data = path.read_bytes()[:64]
+    except OSError:
+        return None
+    return (
+        read_png_dimensions(data)
+        or read_gif_dimensions(data)
+        or read_webp_dimensions(data)
+        or read_jpeg_dimensions(path)
+    )
+
+
+def choose_confluence_image_dimension(
+    width: int,
+    height: int,
+    *,
+    max_width: int,
+    max_height: int,
+) -> tuple[str, int] | None:
+    """按最大展示框选择单个等比缩放维度。"""
+    if width <= 0 or height <= 0:
+        return None
+    width_scale = max_width / width
+    height_scale = max_height / height
+    scale = min(1.0, width_scale, height_scale)
+    if scale >= 1.0:
+        return None
+    if width_scale <= height_scale:
+        return "width", max_width
+    return "height", max_height
+
+
+def render_confluence_image_dimension_attrs(
+    local_target: str,
+    title: str | None,
+    *,
+    attachment_base_dir: Path | None,
+    image_max_width: int,
+    image_max_height: int,
+) -> str:
+    """生成 Confluence 图片展示尺寸属性。"""
+    options = parse_image_title_options(title)
+    if options.get("original"):
+        return ""
+    if "width" in options:
+        return f' ac:width="{options["width"]}"'
+    if "height" in options:
+        return f' ac:height="{options["height"]}"'
+    if attachment_base_dir is None:
+        return ""
+    dimensions = read_image_dimensions(attachment_base_dir / local_target)
+    if dimensions is None:
+        return ""
+    selected = choose_confluence_image_dimension(
+        *dimensions,
+        max_width=image_max_width,
+        max_height=image_max_height,
+    )
+    if selected is None:
+        return ""
+    name, value = selected
+    return f' ac:{name}="{value}"'
+
+
 def get_token_attrs(token: Token) -> dict[str, str]:
     """读取 token 属性。"""
     return dict(token.attrs or {})
@@ -356,6 +541,9 @@ def render_image_token(
     *,
     page_id: str | None,
     base_url: str | None,
+    attachment_base_dir: Path | None,
+    image_max_width: int,
+    image_max_height: int,
 ) -> str:
     """渲染图片 token。"""
     attrs = validate_token_attributes(token)
@@ -364,8 +552,15 @@ def render_image_token(
     local_target = normalize_local_attachment_target(src)
     if local_target is not None:
         filename = register_attachment_reference(attachment_map, src)
+        dimension_attrs = render_confluence_image_dimension_attrs(
+            local_target,
+            attrs.get("title"),
+            attachment_base_dir=attachment_base_dir,
+            image_max_width=image_max_width,
+            image_max_height=image_max_height,
+        )
         return (
-            f'<ac:image ac:alt="{html.escape(alt)}">'
+            f'<ac:image ac:alt="{html.escape(alt)}"{dimension_attrs}>'
             f'<ri:attachment ri:filename="{html.escape(filename)}" /></ac:image>'
         )
     rendered_attrs = [f'src="{html.escape(src)}"']
@@ -383,6 +578,9 @@ def render_inline_tokens(
     *,
     page_id: str | None,
     base_url: str | None,
+    attachment_base_dir: Path | None,
+    image_max_width: int,
+    image_max_height: int,
     stop_type: str | None = None,
     start_index: int = 0,
 ) -> tuple[str, int]:
@@ -416,6 +614,9 @@ def render_inline_tokens(
                     attachment_map,
                     page_id=page_id,
                     base_url=base_url,
+                    attachment_base_dir=attachment_base_dir,
+                    image_max_width=image_max_width,
+                    image_max_height=image_max_height,
                 )
             )
             index += 1
@@ -427,6 +628,9 @@ def render_inline_tokens(
                 attachment_map,
                 page_id=page_id,
                 base_url=base_url,
+                attachment_base_dir=attachment_base_dir,
+                image_max_width=image_max_width,
+                image_max_height=image_max_height,
                 stop_type=token.type.replace("_open", "_close"),
                 start_index=index + 1,
             )
@@ -447,6 +651,9 @@ def render_inline_tokens(
                 attachment_map,
                 page_id=page_id,
                 base_url=base_url,
+                attachment_base_dir=attachment_base_dir,
+                image_max_width=image_max_width,
+                image_max_height=image_max_height,
                 stop_type="link_close",
                 start_index=index + 1,
             )
@@ -490,6 +697,9 @@ def render_block_tokens(
     *,
     page_id: str | None,
     base_url: str | None,
+    attachment_base_dir: Path | None,
+    image_max_width: int,
+    image_max_height: int,
     stop_type: str | None = None,
     start_index: int = 0,
 ) -> tuple[str, int]:
@@ -506,6 +716,9 @@ def render_block_tokens(
                 attachment_map,
                 page_id=page_id,
                 base_url=base_url,
+                attachment_base_dir=attachment_base_dir,
+                image_max_width=image_max_width,
+                image_max_height=image_max_height,
             )
             parts.append(rendered)
             index += 1
@@ -521,6 +734,9 @@ def render_block_tokens(
                 attachment_map,
                 page_id=page_id,
                 base_url=base_url,
+                attachment_base_dir=attachment_base_dir,
+                image_max_width=image_max_width,
+                image_max_height=image_max_height,
                 stop_type=token.type.replace("_open", "_close"),
                 start_index=index + 1,
             )
@@ -553,6 +769,9 @@ def markdown_to_storage(
     *,
     page_id: str | None = None,
     base_url: str | None = None,
+    attachment_base_dir: Path | None = None,
+    image_max_width: int = DEFAULT_IMAGE_MAX_WIDTH,
+    image_max_height: int = DEFAULT_IMAGE_MAX_HEIGHT,
 ) -> str:
     """将 Markdown 解析为 Confluence storage。
 
@@ -566,6 +785,9 @@ def markdown_to_storage(
         attachment_map,
         page_id=page_id,
         base_url=base_url,
+        attachment_base_dir=attachment_base_dir,
+        image_max_width=image_max_width,
+        image_max_height=image_max_height,
     )
     return rendered
 
@@ -946,6 +1168,16 @@ def publish_markdown(
     body_format: BodyFormat = typer.Option(BodyFormat.storage, "--body-format", help="内容格式。"),
     update_if_exists: bool = typer.Option(True, "--update-if-exists", help="存在同名子页面时更新。"),
     expand: str | None = typer.Option(None, "--expand", help="扩展字段。"),
+    image_max_width: int = typer.Option(
+        DEFAULT_IMAGE_MAX_WIDTH,
+        "--image-max-width",
+        help="本地图片自动缩放的最大展示宽度。",
+    ),
+    image_max_height: int = typer.Option(
+        DEFAULT_IMAGE_MAX_HEIGHT,
+        "--image-max-height",
+        help="本地图片自动缩放的最大展示高度。",
+    ),
 ) -> None:
     """发布 Markdown 到 Confluence（以 storage 写入，自动上传附件）。"""
     state = ctx.obj
@@ -953,6 +1185,10 @@ def publish_markdown(
         raise ApiError("App config not initialized.")
     if body_format is not BodyFormat.storage:
         raise ApiError("publish-markdown 仅支持 storage。")
+    if image_max_width <= 0:
+        raise ApiError("--image-max-width must be positive.")
+    if image_max_height <= 0:
+        raise ApiError("--image-max-height must be positive.")
 
     client = get_client(state)
     space_key = resolve_parent_space_key(client, parent_id)
@@ -971,6 +1207,9 @@ def publish_markdown(
         attachment_map,
         page_id=page_id,
         base_url=state.base_url if page_id else None,
+        attachment_base_dir=markdown_path.parent,
+        image_max_width=image_max_width,
+        image_max_height=image_max_height,
     )
 
     if page_id:
@@ -1003,6 +1242,9 @@ def publish_markdown(
             attachment_map,
             page_id=page_id,
             base_url=state.base_url,
+            attachment_base_dir=markdown_path.parent,
+            image_max_width=image_max_width,
+            image_max_height=image_max_height,
         )
         if final_body != body:
             result = client.update_page(
