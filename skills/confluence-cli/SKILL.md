@@ -44,6 +44,8 @@ python skills/confluence-cli/scripts/confluence_cli.py --json page get --page-id
 
 5) 发布 Markdown 示例
 - 发布到父页面（同名则更新）：`./scripts/confluence_cli.py --json page publish-markdown --parent-id 3061931928 --title "批量重置 Offset 功能测试" --markdown-path /path/to/doc.md`
+- 本地图片发布时会按最大展示框自动生成单个 Confluence 尺寸属性：默认最大宽度 `1000`、最大高度 `800`，可用 `--image-max-width` / `--image-max-height` 覆盖；只写触发缩放的 `ac:width` 或 `ac:height`，不修改附件原图。
+- 如需覆盖单张图片展示尺寸，可使用 Markdown title：`![图](./a.png "confluence-width=1200")`、`![图](./a.png "confluence-height=600")`、`![图](./a.png "confluence-size=original")`。
 
 ## 资源
 
