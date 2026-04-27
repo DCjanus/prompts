@@ -48,33 +48,10 @@ python skills/git-commit/scripts/codex_git_commit.py
 - 如需连续执行 `git add`、`git commit`、`git push`，按顺序逐条执行，前一步成功后再执行下一步。
 - 如果遇到 `.git/index.lock`，先判断是否有其他活跃 Git 进程。
 - 用 shell 执行 `git commit -m ...` 时，不要在提交标题或正文里直接放未转义的反引号 `` ` ``。
-
-### 选择性提交
-
-默认使用 `git commit --only` 做选择性提交，不依赖暂存区，避免混入无关文件。
-
-推荐流程：
-
-```bash
-git status -sb
-git diff --name-only
-
-(cd <skill_dir> && ./scripts/codex_git_commit.py)
-
-git commit --only \
-  -m "type(scope): concise summary" \
-  -m "Assisted-by: <agent-name>:<model-name>" \
-  -- <paths-owned-by-current-task>
-
-git show --name-status --oneline --no-renames HEAD
-```
-
-要求：
-
-- `<paths-owned-by-current-task>` 必须只包含当前任务负责的文件。
+- 创建提交默认使用 `git commit --only -- <paths-owned-by-current-task>`，显式指定本次提交的文件列表，不依赖暂存区。
+- `<paths-owned-by-current-task>` 必须只包含当前任务负责的文件；多个 Agent 共用同一个 worktree 时也按这个规则执行。
 - 不要为了提交当前任务去清理、reset、restore 或 stash 无关文件。
 - 默认不需要提前 `git add`；`git commit --only -- <paths>` 会直接提交这些路径的当前工作区内容。
-- 多个 Agent 共用同一个 worktree 时，也按这个流程执行。
 - 如果同一个文件里混有用户或其他 Agent 的改动，先停止并说明情况，不要强行提交。
 
 ## 示例
@@ -83,6 +60,8 @@ git show --name-status --oneline --no-renames HEAD
 
 ```bash
 git status -sb
+git diff --name-only
 (cd <skill_dir> && ./scripts/codex_git_commit.py)
 git commit --only -m "fix(scope): concise summary" -m "Assisted-by: <agent-name>:<model-name>" -- <paths>
+git show --name-status --oneline --no-renames HEAD
 ```
