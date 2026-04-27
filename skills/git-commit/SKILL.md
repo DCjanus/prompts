@@ -61,7 +61,6 @@ python skills/git-commit/scripts/codex_git_commit.py
 
 ```bash
 git status -sb
-git diff --name-only
 (cd <skill_dir> && ./scripts/codex_git_commit.py)
 git commit --only -m "fix(scope): concise summary" -m "Assisted-by: <agent-name>:<model-name>" -- <paths>
 git show --name-status --oneline --no-renames HEAD
