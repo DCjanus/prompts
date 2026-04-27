@@ -76,7 +76,9 @@ python skills/gitlab-cli/scripts/gitlab_cli.py --help
   --cwd /path/to/repo \
   --title "feat(scope): short summary" \
   --target-branch main \
-  --description-file /tmp/mr-body.md
+  --description-file /tmp/mr-body.md \
+  --squash true \
+  --remove-source-branch true
 ```
 
 - 更新 MR：
@@ -111,5 +113,5 @@ python skills/gitlab-cli/scripts/gitlab_cli.py --help
 
 - 更新 Issue 或 MR 标题/正文前，先读取当前内容，再修改。
 - 正文只允许通过 `--description-file` 传入；脚本不再支持 `--description`，避免 shell 转义和多行文本处理问题。
-- 创建 MR 前，先检查模板、目标分支、当前分支与工作区状态是否符合仓库要求。
+- 创建 MR 前，先检查模板、目标分支、当前分支与工作区状态是否符合仓库要求；除非仓库或用户明确要求保留多 commit 或保留源分支，否则创建 MR 时显式传 `--squash true` 与 `--remove-source-branch true`。
 - 创建 Issue 前，先检查模板、标签、复现信息与现状是否一致。
