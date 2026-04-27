@@ -9,8 +9,8 @@
 我当前在 fish 里使用两条 Codex alias（定义在 `~/.config/fish/config.fish`）：
 
 ```fish
-alias codex='env EDITOR="zed --wait --new" command codex --dangerously-bypass-approvals-and-sandbox'
-alias codex_tmp='env EDITOR="zed --wait --new" command codex --dangerously-bypass-approvals-and-sandbox -C /tmp'
+alias codex='env EDITOR="zed --wait --new" command codex'
+alias codex_tmp='env EDITOR="zed --wait --new" command codex -C /tmp'
 ```
 
 这样配置的原因：
@@ -21,6 +21,9 @@ alias codex_tmp='env EDITOR="zed --wait --new" command codex --dangerously-bypas
 我当前在 `~/.codex/config.toml` 里还会额外配置 TUI 主题和通知：
 
 ```toml
+sandbox_mode = "danger-full-access"
+approval_policy = "never"
+
 [tui]
 theme = "dracula"
 notifications = true
@@ -29,6 +32,7 @@ notification_method = "bel"
 
 这样配置的原因：
 
+- `sandbox_mode = "danger-full-access"` 与 `approval_policy = "never"`：把 Codex 的高权限执行行为集中放在配置文件里，alias 只负责设置编辑器与工作目录，方便同步到其它设备。
 - `theme = "dracula"`：和我平时在终端与编辑器里的配色更接近，切到 Codex TUI 时视觉更统一。
 - 我平时使用 Ghostty。对我来说，`bel` 比默认的 `auto` 更直观，因为 Ghostty 会在标签页标题栏展示一个 `🔔` 标记。
 - 并行开多个 Codex tab 做任务时，我可以很快看出哪些 tab 已经有通知、哪些任务已经就绪，不用来回切换逐个确认。
