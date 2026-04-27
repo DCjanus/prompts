@@ -50,6 +50,7 @@ python skills/git-commit/scripts/codex_git_commit.py
 - 用 shell 执行 `git commit -m ...` 时，不要在提交标题或正文里直接放未转义的反引号 `` ` ``。
 - 创建提交默认使用 `git commit --only -- <paths-owned-by-current-task>`，显式指定本次提交的文件列表，不依赖暂存区。
 - `<paths-owned-by-current-task>` 必须只包含当前任务负责的文件；多个 Agent 共用同一个 worktree 时也按这个规则执行。
+- `<paths-owned-by-current-task>` 可以是文件，也可以是当前任务完整负责的目录；大量生成文件优先传目录，不要把几千个文件展开成命令参数。
 - 不要为了提交当前任务去清理、reset、restore 或 stash 无关文件。
 - 默认不需要提前 `git add`；`git commit --only -- <paths>` 会直接提交这些路径的当前工作区内容。
 - 如果同一个文件里混有用户或其他 Agent 的改动，先停止并说明情况，不要强行提交。
