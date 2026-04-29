@@ -79,14 +79,20 @@
 - 优先检查：相关目录下的 CONTRIBUTING.md、README.md，以及与当前改动直接相关的其它说明。
 - 读完后再开始修改；若仓库对改动流程、测试方式、文档更新、提交粒度或分支策略有明确要求，先按要求规划，再执行修改。
 
-### 4.2 Git 提交相关操作
+### 4.2 执行脚本与检查
+- 需要执行或编写脚本时，先确认**目标执行环境**是否有 `uv`；目标环境包括本机、远端服务器、容器或通过 SSH / exec 进入的运行环境，不要只依据本机是否安装 `uv` 判断。
+- 目标环境有 `uv` 时，优先使用 `uv run` / `uv run --script` 执行 Python 脚本，避免用临时 shell 拼接复杂逻辑。
+- 对一次性任务，若 Python 脚本比 shell 管道更清晰，应优先写成 Python 脚本；需要外部依赖时用 `uv run --with <外部依赖包> python ...`。
+- 修改 Python 脚本后，优先通过 `uvx ruff format --check <paths>` 与 `uvx ruff check <paths>` 检查格式与 lint。
+
+### 4.3 Git 提交相关操作
 - 涉及 `git commit`、`git push`、分支命名、提交信息或提交前整理时，优先使用非交互命令，并遵循仓库内对应约定。
 - 在正式提交前，复核本地状态是否与仓库要求一致，包括改动方式、当前分支、暂存内容、提交标题/正文、测试、文档与变更说明。
 
-### 4.3 GitHub / GitLab 交互
+### 4.4 GitHub / GitLab 交互
 - 涉及 GitHub、GitLab 等代码托管平台资源或交互（如 repo/project、issue、PR/MR、comment、release、workflow、wiki 等）的查看、更新或创建时，优先使用对应平台的官方 CLI 或 API，并尽量保持非交互。
 
-### 4.4 添加/更新依赖
+### 4.5 添加/更新依赖
 - 使用对应生态官方命令：
   - Rust：`cargo add <crate>`
   - Python：`uv add <package>`
