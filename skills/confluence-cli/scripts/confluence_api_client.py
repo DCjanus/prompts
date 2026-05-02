@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 from pathlib import Path
+import time
 from typing import Any
 
 import httpxyz
@@ -83,8 +84,19 @@ class ConfluenceApiClient:
     def _encode_body(body: str, representation: str) -> dict[str, Any]:
         return {representation: {"value": body, "representation": representation}}
 
-    def _get(self, path: str, *, params: dict[str, Any] | None = None) -> Any:
-        response = self.client.get(path, params=params)
+    def _get(
+        self,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        fresh: bool = False,
+    ) -> Any:
+        headers = None
+        if fresh:
+            params = dict(params or {})
+            params["_codex_cache_bust"] = str(time.time_ns())
+            headers = {"Cache-Control": "no-cache", "Pragma": "no-cache"}
+        response = self.client.get(path, params=params, headers=headers)
         self._raise_for_error(response, f"GET {path}")
         return response.json()
 
@@ -111,7 +123,9 @@ class ConfluenceApiClient:
         self._raise_for_error(response, f"PUT {path}")
         return response.json()
 
-    def list_spaces(self, start: int = 0, limit: int = 25, expand: str | None = None) -> Any:
+    def list_spaces(
+        self, start: int = 0, limit: int = 25, expand: str | None = None
+    ) -> Any:
         params: dict[str, Any] = {"start": start, "limit": limit}
         if expand:
             params["expand"] = expand
@@ -121,9 +135,11 @@ class ConfluenceApiClient:
         params = {"expand": expand} if expand else None
         return self._get(f"rest/api/space/{space_key}", params=params)
 
-    def get_page(self, page_id: str, expand: str | None = None) -> Any:
+    def get_page(
+        self, page_id: str, expand: str | None = None, fresh: bool = False
+    ) -> Any:
         params = {"expand": expand} if expand else None
-        return self._get(f"rest/api/content/{page_id}", params=params)
+        return self._get(f"rest/api/content/{page_id}", params=params, fresh=fresh)
 
     def get_page_by_title(
         self,
@@ -190,7 +206,9 @@ class ConfluenceApiClient:
         current = self.get_page(page_id, expand="version")
         version = current.get("version", {}).get("number")
         if not isinstance(version, int):
-            raise ConfluenceApiError(f"Failed to resolve current page version for {page_id}")
+            raise ConfluenceApiError(
+                f"Failed to resolve current page version for {page_id}"
+            )
 
         data: dict[str, Any] = {
             "id": page_id,
@@ -203,7 +221,9 @@ class ConfluenceApiClient:
             data["ancestors"] = [{"type": "page", "id": parent_id}]
         if always_update:
             data["version"]["minorEdit"] = False
-        return self._put(f"rest/api/content/{page_id}", json_data=data, params={"status": "current"})
+        return self._put(
+            f"rest/api/content/{page_id}", json_data=data, params={"status": "current"}
+        )
 
     def attach_file(
         self,

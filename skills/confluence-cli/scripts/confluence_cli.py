@@ -36,6 +36,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from confluence_api_client import ConfluenceApiClient, ConfluenceConfig  # noqa: E402
+
 app = typer.Typer(no_args_is_help=True)
 space_app = typer.Typer(no_args_is_help=True, help="空间相关操作。")
 page_app = typer.Typer(no_args_is_help=True, help="页面相关操作。")
@@ -288,7 +289,9 @@ def should_collapse_code_block(content: str) -> bool:
 def strip_leading_title_heading(markdown: str) -> str:
     """移除文首第一个 ATX H1，避免与 Confluence 页面标题重复。"""
     lines = markdown.splitlines()
-    first_non_empty = next((idx for idx, line in enumerate(lines) if line.strip()), None)
+    first_non_empty = next(
+        (idx for idx, line in enumerate(lines) if line.strip()), None
+    )
     if first_non_empty is None:
         return markdown
     if re.match(r"^#\s+.+$", lines[first_non_empty].strip()):
@@ -315,7 +318,9 @@ def normalize_local_attachment_target(target: str) -> str | None:
     return normalized_path
 
 
-def register_attachment_reference(attachment_map: dict[str, str], raw_target: str) -> str:
+def register_attachment_reference(
+    attachment_map: dict[str, str], raw_target: str
+) -> str:
     """记录 Markdown 中引用到的本地附件，并检查重名冲突。"""
     normalized_target = normalize_local_attachment_target(raw_target)
     if normalized_target is None:
@@ -372,7 +377,11 @@ def parse_image_title_options(title: str | None) -> dict[str, int | bool]:
 
 
 def read_png_dimensions(data: bytes) -> tuple[int, int] | None:
-    if len(data) >= 24 and data.startswith(b"\x89PNG\r\n\x1a\n") and data[12:16] == b"IHDR":
+    if (
+        len(data) >= 24
+        and data.startswith(b"\x89PNG\r\n\x1a\n")
+        and data[12:16] == b"IHDR"
+    ):
         return struct.unpack(">II", data[16:24])
     return None
 
@@ -531,7 +540,9 @@ def validate_token_attributes(token: Token) -> dict[str, str]:
     unsupported = sorted(set(attrs) - allowed)
     if unsupported:
         attrs = ", ".join(unsupported)
-        raise ApiError(f"Unsupported Markdown attributes on token `{token.type}`: {attrs}")
+        raise ApiError(
+            f"Unsupported Markdown attributes on token `{token.type}`: {attrs}"
+        )
     return attrs
 
 
@@ -818,12 +829,16 @@ def resolve_parent_space_key(client: ConfluenceApiClient, parent_id: str) -> str
     return str(space.get("key"))
 
 
-def find_child_page_id(client: ConfluenceApiClient, parent_id: str, title: str) -> str | None:
+def find_child_page_id(
+    client: ConfluenceApiClient, parent_id: str, title: str
+) -> str | None:
     """在父页面下查找同名子页面。"""
     start = 0
     limit = 50
     while True:
-        payload = client.get_page_children(parent_id, start=start, limit=limit, expand="space")
+        payload = client.get_page_children(
+            parent_id, start=start, limit=limit, expand="space"
+        )
         results = normalize_results(payload)
         for item in results:
             if str(item.get("title", "")) == title:
@@ -940,7 +955,9 @@ def main(
 ) -> None:
     """初始化 CLI 全局参数。"""
     if not base_url:
-        raise ApiError(f"缺少 base_url，请通过 --base-url 或环境变量 {ENV_BASE_URL} 提供。")
+        raise ApiError(
+            f"缺少 base_url，请通过 --base-url 或环境变量 {ENV_BASE_URL} 提供。"
+        )
     if not token:
         raise ApiError(f"缺少 token，请通过 --token 或环境变量 {ENV_TOKEN} 提供。")
     if cloud is None:
@@ -998,13 +1015,20 @@ def get_page(
         help="页面正文格式。",
     ),
     expand: str | None = typer.Option(None, "--expand", help="扩展字段。"),
+    fresh: bool = typer.Option(
+        False,
+        "--fresh/--cached",
+        help="强制绕过 Confluence 或代理缓存读取页面。",
+    ),
 ) -> None:
     """按页面 ID 获取页面。"""
     state = ctx.obj
     if not isinstance(state, AppState):
         raise ApiError("App config not initialized.")
     client = get_client(state)
-    payload = client.get_page(page_id, expand=build_expand(body_format, expand))
+    payload = client.get_page(
+        page_id, expand=build_expand(body_format, expand), fresh=fresh
+    )
     ensure_json_output(payload, state.json_output)
 
 
@@ -1063,7 +1087,9 @@ def list_attachments(
     if not isinstance(state, AppState):
         raise ApiError("App config not initialized.")
     client = get_client(state)
-    payload = client.get_page_attachments(page_id, start=start, limit=limit, expand=expand)
+    payload = client.get_page_attachments(
+        page_id, start=start, limit=limit, expand=expand
+    )
     ensure_json_output(payload, state.json_output, render_attachment_list)
 
 
@@ -1109,7 +1135,6 @@ def download_attachments(
         fetch_all=fetch_all,
     )
     if names:
-        name_set = set(names)
         attachments_map = {item.get("title"): item for item in attachments}
         attachments = [
             attachments_map[name]
@@ -1164,9 +1189,15 @@ def publish_markdown(
     ctx: typer.Context,
     parent_id: str = typer.Option(..., "--parent-id", help="父页面 ID。"),
     title: str = typer.Option(..., "--title", help="页面标题。"),
-    markdown_path: Path = typer.Option(..., "--markdown-path", exists=True, help="Markdown 文件路径。"),
-    body_format: BodyFormat = typer.Option(BodyFormat.storage, "--body-format", help="内容格式。"),
-    update_if_exists: bool = typer.Option(True, "--update-if-exists", help="存在同名子页面时更新。"),
+    markdown_path: Path = typer.Option(
+        ..., "--markdown-path", exists=True, help="Markdown 文件路径。"
+    ),
+    body_format: BodyFormat = typer.Option(
+        BodyFormat.storage, "--body-format", help="内容格式。"
+    ),
+    update_if_exists: bool = typer.Option(
+        True, "--update-if-exists", help="存在同名子页面时更新。"
+    ),
     expand: str | None = typer.Option(None, "--expand", help="扩展字段。"),
     image_max_width: int = typer.Option(
         DEFAULT_IMAGE_MAX_WIDTH,
@@ -1200,7 +1231,9 @@ def publish_markdown(
     if update_if_exists:
         page_id = find_child_page_id(client, parent_id, title)
 
-    markdown_content = strip_leading_title_heading(markdown_path.read_text(encoding="utf-8"))
+    markdown_content = strip_leading_title_heading(
+        markdown_path.read_text(encoding="utf-8")
+    )
     attachment_map: dict[str, str] = {}
     body = markdown_to_storage(
         markdown_content,
