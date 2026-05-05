@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import sys
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -21,10 +22,7 @@ from pydantic import BaseModel
 from rich.console import Console
 from rich.table import Table
 
-AUTH_URL = "https://ticktick-oauth.dcjanus.workers.dev/authorize"
-ENV_BASE_URL = "TICKTICK_BASE_URL"
 ENV_TIMEOUT = "TICKTICK_TIMEOUT"
-ENV_TOKEN = "TICKTICK_TOKEN"
 # 该脚本主要提供给 AI Agent 调用，人类 CLI 使用只是顺带支持。
 SCRIPT_DIR = Path(__file__).resolve().parent
 
@@ -41,8 +39,18 @@ from ticktick_api_client import (  # noqa: E402
     TicktickApiClient,
     TicktickApiError,
 )
+from ticktick_auth import (  # noqa: E402
+    ENV_TOKEN_FILE,
+    AuthError,
+    default_token_file,
+    load_token_payload,
+    login,
+    remove_stored_token,
+    token_expiry_info,
+)
 
 app = typer.Typer(no_args_is_help=True)
+auth_app = typer.Typer(no_args_is_help=True, help="认证相关操作。")
 project_app = typer.Typer(no_args_is_help=True, help="项目相关操作。")
 task_app = typer.Typer(no_args_is_help=True, help="任务相关操作。")
 console = Console()
@@ -55,24 +63,48 @@ class ApiError(RuntimeError):
 
 
 class AppState(BaseModel):
-    token: str | None
-    base_url: str
     timeout: str
     json_output: bool
+
+
+class TicktickRegion(str, Enum):
+    dida365 = "dida365"
+    ticktick = "ticktick"
+
+
+def api_base_url_for_region(region: TicktickRegion) -> str:
+    if region is TicktickRegion.ticktick:
+        return "https://api.ticktick.com/open/v1"
+    return DEFAULT_BASE_URL
+
+
+def region_for_api_base_url(base_url: str) -> str:
+    return "ticktick" if "api.ticktick.com" in base_url.lower() else "dida365"
+
+
+def resolve_auth(ctx: typer.Context) -> tuple[str, str, str, dict[str, Any] | None]:
+    state = ctx.obj
+    if not isinstance(state, AppState):
+        raise ApiError("Client config not initialized.")
+    payload = load_token_payload()
+    if payload is None:
+        raise ApiError(
+            "缺少本地 token。请先运行 `./scripts/ticktick_cli.py auth login`。"
+        )
+    token = payload.get("access_token")
+    if not isinstance(token, str) or not token:
+        raise ApiError(f"Invalid token file payload: {default_token_file()}")
+    base_url = payload.get("base_url")
+    if not isinstance(base_url, str) or not base_url:
+        base_url = DEFAULT_BASE_URL
+    return token, base_url, region_for_api_base_url(base_url), payload
 
 
 def get_client(ctx: typer.Context) -> TicktickApiClient:
     state = ctx.obj
     if not isinstance(state, AppState):
         raise ApiError("Client config not initialized.")
-    token = state.token
-    if not token:
-        raise ApiError(
-            "缺少 token。请先访问 "
-            f"{AUTH_URL} 授权，"
-            f"然后通过 --token 或环境变量 {ENV_TOKEN} 传入。"
-        )
-    base_url = state.base_url
+    token, base_url, _, _ = resolve_auth(ctx)
     timeout_raw = state.timeout
     timeout_seconds = parse_timeout(str(timeout_raw))
     if timeout_seconds <= 0:
@@ -241,18 +273,6 @@ def parse_checklist_items(
 @app.callback()
 def main(
     ctx: typer.Context,
-    token: str | None = typer.Option(
-        None,
-        "--token",
-        envvar=ENV_TOKEN,
-        help="OAuth token.",
-    ),
-    base_url: str = typer.Option(
-        DEFAULT_BASE_URL,
-        "--base-url",
-        envvar=ENV_BASE_URL,
-        help="API base URL.",
-    ),
     timeout: str = typer.Option(
         "30s",
         "--timeout",
@@ -268,11 +288,86 @@ def main(
     if ctx.resilient_parsing:
         return
     ctx.obj = AppState(
-        token=token,
-        base_url=base_url,
         timeout=timeout,
         json_output=json_output,
     )
+
+
+@auth_app.command("login", help="使用官方 Dynamic OAuth 完成本地登录。")
+def auth_login(
+    ctx: typer.Context,
+    region: TicktickRegion = typer.Option(
+        TicktickRegion.dida365,
+        "--region",
+        help="账号区域：dida365 为中国区，ticktick 为国际版。",
+    ),
+    open_browser: bool = typer.Option(
+        False,
+        "--open",
+        help="自动打开浏览器授权页。",
+    ),
+    timeout_seconds: int = typer.Option(
+        300,
+        "--timeout-seconds",
+        min=30,
+        help="等待浏览器授权回调的秒数；默认 5 分钟，请尽快完成登录。",
+    ),
+) -> None:
+    state = ctx.obj
+    if not isinstance(state, AppState):
+        raise ApiError("Client config not initialized.")
+    base_url = api_base_url_for_region(region)
+    path = login(
+        base_url=base_url,
+        open_browser=open_browser,
+        timeout_seconds=timeout_seconds,
+    )
+    console.print(f"Saved token to {path}")
+    payload = load_token_payload(base_url)
+    if payload is not None:
+        expiry = token_expiry_info(payload)
+        if expiry["expires_at"]:
+            console.print(f"Token expires at {expiry['expires_at']}")
+
+
+@auth_app.command("doctor", help="检查当前认证配置是否可用。")
+def auth_doctor(ctx: typer.Context) -> None:
+    state = ctx.obj
+    if not isinstance(state, AppState):
+        raise ApiError("Client config not initialized.")
+    token_source = str(default_token_file())
+    try:
+        token, base_url, region, token_payload = resolve_auth(ctx)
+    except ApiError as exc:
+        raise ApiError(
+            "No token found. Run `./scripts/ticktick_cli.py auth login`, "
+            f"or set {ENV_TOKEN_FILE}."
+        ) from exc
+    client = TicktickApiClient(
+        token=token,
+        base_url=base_url,
+        timeout_seconds=parse_timeout(state.timeout),
+    )
+    projects = client.list_projects()
+    payload = {
+        "ok": True,
+        "region": region,
+        "base_url": base_url,
+        "token_source": token_source,
+        "project_count": len(projects),
+    }
+    if token_payload is not None:
+        payload.update(token_expiry_info(token_payload))
+    if state.json_output:
+        render_payload(payload)
+        return
+    render_kv_table("Auth", payload)
+
+
+@auth_app.command("logout", help="删除本地保存的 OAuth token。")
+def auth_logout() -> None:
+    removed = remove_stored_token()
+    console.print("Removed stored token." if removed else "No stored token found.")
 
 
 @project_app.command("list", help="列出当前账号的项目。")
@@ -529,6 +624,7 @@ def task_delete(
     console.print("OK")
 
 
+app.add_typer(auth_app, name="auth")
 app.add_typer(project_app, name="project")
 app.add_typer(task_app, name="task")
 
@@ -536,9 +632,10 @@ app.add_typer(task_app, name="task")
 def run() -> None:
     try:
         app()
-    except (ApiError, TicktickApiError) as exc:
-        if exc.status_code:
-            console.print(f"[red]Error:[/red] {exc} (status {exc.status_code})")
+    except (ApiError, AuthError, TicktickApiError) as exc:
+        status_code = getattr(exc, "status_code", None)
+        if status_code:
+            console.print(f"[red]Error:[/red] {exc} (status {status_code})")
         else:
             console.print(f"[red]Error:[/red] {exc}")
         raise SystemExit(1)

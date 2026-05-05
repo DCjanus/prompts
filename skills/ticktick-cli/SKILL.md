@@ -3,81 +3,47 @@ name: ticktick-cli
 description: 使用 Python CLI 与 Dida365 Open API 交互以管理滴答清单任务/项目，适用于需要通过脚本或命令行调用滴答清单接口的场景（如项目/任务的查询、创建、更新、完成、删除）。
 ---
 
-说明：以下调用方式均以当前 `SKILL.md` 文件所在文件夹为 workdir。
+以下命令均以当前 `SKILL.md` 所在目录为 workdir：
 
-脚本调用方式示例（不要用 `uv run python` 或 `python`）：
 ```bash
-cd skills/ticktick-cli && ./scripts/ticktick_cli.py --json project list
-```
-错误示例：
-```bash
-uv run python skills/ticktick-cli/scripts/ticktick_cli.py --json project list
-python skills/ticktick-cli/scripts/ticktick_cli.py --json project list
+cd skills/ticktick-cli
+./scripts/ticktick_cli.py --json project list
 ```
 
-1) 常用子命令（覆盖日常场景）
-- `project`
-  - `list`
-  - `get --project-id`
-  - `data --project-id`
-  - `create --name [--color --sort-order --view-mode --kind]`
-  - `update --project-id [--name --color --sort-order --view-mode --kind]`
-  - `delete --project-id`（危险，删除前需谨慎确认）
-- `task`
-  - `get --project-id --task-id`
-  - `create --project-id --title [--content --desc --all-day --start-date --due-date --time-zone --reminder --repeat --priority --sort-order --item]`
-  - `update --task-id --project-id [--title --content --desc --all-day --start-date --due-date --time-zone --reminder --repeat --priority --sort-order --item]`
-  - `complete --project-id --task-id`
-  - `delete --project-id --task-id`（危险，删除前需谨慎确认）
+不要用 `uv run python` 或 `python` 直接调用脚本。
 
-2) 输出格式
-- 所有调用统一在脚本后、子命令前加 `--json`（示例：`./scripts/ticktick_cli.py --json task get --project-id ...`）
+## 使用约定
 
-3) 冷门参数/字段怎么查
-- 运行 `./scripts/ticktick_cli.py <command> --help` 查看该命令的参数
-- 查看 `references/dida365-openapi.md` 了解完整参数、字段与响应结构
+- 输出给 Agent 解析时，在脚本后、子命令前加 `--json`。
+- 冷门参数先查 `./scripts/ticktick_cli.py <command> --help`，再查官方 OpenAPI 文档。
+- 删除项目/任务前要谨慎确认，`delete` 是真实删除操作。
 
-## Dida365 概念模型
+## 认证
 
-- Project：项目，任务的容器，支持不同视图模式（list/kanban/timeline）。
-  - 常用字段：
-    - `name`（名称）
-    - `color`（颜色）
-    - `viewMode`（视图模式）
-    - `kind`（类型）
-    - `groupId`（分组）
-    - `closed`（是否关闭）
-    - `permission`（权限）
-    - `sortOrder`（排序）
-- Task：任务，隶属于某个 Project，可包含提醒、优先级、重复规则等。
-  - 常用字段：
-    - `title`（标题）
-    - `content`（内容）
-    - `desc`（描述/清单说明）
-    - `tags`（标签）
-    - `priority`（优先级）
-    - `status`（状态）
-    - `startDate`（开始时间）
-    - `dueDate`（截止时间）
-    - `timeZone`（时区）
-    - `reminders`（提醒）
-    - `repeatFlag`（重复规则）
-    - `items`（子任务列表）
-- ChecklistItem：任务下的子任务（清单项），用于拆分步骤。
-  - 常用字段：
-    - `title`（标题）
-    - `status`（状态）
-    - `startDate`（开始时间）
-    - `completedTime`（完成时间）
-    - `timeZone`（时区）
-    - `sortOrder`（排序）
-- Column：项目看板列，用于 kanban 视图的列信息。
-  - 常用字段：
-    - `name`（列名）
-    - `sortOrder`（排序）
-- ProjectData：项目详情聚合，包含项目本身、未完成任务与列信息。
+- 先用 `./scripts/ticktick_cli.py --json auth doctor` 检查当前 token、区域和 API base URL。
+- 没有 token 时，运行 `./scripts/ticktick_cli.py auth login`；CLI 会输出官方授权链接，默认不自动打开浏览器，并默认等待 5 分钟完成登录。需要自动打开时显式加 `--open`。
+- 本地 OAuth token 默认保存到 `~/.config/ticktick-cli/token.json`；后续命令会从 token 元数据推断区域和 API base URL，可用 `TICKTICK_TOKEN_FILE` 覆盖。
+- 登录默认使用中国区 `dida365`；国际版用 `./scripts/ticktick_cli.py auth login --region ticktick`。
+- 远程 SSH 登录时，浏览器 callback 需要能访问运行 CLI 的机器；必要时在目标机器本地登录，或自行做端口转发。
 
-## 资源
+## 常用命令
 
-- [ticktick_cli.py](scripts/ticktick_cli.py)：主 CLI 入口，负责读取配置并发起 API 调用。
-- [dida365-openapi.md](references/dida365-openapi.md)：官方 Open API 文档快照，便于离线检索参数与字段。
+- `auth login|doctor|logout`
+- `project list|get|data|create|update|delete`
+- `task get|create|update|complete|delete`
+
+创建或更新 checklist 子任务时，简单标题可重复传 `--item`；复杂字段用 `--item-json` 传 JSON 数组或 `@path` 文件。
+
+## 概念
+
+- Project：任务容器，支持 list / kanban / timeline 等视图。
+- Task：隶属于 Project，可包含时间、提醒、优先级、重复规则、标签与子任务。
+- ChecklistItem：Task 下的子任务项。
+- Column：看板列，仅在 kanban 场景常用。
+- ProjectData：项目详情聚合，包含项目、未完成任务和列信息。
+
+## 参考
+
+- [ticktick_cli.py](scripts/ticktick_cli.py)
+- [滴答清单 OpenAPI](https://developer.dida365.com/docs/index.html#/openapi)
+- [TickTick OpenAPI](https://developer.ticktick.com/docs/index.html#/openapi)

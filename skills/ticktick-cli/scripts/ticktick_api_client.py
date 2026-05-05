@@ -10,11 +10,13 @@ DEFAULT_BASE_URL = "https://api.dida365.com/open/v1"
 
 class ApiModel(BaseModel):
     """通用 API 数据模型基类，允许额外字段以兼容文档不完整的情况。"""
+
     model_config = ConfigDict(extra="allow")
 
 
 class ApiConfig(ApiModel):
     """API 连接与认证配置。"""
+
     base_url: AnyHttpUrl = Field(
         default=DEFAULT_BASE_URL,
         description="Open API 基础地址。",
@@ -33,6 +35,7 @@ class ApiConfig(ApiModel):
 
 class TicktickApiError(RuntimeError):
     """API 请求失败时抛出的异常。"""
+
     def __init__(self, message: str, status_code: int | None = None) -> None:
         super().__init__(message)
         self.status_code = status_code
@@ -40,10 +43,15 @@ class TicktickApiError(RuntimeError):
 
 class ChecklistItem(ApiModel):
     """子任务（清单项）模型。"""
+
     id: str | None = Field(default=None, description="子任务标识。")
     title: str | None = Field(default=None, description="子任务标题。")
-    status: int | None = Field(default=None, description="子任务状态（0 未完成，1 已完成）。")
-    completedTime: str | int | None = Field(default=None, description="子任务完成时间。")
+    status: int | None = Field(
+        default=None, description="子任务状态（0 未完成，1 已完成）。"
+    )
+    completedTime: str | int | None = Field(
+        default=None, description="子任务完成时间。"
+    )
     isAllDay: bool | None = Field(default=None, description="是否为全天任务。")
     sortOrder: int | None = Field(default=None, description="子任务排序值。")
     startDate: str | int | None = Field(default=None, description="子任务开始时间。")
@@ -52,6 +60,7 @@ class ChecklistItem(ApiModel):
 
 class Task(ApiModel):
     """任务模型。"""
+
     id: str | None = Field(default=None, description="任务标识。")
     projectId: str | None = Field(default=None, description="项目标识。")
     title: str | None = Field(default=None, description="任务标题。")
@@ -72,6 +81,7 @@ class Task(ApiModel):
 
 class TaskCreate(ApiModel):
     """创建任务的请求体。"""
+
     title: str = Field(description="任务标题。")
     projectId: str = Field(description="项目标识。")
     content: str | None = Field(default=None, description="任务内容。")
@@ -89,6 +99,7 @@ class TaskCreate(ApiModel):
 
 class TaskUpdate(ApiModel):
     """更新任务的请求体。"""
+
     id: str = Field(description="任务标识。")
     projectId: str = Field(description="项目标识。")
     title: str | None = Field(default=None, description="任务标题。")
@@ -107,6 +118,7 @@ class TaskUpdate(ApiModel):
 
 class Project(ApiModel):
     """项目模型。"""
+
     id: str | None = Field(default=None, description="项目标识。")
     name: str | None = Field(default=None, description="项目名称。")
     color: str | None = Field(default=None, description="项目颜色。")
@@ -120,6 +132,7 @@ class Project(ApiModel):
 
 class ProjectCreate(ApiModel):
     """创建项目的请求体。"""
+
     name: str = Field(description="项目名称。")
     color: str | None = Field(default=None, description="项目颜色。")
     sortOrder: int | None = Field(default=None, description="项目排序值。")
@@ -129,6 +142,7 @@ class ProjectCreate(ApiModel):
 
 class ProjectUpdate(ApiModel):
     """更新项目的请求体。"""
+
     name: str | None = Field(default=None, description="项目名称。")
     color: str | None = Field(default=None, description="项目颜色。")
     sortOrder: int | None = Field(default=None, description="项目排序值。")
@@ -138,6 +152,7 @@ class ProjectUpdate(ApiModel):
 
 class Column(ApiModel):
     """项目看板列模型。"""
+
     id: str | None = Field(default=None, description="列标识。")
     projectId: str | None = Field(default=None, description="所属项目标识。")
     name: str | None = Field(default=None, description="列名称。")
@@ -146,6 +161,7 @@ class Column(ApiModel):
 
 class ProjectData(ApiModel):
     """项目详情数据（含任务与列）。"""
+
     project: Project | None = Field(default=None, description="项目信息。")
     tasks: list[Task] | None = Field(default=None, description="项目未完成任务列表。")
     columns: list[Column] | None = Field(default=None, description="项目列信息。")
@@ -153,6 +169,7 @@ class ProjectData(ApiModel):
 
 class TicktickApiClient:
     """Dida365 Open API 客户端封装。"""
+
     def __init__(
         self,
         token: str,
@@ -284,6 +301,7 @@ class TicktickApiClient:
     def delete_task(self, project_id: str, task_id: str) -> None:
         """删除指定任务。"""
         self._request_json("DELETE", f"project/{project_id}/task/{task_id}")
+
 
 def main() -> None:
     print("Hello from ticktick_api_client.py!")
