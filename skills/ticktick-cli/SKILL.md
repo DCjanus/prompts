@@ -75,4 +75,3 @@ cd skills/ticktick-cli
 
 - [ticktick_cli.py](scripts/ticktick_cli.py)
 - [滴答清单 OpenAPI](https://developer.dida365.com/docs/index.html#/openapi)
-- [TickTick OpenAPI](https://developer.ticktick.com/docs/index.html#/openapi)
