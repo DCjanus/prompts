@@ -48,7 +48,9 @@ cd skills/ticktick-cli
 
 - `auth login|doctor|logout`
 - `project list|get|data|create|update|delete`
-- `task get|create|update|complete|delete`
+- `task get|create|update|complete|delete|move|completed|filter`
+- `focus get|list|delete`
+- `habit list|get|create|update|checkin|checkins`
 
 常见入口：
 
@@ -56,12 +58,15 @@ cd skills/ticktick-cli
 ./scripts/ticktick_cli.py --json project list
 ./scripts/ticktick_cli.py --json project data --project-id <project-id>
 ./scripts/ticktick_cli.py --json task get --project-id <project-id> --task-id <task-id>
+./scripts/ticktick_cli.py --json task filter --project-id <project-id> --status 0
 ```
 
 创建或更新 checklist 子任务：
 
 - 简单标题：重复传 `--item`。
 - 复杂字段：用 `--item-json` 传 JSON 数组，或传 `@path` 读取文件。
+- 任务标签：创建/更新任务时重复传 `--tag`。
+- 复杂 habit payload：用 `--payload-json` 传 JSON 对象，或传 `@path` 读取文件。
 
 ## 数据模型
 
@@ -70,6 +75,8 @@ cd skills/ticktick-cli
 - ChecklistItem：Task 下的子任务项。
 - Column：看板列，仅在 kanban 场景常用。
 - ProjectData：项目详情聚合，包含项目、未完成任务和列信息。
+- Focus：专注/番茄钟记录。
+- Habit：习惯与打卡记录。
 
 ## 参考
 
