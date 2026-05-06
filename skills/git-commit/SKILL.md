@@ -64,7 +64,7 @@ git show --name-status --oneline --no-renames HEAD
 
 - 如果仓库或用户有额外限制，例如受保护分支、发布流程、禁止自动推送，先遵循这些限制。
 - 日常切换分支优先使用 `git switch`，恢复工作区或暂存区优先使用 `git restore`，尽量避免 `git checkout`。
-- 创建分支时尽量遵循 [Conventional Branch](https://conventional-branch.github.io/)；Codex 创建分支默认使用 `codex/` 前缀。
+- 创建分支时尽量遵循 [Conventional Branch](https://conventional-branch.github.io/)。
 - 涉及真实 index / 引用的 Git 写操作时默认串行执行，不并行调用多个 `git commit`、`git push` 或其他写操作。
 - 如果遇到 `.git/index.lock`，先判断是否有其他活跃 Git 进程。
 - 推送或创建 PR 前，使用 `git status -sb` 确认本次提交、分支和工作区状态符合预期。
