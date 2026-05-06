@@ -23,13 +23,15 @@ cd skills/ticktick-cli
 
 ## 认证
 
-优先检查当前本地 token：
+默认假设本地 token 有效，直接执行用户请求的操作；不要在每次操作前先跑 `auth doctor`。
+
+只有命令失败且报错指向认证、token、权限、区域或 API base URL 问题时，再诊断当前本地 token：
 
 ```bash
 ./scripts/ticktick_cli.py --json auth doctor
 ```
 
-没有 token 时登录：
+确实没有 token、token 失效或用户要求重新登录时再登录：
 
 ```bash
 ./scripts/ticktick_cli.py auth login
