@@ -225,6 +225,50 @@ class ConfluenceApiClient:
             f"rest/api/content/{page_id}", json_data=data, params={"status": "current"}
         )
 
+    def rename_page(
+        self,
+        page_id: str,
+        title: str,
+        representation: str = "storage",
+    ) -> Any:
+        """重命名页面，并保留当前正文和父页面。"""
+        # 重命名依赖最新 version 和正文，避免用到 Confluence 或代理缓存的旧页面。
+        current = self.get_page(
+            page_id,
+            expand=f"version,body.{representation},ancestors",
+            fresh=True,
+        )
+        version = current.get("version", {}).get("number")
+        if not isinstance(version, int):
+            raise ConfluenceApiError(
+                f"Failed to resolve current page version for {page_id}"
+            )
+
+        body_node = current.get("body", {}).get(representation, {})
+        body = body_node.get("value")
+        if not isinstance(body, str):
+            raise ConfluenceApiError(
+                f"Failed to resolve current page {representation} body for {page_id}"
+            )
+
+        data: dict[str, Any] = {
+            "id": page_id,
+            "type": "page",
+            "title": title,
+            "version": {"number": version + 1},
+            "body": self._encode_body(body, representation),
+        }
+
+        ancestors = current.get("ancestors")
+        if isinstance(ancestors, list) and ancestors:
+            parent_id = ancestors[-1].get("id")
+            if parent_id:
+                data["ancestors"] = [{"type": "page", "id": str(parent_id)}]
+
+        return self._put(
+            f"rest/api/content/{page_id}", json_data=data, params={"status": "current"}
+        )
+
     def attach_file(
         self,
         page_id: str,

@@ -1074,6 +1074,25 @@ def get_page_children(
     ensure_json_output(payload, state.json_output, render_page_list)
 
 
+@page_app.command("rename")
+def rename_page(
+    ctx: typer.Context,
+    page_id: str = typer.Option(..., "--page-id", help="页面 ID。"),
+    title: str = typer.Option(..., "--title", help="新的页面标题。"),
+) -> None:
+    """重命名页面，保留当前正文和父页面。"""
+    state = ctx.obj
+    if not isinstance(state, AppState):
+        raise ApiError("App config not initialized.")
+    client = get_client(state)
+    payload = client.rename_page(
+        page_id=page_id,
+        title=title,
+        representation=BodyFormat.storage.value,
+    )
+    ensure_json_output(payload, state.json_output)
+
+
 @attachment_app.command("list")
 def list_attachments(
     ctx: typer.Context,
