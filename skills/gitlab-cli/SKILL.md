@@ -40,6 +40,12 @@ python skills/gitlab-cli/scripts/gitlab_cli.py --help
 ./scripts/gitlab_cli.py mr update --cwd /path/to/repo 123 --description "multi-line body"
 ```
 
+## MR 标题与描述
+
+- MR 标题默认遵循语义化提交规范，例如 `feat(scope): short summary`；即使标题要求中文，语义化前缀仍需英文。
+- Breaking change 按相对目标分支的最终 diff / 对外行为判断，不按中间 commit 机械继承；有 breaking change 时标题用 `type(scope)!: short summary`，正文加 `BREAKING CHANGE:` 说明影响和迁移方式；否则不要加 `!` 或 `BREAKING CHANGE:`。
+- MR 正文优先写清 why / what / validation。
+
 ## 什么时候直接用 glab
 
 - 查看与列表：`glab issue view`、`glab issue list`、`glab mr view`、`glab mr diff`
@@ -114,4 +120,5 @@ python skills/gitlab-cli/scripts/gitlab_cli.py --help
 - 更新 Issue 或 MR 标题/正文前，先读取当前内容，再修改。
 - 正文只允许通过 `--description-file` 传入；脚本不再支持 `--description`，避免 shell 转义和多行文本处理问题。
 - 创建 MR 前，先检查模板、目标分支、当前分支与工作区状态是否符合仓库要求；除非仓库或用户明确要求保留多 commit 或保留源分支，否则创建 MR 时显式传 `--squash true` 与 `--remove-source-branch true`。
+- 创建或更新 MR 标题/正文前，重新按最终净效果判断是否需要 `!` 与 `BREAKING CHANGE:`。
 - 创建 Issue 前，先检查模板、标签、复现信息与现状是否一致。
