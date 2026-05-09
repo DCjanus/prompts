@@ -23,6 +23,7 @@ python skills/confluence-cli/scripts/confluence_cli.py --json page get --page-id
   - `get --page-id [--body-format --expand --fresh]`
   - `by-title --space-key --title [--body-format --expand]`
   - `children --page-id [--start --limit --expand]`
+  - `rename --page-id --title`
   - `publish-markdown --parent-id --title --markdown-path [--update-if-exists --body-format --expand]`
 - `attachment`
   - `list --page-id [--start --limit --expand]`
