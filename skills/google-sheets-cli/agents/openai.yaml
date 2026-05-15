@@ -1,0 +1,4 @@
+interface:
+  display_name: "Google Sheets CLI"
+  short_description: "Operate Google Sheets via ADC-backed CLI"
+  default_prompt: "Use $google-sheets-cli to inspect, update, and format a Google Sheet with the bundled CLI."
