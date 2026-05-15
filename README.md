@@ -48,6 +48,7 @@ notification_method = "bel"
 - [`scripts/`](scripts)：放置 uv script 模式的工具脚本（规范见 [SKILL.md（uv-cli-creator）](skills/uv-cli-creator/SKILL.md)）
   - [`token_count.py`](scripts/token_count.py)：基于 [tiktoken](https://github.com/openai/tiktoken) 的 token 计数 CLI
   - [`token_tree.py`](scripts/token_tree.py)：统计仓库内所有 Git 跟踪文本文件的 token 数，按树状结构输出；支持全局比例进度条、对齐条形显示与百分比，可用 `--bar-width` 调整条形宽度
+  - [`codex_usage.py`](scripts/codex_usage.py)：统计 Codex JSONL session 的 token 用量和预估价格，默认同时读取 `~/.codex/sessions` 与 `~/.codex/archived_sessions`，价格信息缓存到 XDG cache 且最多复用 7 天
 
 ### 技能列表
 
@@ -62,4 +63,5 @@ notification_method = "bel"
 | [`github-cli`](skills/github-cli/SKILL.md) | GitHub CLI 使用指引，面向 GitHub 资源交互（如 repo、issue、PR、comment、release、workflow） |
 | [`gitlab-cli`](skills/gitlab-cli/SKILL.md) | GitLab CLI（glab）使用指引，面向 GitLab 资源交互（如 project、issue、MR、comment、wiki） |
 | [`golang-lo`](skills/golang-lo/SKILL.md) | Go >= 1.18 项目中希望用 samber/lo（Lodash 风格泛型库）简化集合/映射/字符串、错误处理、重试/节流/防抖、通道并发或指针空值场景时使用。 |
+| [`pr-proof-chain`](skills/pr-proof-chain/SKILL.md) | 为开源 bugfix PR 构造回归测试有效性证据：旧代码失败、修复后通过，并把红绿 workflow 链接写进 PR 说明。 |
 | [`ticktick-cli`](skills/ticktick-cli/SKILL.md) | 使用 Python CLI 与 Dida365 Open API 交互以管理滴答清单任务/项目，适用于需要通过脚本或命令行调用滴答清单接口的场景（如项目/任务的查询、创建、更新、完成、删除）。 |
