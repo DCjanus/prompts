@@ -26,22 +26,58 @@ description: 当用户准备给开源项目提交 bugfix PR，并需要新增回
 1. 复现阶段
    - 只加入复现问题需要的回归测试、focused check 或临时 CI。
    - 不包含修复代码。
+   - 先确认当前 PR 的 CI 会跑到目标测试；如果普通 CI 不会覆盖目标测试，先加临时 focused workflow/job，最后再清理。
    - 可以用 focused CI 只跑相关测试，减少全量 CI 噪声。
-   - 单独推送并等待失败。
-   - 记录失败的 workflow / job URL 或命令输出。
+   - 只推送 red commit，不要同时推送修复 commit。
+   - 等目标 workflow / job 明确失败后，记录 red commit SHA、workflow URL、job URL、失败摘要。
 
 2. 修复阶段
    - 只修改生产代码或真实实现。
    - 不修改复现测试或临时检查。
-   - 在失败证据记录后推送。
-   - 等待同一个检查通过，并记录通过的 workflow / job URL。
+   - 在失败证据记录后，只推送 green commit。
+   - 等待同一个检查或等价检查通过，记录 green commit SHA、workflow URL、job URL。
 
 3. 清理阶段
    - 删除临时 workflow、调试脚本、一次性配置或临时 matrix。
    - 保留正式回归测试和修复代码。
    - 推送后等待正常 CI。
+   - 最后更新 PR 描述，把 red/green 证据链接写进去；不要在只有 red commit 挂在 PR 上时提前写成最终修复已完成。
 
 不要一次性推送所有阶段；否则远端只会给最终 head 留下 CI 证据。
+
+## 推送节奏
+
+如果需要改写远端 PR 分支历史，必须先确认用户允许，并用 `--force-with-lease` 绑定期望的旧 SHA：
+
+```bash
+git push --force-with-lease=refs/heads/<branch>:<expected_old_sha> \
+  origin <red_sha>:refs/heads/<branch>
+```
+
+red job 明确失败并记录证据后，再推 green：
+
+```bash
+git push --force-with-lease=refs/heads/<branch>:<red_sha> \
+  origin <green_sha>:refs/heads/<branch>
+```
+
+不要在同一次 push 中同时包含 red 和 green commit。
+
+## 证据记录
+
+推送 green 之前，先保存 red 证据；PR 页面通常只突出当前 head 的 checks，后续推送可能让 red run 不再显眼。
+
+至少记录：
+
+- Red commit SHA
+- Red workflow URL
+- Red failing job URL
+- 具体失败测试或断言摘要
+- Green commit SHA
+- Green workflow URL
+- Green passing job URL
+
+如果失败来自平台 cfg、依赖解析、feature 选择、生成文件、lint 或临时 workflow 本身，而不是目标行为断言，这不能算作有效 red proof；先修正测试入口或 CI matrix，再重新开始复现阶段。
 
 ## 硬规则
 
