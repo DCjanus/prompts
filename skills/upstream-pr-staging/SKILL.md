@@ -1,6 +1,6 @@
 ---
 name: upstream-pr-staging
-description: 当用户准备向 GitHub 上游项目提交 PR，且需要先在 fork 内部 draft PR 中低干扰收敛方案、CI、review 或 red/green bugfix 证据时使用；默认避免触发上游 issue / PR / discussion 的自动引用、backlink、通知和 closing keyword。
+description: 用于向 GitHub 上游提交 PR 前，在用户 fork 内创建草稿 PR/内部 PR 做低干扰收敛；当用户提到草稿 PR、内部 PR、fork draft、先内部 review/CI、或 red/green 证据时使用。
 ---
 
 # Upstream PR Staging
@@ -73,6 +73,7 @@ PR body、review comment、issue comment 和交接说明里需要提供可点击
    - 重新整理标题、正文和提交历史，让最终 diff 看起来像一开始就是这样设计的。
    - 只保留上游 reviewer 需要的动机、行为变化、验证结果和必要背景。
    - 是否引用上游 issue / PR / discussion，按用户最新指令和仓库规范决定。
+   - 如果本次是 bugfix，且用户要求或任务需要证明新增回归测试有效，正式上游 PR 也应保留或重建 red / green / cleanup 三段提交，方便 reviewer 直接看到测试先失败、修复后通过、临时 workflow 已清理。
 
 ## Red / Green 证据
 
@@ -95,6 +96,19 @@ PR body、review comment、issue comment 和交接说明里需要提供可点击
    - 等待正常 CI 通过，再把必要 red/green 证据写进最终 PR 描述。
 
 不要一次性推送 red 和 green；否则远端只会突出最终 head 的 CI，red 证据会变弱。
+
+## 上游 PR 中呈现 Red / Green
+
+当正式上游 PR 需要展示 red/green 证明时，默认按下面方式处理：
+
+1. 上游 PR 分支保留三段提交：
+   - `test(...)`：只加入回归测试和必要的临时 focused workflow，不包含修复代码。
+   - `fix(...)`：只加入修复代码，不修改 red 阶段已验证有效的测试。
+   - `chore(ci)`：删除临时 workflow、调试脚本或一次性配置，只保留正式测试和修复。
+2. PR body 里说明三段提交的意图，并用 Markdown 链接给出 red job 和 green job。
+3. 如果没有权限直接运行上游仓库 workflow，可以使用用户 fork 中由分支 push 自动触发的 workflow/job URL 作为证据；需要在 PR body 明确说明这些 job 来自 fork staging workflow。
+4. 如果 red 阶段是上游 PR 分支的一部分，推送 red 后先等待目标 job 明确失败，再推送 green；不要在没有拿到 red job URL 前继续。
+5. 如果上游 maintainer 不希望 PR 历史保留 red/green/cleanup 提交，再按 reviewer 要求 squash 或整理历史。
 
 ## 硬规则
 
