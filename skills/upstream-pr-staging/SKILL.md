@@ -28,6 +28,23 @@ description: 当用户准备向 GitHub 上游项目提交 PR，且需要先在 f
 - 如果确实需要可点击链接但不要 backlink，把 Markdown 链接目标里的 `github.com` 换成 `redirect.github.com`。这是 GitHub 官方支持的 GitHub.com 写法，不适用于 GitHub Enterprise Cloud with Data Residency。
 - 如果不能确认某种写法是否会 backlink，默认不用链接，改写成普通文本背景。
 
+## PR 正文链接写法
+
+PR body、review comment、issue comment 和交接说明里需要提供可点击链接时，默认使用 Markdown URL 语法，不要直接裸贴长链接。
+
+- 对内部 fork PR、workflow run、job、commit、artifact、日志等证据链接，写成 `[简短描述](URL)`。
+- 链接文本要说明目标和用途，例如 `[red run](...)`、`[green run](...)`、`[failing job](...)`、`[cleanup commit](...)`，不要只写 `[link](...)`。
+- 如果同一段里有多个证据链接，优先合并到一句短说明或项目符号里，避免连续堆 URL。
+- 如果链接指向上游 issue / PR / discussion，仍要先遵循“背景引用”的低干扰规则；需要可点击但不想触发 backlink 时，用 Markdown 链接配合 `redirect.github.com`。
+- commit SHA 可以写成短 SHA 文本；如果需要可点击，写成 `[c6bb444](...)` 这类 Markdown 链接。
+
+示例：
+
+```markdown
+- Red: [focused workflow run](https://github.com/owner/repo/actions/runs/123) failed with `aof_received_bytes=1103`.
+- Green: [focused workflow run](https://github.com/owner/repo/actions/runs/456) passed after [a1ec55e](https://github.com/owner/repo/commit/a1ec55e...).
+```
+
 ## 内部 Draft 流程
 
 1. 确认基准
@@ -50,7 +67,7 @@ description: 当用户准备向 GitHub 上游项目提交 PR，且需要先在 f
 4. 内部收敛
    - 等待必要 CI 和内部 review。
    - 用 `github-cli` 查询 PR、checks、workflow 和 job 链接。
-   - 记录对正式上游 PR 有价值的结论；探索过程、临时 workflow 和内部讨论不要原样搬过去。
+   - 记录对正式上游 PR 有价值的结论；证据链接按“PR 正文链接写法”整理，探索过程、临时 workflow 和内部讨论不要原样搬过去。
 
 5. 准备上游 PR
    - 重新整理标题、正文和提交历史，让最终 diff 看起来像一开始就是这样设计的。
@@ -65,12 +82,12 @@ description: 当用户准备向 GitHub 上游项目提交 PR，且需要先在 f
    - 只加入复现问题需要的回归测试、focused check 或临时 CI。
    - 不包含修复代码。
    - 确认旧实现能编译，并通过行为断言失败；不能因为缺少修复里的符号失败。
-   - 推送后等待目标 workflow / job 明确失败，记录 red commit SHA、workflow URL、job URL 和失败摘要。
+   - 推送后等待目标 workflow / job 明确失败，记录 red commit SHA、workflow/job 链接和失败摘要；写入 PR body 时链接必须使用 Markdown URL 语法。
 
 2. Green 阶段
    - 只修改生产代码或真实实现。
    - 不修改 red 阶段已经确认有效的测试。
-   - 推送后等待同一个检查或等价检查通过，记录 green commit SHA、workflow URL 和 job URL。
+   - 推送后等待同一个检查或等价检查通过，记录 green commit SHA、workflow/job 链接；写入 PR body 时链接必须使用 Markdown URL 语法。
 
 3. 清理阶段
    - 删除临时 workflow、调试脚本、一次性配置或临时 matrix。
