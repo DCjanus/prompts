@@ -84,6 +84,7 @@ PR body、review comment、issue comment 和交接说明里需要提供可点击
    - 只保留上游 reviewer 需要的动机、行为变化、验证结果和必要背景。
    - 是否引用上游 issue / PR / discussion，按用户最新指令和仓库规范决定。
    - 如果本次是 bugfix，且用户要求或任务需要证明新增回归测试有效，正式上游 PR 也应保留或重建“只加测试 / 只加修复 / 删除临时 workflow”三段提交，方便 reviewer 直接看到测试先失败、修复后通过、临时 workflow 已清理。
+   - 如果正式 PR 需要使用上游 PR 自己的 workflow/job URL 作为证据，而内部 draft 分支已经一次性包含完整三段提交，优先从上游基准重新起正式分支，并在正式 draft PR 上按阶段重放提交。
 
 ## Red / Green 证据
 
@@ -108,6 +109,26 @@ PR body、review comment、issue comment 和交接说明里需要提供可点击
 
 不要一次性推送 red 和 green；否则远端只会突出最终 head 的 CI，red 证据会变弱。
 
+## 正式 PR 重放流程
+
+当内部 draft 已经收敛，但正式上游 PR 需要自己的 red/green/cleanup workflow URL 时，默认重建正式 PR 分支，不直接复用已经完整推送过的内部分支。
+
+1. 从最新上游基准创建正式 PR 分支。
+   - 分支名按上游项目习惯选择，不需要保留内部 draft 分支名。
+   - 只带入当前正式 PR 需要的改动，不夹带内部探索提交、临时讨论或无关修复。
+2. 先只应用 red 提交并推送。
+   - 创建到上游仓库目标分支的 draft PR。
+   - 标题和正文可以先用临时中文草稿，避免在证据未完成前写成最终口径。
+   - 等待正式 PR 的 pull_request workflow 或上游项目接受的等价检查明确失败，记录正式 PR/repo 下的 workflow/job URL。
+3. 再应用 green 提交并推送。
+   - 等待同一个检查或等价检查通过，记录正式 PR/repo 下的 workflow/job URL。
+   - 如果 green 阶段需要改 red 测试，停下来重新设计提交拆分。
+4. 最后应用 cleanup 提交并推送。
+   - 删除临时 workflow、调试脚本或一次性配置。
+   - cleanup 推送后即可更新 PR 标题和正文，写入正式验证思路和已取得的证据。
+   - 最终 CI 尚未完成时，在 PR body 简短说明正在运行；随后继续观察并按结果更新。
+5. 等 PR 描述、提交历史和必要 CI 状态都达到正式提交标准后，再把 draft 标记为 ready for review。
+
 ## 上游 PR 中呈现验证思路
 
 当正式上游 PR 需要展示测试和修复分别有效时，默认按下面方式处理：
@@ -118,8 +139,8 @@ PR body、review comment、issue comment 和交接说明里需要提供可点击
    - `chore(ci)`：删除临时 workflow、调试脚本或一次性配置，只保留正式测试和修复。
 2. PR body 要短，不写完整流水账；先用一句短段落说明验证方法论，例如“提交历史按测试有效性、实现修复、清理临时 CI 拆成三段，便于确认新增测试不是只覆盖最终状态”。不要一上来直接用 Red / Green / Cleanup 这类阶段标签代替解释。
 3. 说明方法论后，再用三条一行项目符号提供证据，分别对应“只加入测试 / 只加入修复 / 删除临时 workflow”；每行只保留 commit、动作和证据入口，不展开完整失败细节。
-4. PR body 里的测试任务、workflow、job 链接必须使用 Markdown URL 语法，例如 `[测试任务](...)`；内部 fork commit 默认写短 SHA 文本即可，避免把每个 commit 都写成 Markdown 链接。
-5. 如果没有权限直接运行上游仓库 workflow，可以使用用户 fork 中由分支 push 自动触发的 workflow/job URL 作为证据；PR body 里用一句话说明这些测试任务来自 fork 分支 push 自动触发的 workflow。
+4. PR body 里的测试任务、workflow、job 链接必须使用 Markdown URL 语法，例如 `[测试任务](...)`；同仓库 commit 默认写短 SHA 文本即可，避免把每个 commit 都写成 Markdown 链接。
+5. 正式上游 PR 默认优先使用该 PR 自己触发的 workflow/job URL。只有无法取得正式 PR URL，且用户接受时，才退而使用 fork 分支 push 自动触发的 workflow/job URL；PR body 里用一句话说明这些测试任务来自 fork 分支 push 自动触发的 workflow。
 6. 如果 red 阶段是上游 PR 分支的一部分，推送 red 后先等待目标 job 明确失败，再推送 green；不要在没有拿到 red job URL 前继续。
 7. cleanup 提交推送后可以立即更新 PR 描述；不需要等 cleanup 提交对应的正常 CI 成功后再更新。若正常 CI 尚未完成，说明其正在运行即可，并在之后继续观察。
 8. 不要在上游 PR 描述里默认列本地验证命令；除非仓库模板要求或用户明确要求，否则优先说明验证思路和关键证据。
