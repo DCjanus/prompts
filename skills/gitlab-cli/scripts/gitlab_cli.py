@@ -42,6 +42,36 @@ app.add_typer(issue_app, name="issue")
 ToggleChoice = Literal["true", "false"]
 
 
+class GitLabApiError(RuntimeError):
+    """带 GitLab 响应上下文的 API 错误。"""
+
+    def __init__(
+        self,
+        *,
+        endpoint: str,
+        method: str,
+        status_line: str | None,
+        request_id: str | None,
+        response_body: str | None,
+        stderr: str | None,
+        payload: dict[str, object] | None,
+    ) -> None:
+        lines = [f"GitLab API request failed: {method} {endpoint}"]
+        if status_line:
+            lines.append(f"HTTP status: {status_line}")
+        if request_id:
+            lines.append(f"X-Request-Id: {request_id}")
+        if payload:
+            lines.append(f"payload: {format_payload_summary(payload)}")
+        if response_body:
+            lines.append("response body:")
+            lines.append(response_body)
+        if stderr:
+            lines.append("glab stderr:")
+            lines.append(stderr)
+        super().__init__("\n".join(lines))
+
+
 def encode_project(project: str) -> str:
     """把项目路径编码成 GitLab API 可接受的形式。"""
 
@@ -123,6 +153,48 @@ def ensure_payload_fields(payload: dict[str, object]) -> dict[str, object]:
     return clean_payload
 
 
+def format_payload_summary(payload: dict[str, object]) -> str:
+    """输出不泄露大段正文的 payload 摘要。"""
+
+    parts: list[str] = []
+    for key, value in payload.items():
+        if isinstance(value, str):
+            if key in {"content", "description"}:
+                parts.append(f"{key}=<string:{len(value)} chars>")
+            else:
+                display = value if len(value) <= 120 else f"{value[:117]}..."
+                parts.append(f"{key}={display!r}")
+        else:
+            parts.append(f"{key}={value!r}")
+    return ", ".join(parts)
+
+
+def split_glab_http_response(raw: str) -> tuple[str | None, dict[str, str], str]:
+    """拆分 `glab api --include` 输出中的 HTTP headers 与 JSON body。"""
+
+    normalized = raw.replace("\r\n", "\n").strip()
+    if not normalized.startswith("HTTP/"):
+        return None, {}, normalized
+
+    sections = normalized.split("\n\n")
+    header_index = 0
+    for index, section in enumerate(sections):
+        if section.startswith("HTTP/"):
+            header_index = index
+
+    header_lines = sections[header_index].splitlines()
+    status_line = header_lines[0].strip() if header_lines else None
+    headers: dict[str, str] = {}
+    for line in header_lines[1:]:
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        headers[key.strip().lower()] = value.strip()
+
+    body = "\n\n".join(sections[header_index + 1 :]).strip()
+    return status_line, headers, body
+
+
 def run_glab_api(
     *,
     endpoint: str,
@@ -133,7 +205,7 @@ def run_glab_api(
 ) -> dict[str, object]:
     """通过 `glab api` 调用 GitLab REST API 并返回 JSON。"""
 
-    args = ["glab", "api", endpoint, "--method", method]
+    args = ["glab", "api", endpoint, "--method", method, "--include"]
     if hostname:
         args.extend(["--hostname", hostname])
 
@@ -144,20 +216,28 @@ def run_glab_api(
         stdin_text = json.dumps(payload, ensure_ascii=True)
 
     result = run_command(args, cwd=cwd, stdin_text=stdin_text)
+    status_line, headers, body = split_glab_http_response(result.stdout)
     if result.returncode != 0:
-        stderr = (
-            result.stderr.strip() or result.stdout.strip() or "glab api call failed"
+        raise GitLabApiError(
+            endpoint=endpoint,
+            method=method,
+            status_line=status_line,
+            request_id=headers.get("x-request-id"),
+            response_body=body or None,
+            stderr=result.stderr.strip() or None,
+            payload=payload,
         )
-        raise RuntimeError(stderr)
 
-    raw = result.stdout.strip()
+    raw = body.strip()
     if not raw:
         return {}
 
     try:
         parsed = json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise RuntimeError("glab api did not return valid JSON") from exc
+        raise RuntimeError(
+            f"glab api did not return valid JSON for {method} {endpoint}"
+        ) from exc
 
     if not isinstance(parsed, dict):
         raise RuntimeError("unexpected API response shape")
@@ -272,6 +352,13 @@ def ci_lint(
         )
     except RuntimeError as exc:
         error_console.print(str(exc))
+        if dry_run and ref and ref.startswith("refs/merge-requests/"):
+            error_console.print(
+                "hint: GitLab CI Lint dry-run may fail on merge request internal "
+                "refs even when the real MR pipeline can be created. Retry with "
+                "the source branch ref to separate YAML validation from GitLab "
+                "MR-ref simulation issues."
+            )
         raise typer.Exit(code=1) from exc
 
     if as_json:
@@ -334,7 +421,9 @@ def mr_create(
                 "title": resolved_title,
                 "target_branch": target_branch,
                 "source_branch": source_branch or current_branch(cwd),
-                "description": read_text(description_file) if description_file else None,
+                "description": read_text(description_file)
+                if description_file
+                else None,
                 "labels": ",".join(label) if label else None,
                 "reviewer_ids": reviewer_id or None,
                 "assignee_ids": assignee_id or None,
@@ -406,7 +495,9 @@ def mr_update(
         payload = ensure_payload_fields(
             {
                 "title": title,
-                "description": read_text(description_file) if description_file else None,
+                "description": read_text(description_file)
+                if description_file
+                else None,
                 "labels": "" if clear_labels else ",".join(label) if label else None,
                 "reviewer_ids": reviewer_id or None,
                 "assignee_ids": assignee_id or None,
@@ -469,7 +560,9 @@ def issue_create(
         payload = ensure_payload_fields(
             {
                 "title": title,
-                "description": read_text(description_file) if description_file else None,
+                "description": read_text(description_file)
+                if description_file
+                else None,
                 "labels": ",".join(label) if label else None,
                 "assignee_ids": assignee_id or None,
                 "milestone_id": milestone_id,
@@ -540,7 +633,9 @@ def issue_update(
         payload = ensure_payload_fields(
             {
                 "title": title,
-                "description": read_text(description_file) if description_file else None,
+                "description": read_text(description_file)
+                if description_file
+                else None,
                 "labels": "" if clear_labels else ",".join(label) if label else None,
                 "assignee_ids": assignee_id or None,
                 "milestone_id": milestone_id,
