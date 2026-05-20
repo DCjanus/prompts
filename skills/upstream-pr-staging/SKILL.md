@@ -1,122 +1,131 @@
 ---
 name: upstream-pr-staging
-description: 用于向 GitHub 上游提交 PR 前，在用户 fork 内创建草稿 PR/内部 PR 做低干扰收敛；当用户提到草稿 PR、内部 PR、fork draft、先内部 review/CI、或 red/green 证据时使用。
+description: 用于向 GitHub 上游提交 PR 前，在用户 fork 内创建草稿 PR/内部 PR 做低干扰收敛，并保留必要的上游 issue/PR/discussion 背景链接；当用户提到草稿 PR、内部 PR、fork draft、先内部 review/CI、或 red/green 证据时使用。
 ---
 
 # Upstream PR Staging
 
-用于向 GitHub 上游项目提交 PR 前，先在用户 fork 内创建低干扰 draft PR，收敛方案、CI、review 和必要证据，再整理成面向上游 reviewer 的最小 PR。
+用于向 GitHub 上游提交 PR 前，先在用户 fork 内低干扰收敛方案、提交历史、CI 和证据，再整理成正式上游 PR。
 
-## 默认策略
+## 先选路径
 
-内部 draft PR 默认低干扰，不需要用户额外说明。
+默认先做内部 draft，再准备正式上游 PR。
 
-低干扰指：
+- **内部 draft**：用于探索和收敛。PR 开在用户 fork 内，默认中文标题和正文，默认低干扰。
+- **正式上游 PR**：用于提交给上游 reviewer。标题、正文和提交历史重新整理，只保留上游需要的动机、行为变化和验证证据。
+- **正式 PR 重放**：当正式 PR 需要自己的 red/green/cleanup workflow URL 时，从上游基准新建正式分支，在正式 draft PR 上按阶段重放提交。
 
-- 不让上游 issue / PR / discussion 自动出现 backlink、timeline mention 或通知。
-- 不在内部探索阶段暴露未收敛的标题、正文、提交历史或临时 CI。
-- 不使用 `fixes` / `closes` / `resolves` 等可能被平台解释为自动关闭的关键词。
+如果用户明确要求跳过内部 draft，直接进入正式上游 PR 流程；如果用户要求“像内部 PR 没存在过”，从最新上游基准重建正式分支，不复用内部 draft 分支历史。
 
-内部 draft 的限制只服务内部收敛；正式上游 PR 阶段要重新整理标题、正文和提交历史，按用户最新指令和仓库规范决定是否恢复真实链接、issue 编号或 closing keyword。
+## 不变量
 
-## 背景引用
+- 内部 draft 默认低干扰：不触发上游 issue / PR / discussion backlink、timeline mention 或通知。
+- 内部 draft 的标题、正文默认中文；除非用户明确要求英文，或目标仓库/团队规范要求英文。
+- 内部 draft 的 PR body 应尽量保留相关上游 issue / PR / discussion / commit 背景链接；低干扰靠 `redirect.github.com` 和避免 closing keyword 实现，不靠省略关键上下文。
+- 内部探索阶段不使用 `fixes` / `closes` / `resolves` 等可能自动关闭上游 issue 的关键词。
+- 正式上游 PR 使用 repo-native 视角，不保留“内部 draft / fork 草稿”的叙述。
+- 正式上游 PR 是否使用真实 issue 编号、普通 GitHub 链接或 closing keyword，按用户最新指令和目标仓库规范决定。
+- 内部 draft 阶段，用户要求修改、调整或继续实现时，默认完成改动后提交并推送到内部 PR 分支；除非用户明确要求先停在本地等待 review。
+- 正式上游 PR 阶段，普通修改请求默认只做本地改动和说明，不自动提交或推送；除非用户明确要求提交/推送，或已经明确进入正式 PR 重放的 red/green/cleanup 推送步骤。
+- 提交或推送前使用 `git-workflow`，不要把无关本地修改带进 PR。
+- 创建或读取 GitHub PR、checks、workflow、job 时使用 `github-cli`。
 
-内部 draft 有时需要保留上游背景，但默认不要写成 GitHub 会自动引用的形式。
+## 链接策略
 
-- 标题、分支名、commit message 不是可靠 Markdown 环境：不要写 `#123`、`owner/repo#123`、完整 issue URL 或 closing keyword。
-- PR body 需要保留编号时，用 inline code 写成 `` `owner/repo#123` ``、`` `#123` `` 或 `` `https://github.com/owner/repo/issues/123` ``，让它作为背景文本而不是链接。
-- 如果确实需要可点击链接但不要 backlink，把 Markdown 链接目标里的 `github.com` 换成 `redirect.github.com`。这是 GitHub 官方支持的 GitHub.com 写法，不适用于 GitHub Enterprise Cloud with Data Residency。
-- 如果不能确认某种写法是否会 backlink，默认不用链接，改写成普通文本背景。
+需要可点击链接时，不裸贴长 URL；按 PR 场景选择链接形式。
 
-## PR 正文链接写法
-
-PR body、review comment、issue comment 和交接说明里需要提供可点击链接时，默认使用 Markdown URL 语法，不要直接裸贴长链接。
-
-- 对内部 fork PR、workflow run、job、commit、artifact、日志等证据链接，写成 `[简短描述](URL)`。
-- 链接文本要说明目标和用途，例如 `[red run](...)`、`[green run](...)`、`[failing job](...)`、`[cleanup commit](...)`，不要只写 `[link](...)`。
-- 如果同一段里有多个证据链接，优先合并到一句短说明或项目符号里，避免连续堆 URL。
-- 如果链接指向上游 issue / PR / discussion，仍要先遵循“背景引用”的低干扰规则；需要可点击但不想触发 backlink 时，用 Markdown 链接配合 `redirect.github.com`。
-- commit SHA 可以写成短 SHA 文本；如果需要可点击，写成 `[c6bb444](...)` 这类 Markdown 链接。
-
-示例：
-
-```markdown
-- Red: [focused workflow run](https://github.com/owner/repo/actions/runs/123) failed with `aof_received_bytes=1103`.
-- Green: [focused workflow run](https://github.com/owner/repo/actions/runs/456) passed after [a1ec55e](https://github.com/owner/repo/commit/a1ec55e...).
-```
+- 内部 draft 或其它低干扰场景引用上游 issue / PR / commit / discussion 时，默认使用 Markdown 链接配合 `redirect.github.com`，例如 `[RedisShake PR 1050](https://redirect.github.com/tair-opensource/RedisShake/pull/1050)`。
+- 如果内部 draft 源自明确的上游 issue / PR / discussion，PR body 默认加一个简短“关联信息”或“背景”小节列出这些链接；不要因为担心 backlink 而省略 reviewer 需要的来源上下文。
+- 正式上游 PR 使用 repo-native 引用；同仓库 issue / PR 默认写成 `#1050` 这类形式，让 GitHub 自动渲染和关联。只有跨仓库、需要自定义链接文本或用户明确要求低干扰时，才改用 Markdown URL。
+- 尽量不要用 inline code 表示上游 URL；只有在标题、分支名、commit message 等非 Markdown 环境，或明确不想要点击链接时，才把 `owner/repo#123`、`#123`、URL 写成普通文本或 inline code。
+- 标题、分支名、commit message 不是可靠 Markdown 环境；内部 draft 中不要写 `#123`、`owner/repo#123`、完整 GitHub URL 或 closing keyword。
+- workflow run、job、artifact、日志等证据链接写成短链接文本，例如 `[失败记录](...)`、`[通过记录](...)`、`[CI](...)`；证据含义写在链接前后的正文里。
+- 同仓库 commit 证据默认裸写完整 40 位 SHA，不包 inline code；GitHub 会自动把同仓库 commit SHA 识别成链接并美观展示。
+- 只有跨仓库、需要消歧，或用户明确要求点击 commit 时，才把 commit 写成 Markdown 链接；链接文本也优先使用完整 40 位 SHA。
+- 只有在用户明确要求、界面空间非常受限，或目标上下文只接受短引用时，才退回短 SHA。
 
 ## 内部 Draft 流程
 
-1. 确认基准
-   - 确认用户 fork 里是否有专门对齐上游的基准分支，例如 `upstream_main`。
-   - 获取上游主分支和 fork 基准分支，确认两者是否一致。
-   - 如果 fork 基准分支能 fast-forward 到上游，按用户授权更新；如果出现分叉或额外提交，停下来确认。
-
-2. 创建开发分支
+1. 确认基准。
+   - 确认用户 fork 是否有对齐上游的基准分支，例如 `upstream_main`。
+   - 获取上游目标分支和 fork 基准分支，确认两者是否一致。
+   - 如果 fork 基准分支可 fast-forward 到上游，按用户授权更新；如果分叉或有额外提交，停下来确认。
+2. 创建开发分支。
    - 从 fork 基准分支新建特性分支。
-   - 分支只包含当前任务需要的提交，不夹带工作树里的其它改动。
+   - 分支只包含当前任务需要的提交。
    - 分支名默认不包含上游 issue / PR 编号。
-
-3. 创建 fork 内部 draft PR
-   - PR repo 指向用户 fork，不指向上游仓库。
-   - base 指向 fork 基准分支，head 指向当前特性分支。
+3. 创建 fork 内部 draft PR。
+   - PR repo 指向用户 fork，base 指向 fork 基准分支。
    - 标题、正文、分支名和 commit message 按低干扰规则处理。
-   - PR body 写给内部审查者：说明背景、改动、验证、风险和待确认点。
+   - PR body 写给内部审查者，说明背景、关联信息、改动、验证、风险和待确认点。
+   - 如果存在明确的上游 issue / PR / discussion / commit 背景，PR body 中用 `redirect.github.com` Markdown 链接列出；标题、分支名和 commit message 仍避免直接写 `#123`、`owner/repo#123` 或完整 GitHub URL。
    - 草稿正文优先写到 `/tmp/*.md`，再用 `gh pr create --body-file` 或 `gh pr edit --body-file`。
-
-4. 内部收敛
+4. 内部收敛。
    - 等待必要 CI 和内部 review。
-   - 用 `github-cli` 查询 PR、checks、workflow 和 job 链接。
-   - 记录对正式上游 PR 有价值的结论；证据链接按“PR 正文链接写法”整理，探索过程、临时 workflow 和内部讨论不要原样搬过去。
+   - 对内部 PR 的后续修改，默认以 follow-up commit 正常推送到内部 PR 分支。
+   - 记录对正式上游 PR 有价值的结论；探索过程、临时 workflow 和内部讨论不要原样搬过去。
 
-5. 准备上游 PR
-   - 重新整理标题、正文和提交历史，让最终 diff 看起来像一开始就是这样设计的。
-   - 只保留上游 reviewer 需要的动机、行为变化、验证结果和必要背景。
-   - 是否引用上游 issue / PR / discussion，按用户最新指令和仓库规范决定。
-   - 如果本次是 bugfix，且用户要求或任务需要证明新增回归测试有效，正式上游 PR 也应保留或重建“只加测试 / 只加修复 / 删除临时 workflow”三段提交，方便 reviewer 直接看到测试先失败、修复后通过、临时 workflow 已清理。
+## 正式上游 PR 流程
+
+1. 从最新上游基准创建正式 PR 分支，或从内部 draft 中整理出只包含最终改动的分支。
+2. 重新整理标题、正文和提交历史，让最终 diff 看起来像一开始就是这样设计的。
+3. PR body 只写上游 reviewer 需要的信息：
+   - 为什么需要这个改动。
+   - 改了什么用户可见行为或维护边界。
+   - 如何验证，证据入口在哪里。
+4. 默认不列本地格式化、lint、测试命令；如果 CI 覆盖这些内容，直接引用 CI 证据。
+5. 如果上游 maintainer 不希望保留多段提交，再按 reviewer 要求 squash 或重排历史。
+6. 正式上游 PR 的后续修改默认先停在本地，等用户确认后再提交和推送。
 
 ## Red / Green 证据
 
-只有 bugfix 需要证明回归测试有效时，才使用这一节。
+只有 bugfix 需要证明回归测试有效时，才使用三阶段证据。不要一次性推送 red 和 green；否则 red 证据会变弱。
 
-1. Red 阶段
-   - 只加入复现问题需要的回归测试、focused check 或临时 CI。
-   - 不包含修复代码。
-   - 确认旧实现能编译，并通过行为断言失败；不能因为缺少修复里的符号失败。
-   - 推送后等待目标 workflow / job 明确失败，记录 red commit SHA、workflow/job 链接和失败摘要；写入 PR body 时链接必须使用 Markdown URL 语法。
-
-2. Green 阶段
-   - 只修改生产代码或真实实现。
+1. **Red**：只加入复现问题需要的回归测试、focused check 或临时 CI，不包含修复代码。
+   - 旧实现必须能编译。
+   - 失败必须来自行为断言，不是缺少修复里的符号、平台配置、依赖解析、生成文件、lint 或临时 workflow 本身。
+   - 推送后等待目标 workflow/job 明确失败，记录 commit SHA、workflow/job URL 和失败摘要。
+2. **Green**：只加入生产代码或真实实现。
    - 不修改 red 阶段已经确认有效的测试。
-   - 推送后等待同一个检查或等价检查通过，记录 green commit SHA、workflow/job 链接；写入 PR body 时链接必须使用 Markdown URL 语法。
-
-3. 清理阶段
-   - 删除临时 workflow、调试脚本、一次性配置或临时 matrix。
+   - 推送后等待同一个检查或等价检查通过，记录 commit SHA 和 workflow/job URL。
+3. **Cleanup**：删除临时 workflow、调试脚本、一次性配置或临时 matrix。
    - 保留正式回归测试和修复代码。
-   - 等待正常 CI 通过，再把必要 red/green 证据写进最终 PR 描述。
+   - cleanup 推送后即可更新 PR 描述；不必先等待 cleanup 提交触发的正常 CI 全部通过。
+   - 如果最终 CI 还在运行，PR body 简短说明正在运行；随后继续观察并按结果更新。
 
-不要一次性推送 red 和 green；否则远端只会突出最终 head 的 CI，red 证据会变弱。
+## 正式 PR 重放
 
-## 上游 PR 中呈现验证思路
+当内部 draft 已经收敛，但正式 PR 需要自己的 red/green/cleanup workflow URL 时，按这个流程重放。
 
-当正式上游 PR 需要展示测试和修复分别有效时，默认按下面方式处理：
+1. 从最新上游基准创建正式 PR 分支。
+2. 只应用 red 提交并推送，创建到上游目标分支的 draft PR。
+3. 等待正式 PR 的 pull_request workflow 或上游接受的等价检查失败，记录正式 PR/repo 下的 URL。
+4. 应用 green 提交并推送，等待同一个检查或等价检查通过，记录正式 PR/repo 下的 URL。
+5. 应用 cleanup 提交并推送，更新正式 PR 标题和正文。
+6. 等 PR 描述、提交历史和必要 CI 状态都达到正式提交标准后，再标记 ready for review。
 
-1. 上游 PR 分支保留三段提交：
-   - `test(...)`：只加入回归测试和必要的临时 focused workflow，不包含修复代码。
-   - `fix(...)`：只加入修复代码，不修改 red 阶段已验证有效的测试。
-   - `chore(ci)`：删除临时 workflow、调试脚本或一次性配置，只保留正式测试和修复。
-2. PR body 要短，不写完整流水账；用三条项目符号说明“只加入测试 / 只加入修复 / 删除临时 workflow”的验证思路即可。
-3. PR body 里的 commit 和测试任务链接必须使用 Markdown URL 语法，例如 `[第一个 commit](...)`、`[测试任务](...)`；避免裸 URL。
-4. 如果没有权限直接运行上游仓库 workflow，可以使用用户 fork 中由分支 push 自动触发的 workflow/job URL 作为证据；PR body 里用一句话说明这些测试任务来自 fork 分支 push 自动触发的 workflow。
-5. 如果 red 阶段是上游 PR 分支的一部分，推送 red 后先等待目标 job 明确失败，再推送 green；不要在没有拿到 red job URL 前继续。
-6. 不要在上游 PR 描述里默认列本地验证命令；除非仓库模板要求或用户明确要求，否则优先说明验证思路和关键证据。
-7. 如果上游 maintainer 不希望 PR 历史保留 red/green/cleanup 提交，再按 reviewer 要求 squash 或整理历史。
+正式上游 PR 默认优先使用该 PR 自己触发的 workflow/job URL。只有无法取得正式 PR URL，且用户接受时，才退而使用 fork 分支 push 自动触发的 workflow/job URL，并在 PR body 里说明来源。
 
-## 硬规则
+## PR Body 证据写法
 
-- 内部 draft PR 默认低干扰；除非用户明确要求，否则不要写会自动链接或 cross-reference 上游 issue / PR / discussion 的标题、正文、分支名或 commit message。
-- 不要擅自 force-push 或重写 fork 基准分支；如果基准分支和上游分叉，先说明状态并等待确认。
-- 如果 red 阶段失败来自平台 cfg、依赖解析、feature 选择、生成文件、lint 或临时 workflow 本身，不算有效 red proof；先修正测试入口或 CI matrix。
-- 如果 green 阶段必须改 red 测试，停下来重新设计复现阶段。
-- 提交或推送前使用 `git-workflow`，不要把无关本地修改带进 PR。
-- 创建或读取 GitHub PR、checks、workflow 时，使用 `github-cli` 获取当前状态和 job 链接。
+PR body 要先说明验证方法论，再给证据；不要一上来用 Red / Green / Cleanup 这类标签代替解释。
+
+推荐写法：
+
+```markdown
+提交历史按“测试有效性 -> 实现修复 -> 清理临时 CI”拆成三段，便于确认新增测试不是只覆盖最终状态。
+
+- c6bb4448e6d337f0b1a7c4a3a3a1bb8b6a0d1234：只加入测试；确认测试能在缺少目标行为时失败：[失败记录](https://github.com/owner/repo/actions/runs/123)。
+- a1ec55ef8d2a8c66b5d6c3c2f4a7e9b0c1d23456：只加入修复；确认同一检查通过：[通过记录](https://github.com/owner/repo/actions/runs/456)。
+- f00ba47c2a6d9f0b7e8c4d3a2b1c0e9f8a765432：删除临时 workflow；最终 CI 见：[CI](https://github.com/owner/repo/actions/runs/789)。
+```
+
+保持三条证据各占一行；每行只保留 commit、动作和证据入口，不展开完整失败细节。
+
+## 停下来确认
+
+- fork 基准分支和上游分叉，或含有无法解释的额外提交。
+- 需要 force-push 或重写 fork 基准分支。
+- red 阶段失败不是目标行为断言导致的。
+- green 阶段必须修改 red 测试才能通过。
+- 正式 PR 需要引用上游 issue/PR，但无法判断链接是否会产生不希望的 backlink。

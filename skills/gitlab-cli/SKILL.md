@@ -45,6 +45,7 @@ python skills/gitlab-cli/scripts/gitlab_cli.py --help
 - MR 标题默认遵循语义化提交规范，例如 `feat(scope): short summary`；即使标题要求中文，语义化前缀仍需英文。
 - Breaking change 按相对目标分支的最终 diff / 对外行为判断，不按中间 commit 机械继承；有 breaking change 时标题用 `type(scope)!: short summary`，正文加 `BREAKING CHANGE:` 说明影响和迁移方式；否则不要加 `!` 或 `BREAKING CHANGE:`。
 - MR 正文优先写清 why / what / validation。
+- validation 默认优先引用 GitLab pipeline / job 证据。若格式化、lint、单测或集成测试已经由 CI 覆盖，不要在正文里重复罗列本地运行过的同类命令；只补充 CI 未覆盖、但对 reviewer 判断有价值的本地或手工验证。
 
 ## 什么时候直接用 glab
 
