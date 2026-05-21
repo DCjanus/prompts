@@ -43,9 +43,12 @@ python skills/gitlab-cli/scripts/gitlab_cli.py --help
 ## MR 标题与描述
 
 - MR 标题默认遵循语义化提交规范，例如 `feat(scope): short summary`；即使标题要求中文，语义化前缀仍需英文。
-- Breaking change 按相对目标分支的最终 diff / 对外行为判断，不按中间 commit 机械继承；有 breaking change 时标题用 `type(scope)!: short summary`，正文加 `BREAKING CHANGE:` 说明影响和迁移方式；否则不要加 `!` 或 `BREAKING CHANGE:`。
+- 创建或更新 MR 标题/正文时，只描述目标分支当前状态到当前分支最终状态的净变化。不要按 commit 历史、开发过程、临时实验或旧正文残留来写。
+- 先确认 target/source，再用 final net diff 作为正文依据：`git fetch` 后查看 `git diff --stat <target>...HEAD` 与 `git diff --name-status <target>...HEAD`；必要时再用 `glab mr diff` 或关键文件 diff 辅助核对。
+- MR 正文不要包含：中间提交顺序、调试过程、失败尝试、临时方案、merge/rebase/冲突解决过程、曾经实现过但最终 diff 已不存在的行为。
 - MR 正文优先写清 why / what / validation。
-- validation 默认优先引用 GitLab pipeline / job 证据。若格式化、lint、单测或集成测试已经由 CI 覆盖，不要在正文里重复罗列本地运行过的同类命令；只补充 CI 未覆盖、但对 reviewer 判断有价值的本地或手工验证。
+- Validation 默认优先引用 GitLab pipeline / job 证据。若格式化、lint、单测或集成测试已经由 CI 覆盖，不要在正文里重复罗列本地运行过的同类命令；只补充 CI 未覆盖、但对 reviewer 判断最终 diff 有价值的本地或手工验证。不要记录探索性失败、调试命令或临时注入失败，除非它是最终交付的已知风险。
+- Breaking change 按 final net diff / 对外行为判断，不按中间 commit 机械继承；只有最终净变化确实破坏既有用法时，标题才用 `type(scope)!: short summary`，正文才加 `BREAKING CHANGE:` 说明影响和迁移方式。
 
 ## 什么时候直接用 glab
 
@@ -121,5 +124,5 @@ python skills/gitlab-cli/scripts/gitlab_cli.py --help
 - 更新 Issue 或 MR 标题/正文前，先读取当前内容，再修改。
 - 正文只允许通过 `--description-file` 传入；脚本不再支持 `--description`，避免 shell 转义和多行文本处理问题。
 - 创建 MR 前，先检查模板、目标分支、当前分支与工作区状态是否符合仓库要求；除非仓库或用户明确要求保留多 commit 或保留源分支，否则创建 MR 时显式传 `--squash true` 与 `--remove-source-branch true`。
-- 创建或更新 MR 标题/正文前，重新按最终净效果判断是否需要 `!` 与 `BREAKING CHANGE:`。
+- 创建或更新 MR 标题/正文前，按 final net diff 重新生成整篇 MR 标题/正文，覆盖旧正文中的过时内容，并重新判断是否需要 `!` 与 `BREAKING CHANGE:`。
 - 创建 Issue 前，先检查模板、标签、复现信息与现状是否一致。
