@@ -53,10 +53,36 @@ python skills/gitlab-cli/scripts/gitlab_cli.py --help
 ## 什么时候直接用 glab
 
 - 查看与列表：`glab issue view`、`glab issue list`、`glab mr view`、`glab mr diff`
+- CI 阻塞等待：优先用 `glab ci status --live` 等 pipeline 结束；需要跟随单个 job 日志时用 `glab ci trace <job-id|job-name>`
 - 评论：`glab issue note`
 - 审查意见整理：先读 MR discussions / notes / diff comments，再统一整理
 - 先确认能力边界：`glab <group> --help`、`glab <group> <subcommand> --help`
 - wiki：先看 `glab wiki --help`；若当前版本没有子命令，再考虑 `glab api`
+
+## CI 等待与日志跟随
+
+- 等待当前分支最新 pipeline 完成时，不要手写定时轮询；直接运行：
+
+```bash
+glab ci status --live --compact
+```
+
+- 等待指定分支或其它仓库的 pipeline 完成时，用：
+
+```bash
+glab ci status --branch main --live --compact
+glab ci status --branch main --live --compact -R group/project
+```
+
+- 需要看某个 job 的实时日志并阻塞到日志结束时，用：
+
+```bash
+glab ci trace 123456
+glab ci trace test --pipeline-id 123456 --branch main
+```
+
+- `glab ci status --live` 适合替代 agent 自己的轮询等待；等待结束后若需要把结果写入 MR / Issue / 回复，先再用 `glab ci status --output json`、`glab ci get --with-job-details` 或 `glab ci list --output json` 做一次最终状态读取，避免只根据动态终端输出下结论。
+- 需要按 pipeline ID 锁定具体 pipeline 时，优先用 `glab ci view --pipelineid <id>` 做交互查看；如果任务需要非交互、机器可解析的最终状态，改用 `glab ci get` 或 `glab api` 读取该 pipeline / jobs。
 
 ## 脚本支持的场景
 
