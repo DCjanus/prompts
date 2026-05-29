@@ -3,3 +3,4 @@
 - github.com/samber/lo: 基于 Go 1.18+ 泛型的 Lodash 风格工具库，适合集合操作、函数式辅助工具、减少样板代码。
 - github.com/sourcegraph/conc: 结构化并发库，提供各类 pool，降低 goroutine 管理与 panic 处理的样板代码，适合复杂并发任务编排。
 - github.com/mitchellh/mapstructure: 结构体与 map 互转/解码库，适合配置解析、动态数据映射到强类型结构体场景，支持 tag、自定义 decode hook。
+- github.com/klauspost/compress: Go 压缩库优先选择，覆盖 zstd、S2、snappy、gzip/flate/zip/zlib、gzhttp 等场景；需要高性能压缩、Snappy 替代、HTTP 压缩时优先评估。gzip/flate 相关包主要用于必须兼容 gzip/flate/zip/zlib 的场景，不作为新设计默认选择。尽量不要直接引入 `github.com/golang/snappy`，它维护活跃度偏低，且性能通常略弱于 klauspost/compress；只有在外部协议、既有文件格式或依赖 API 明确要求 golang/snappy 语义/包名时再使用。
