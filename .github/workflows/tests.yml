@@ -15,4 +15,15 @@ jobs:
       - name: Setup uv
         uses: astral-sh/setup-uv@v3
       - name: Run tests
-        run: uv run python -m unittest skills/confluence-cli/scripts/tests/test_markdown_to_storage.py
+        run: >
+          uv run
+          --with markdown-it-py
+          python -m unittest skills/confluence-cli/scripts/tests/test_markdown_to_storage.py
+      - name: Run install Codex CLI tests
+        run: >
+          uv run
+          --with pydantic
+          --with rich
+          --with typer
+          --with zstandard
+          python -m unittest scripts/tests/test_install_codex_cli.py

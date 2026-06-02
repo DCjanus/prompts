@@ -49,6 +49,7 @@ notification_method = "bel"
   - [`token_count.py`](scripts/token_count.py)：基于 [tiktoken](https://github.com/openai/tiktoken) 的 token 计数 CLI
   - [`token_tree.py`](scripts/token_tree.py)：统计仓库内所有 Git 跟踪文本文件的 token 数，按树状结构输出；支持全局比例进度条、对齐条形显示与百分比，可用 `--bar-width` 调整条形宽度
   - [`codex_usage.py`](scripts/codex_usage.py)：统计 Codex JSONL session 的 token 用量和预估价格，默认同时读取 `~/.codex/sessions` 与 `~/.codex/archived_sessions`，价格信息缓存到 XDG cache 且最多复用 7 天
+  - [`install_codex_cli.py`](scripts/install_codex_cli.py)：从 [openai/codex](https://github.com/openai/codex/releases) 最新 release 下载当前平台的 Codex CLI 预编译 binary，安装到用户级 XDG binary 目录，并在可跳过下载时复用本地状态
 
 ### 技能列表
 
