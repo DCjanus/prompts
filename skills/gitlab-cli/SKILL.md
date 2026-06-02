@@ -40,17 +40,61 @@ python skills/gitlab-cli/scripts/gitlab_cli.py --help
 ./scripts/gitlab_cli.py mr update --cwd /path/to/repo 123 --description "multi-line body"
 ```
 
-## MR 标题与描述
+## 创建前检查
+在创建 Issue 或 MR 前，先检查对应的 GitLab 模板、表单和当前资源状态。
+1. 优先检查 issue / MR 模板，以及 `.gitlab/issue_templates/`、`.gitlab/merge_request_templates/`、`.gitlab-ci.yml`、项目说明文档等 GitLab 专用配置。
+2. 若仓库要求特定标题格式、正文结构、关联 issue、检查项、标签、target 分支、squash 策略或其它平台字段，先按要求准备，再补充本 skill 的默认格式。
+3. 在正式创建前检查当前代码、分支与提交状态是否和准备提交到平台上的内容一致，避免创建出与现状不符的 Issue 或 MR。
 
-- MR 标题默认遵循语义化提交规范，例如 `feat(scope): short summary`；即使标题要求中文，语义化前缀仍需英文。
-- 创建或更新 MR 标题/正文时，只描述目标分支当前状态到当前分支最终状态的净变化。不要按 commit 历史、开发过程、临时实验或旧正文残留来写。
+## Issue/MR 标题与正文原则
+
+创建或更新 Issue/MR 标题与正文时，只描述当前需要提交给 reviewer/maintainer 的最终信息。MR 必须只描述目标分支当前状态到当前分支最终状态的净变化，不要按 commit 历史、开发过程、临时实验或旧正文残留来写。
+
 - 先确认 target/source，再用 final net diff 作为正文依据：`git fetch` 后查看 `git diff --stat <target>...HEAD` 与 `git diff --name-status <target>...HEAD`；必要时再用 `glab mr diff` 或关键文件 diff 辅助核对。
 - MR 正文不要包含：中间提交顺序、调试过程、失败尝试、临时方案、merge/rebase/冲突解决过程、曾经实现过但最终 diff 已不存在的行为。
-- MR / Issue 正文不要包含本机绝对路径、home 目录、agent 工作区路径、临时正文文件路径或其它会暴露个人/机器环境的信息；如需引用仓库内文件，使用相对路径或 Markdown 链接。
-- MR 正文优先写清 why / what / validation。
+- Issue/MR 正文不要包含本机绝对路径、home 目录、agent 工作区路径、临时正文文件路径或其它会暴露个人/机器环境的信息；如需引用仓库内文件，使用相对路径或 Markdown 链接。
 - Validation 默认可以省略；只有能增加 reviewer 信心的信息才写，例如真实端到端使用过目标场景、线上/页面/API/CLI 行为被实际确认，或修 BUG 时先构造稳定失败的回归 case 再修复到通过。
 - 不要把 GitLab pipeline、格式化、lint、类型检查、普通单元测试、构建通过等常规卫生检查写进 MR 正文；这些属于合入门槛，信息增量低。也不要记录探索性失败、调试命令或临时注入失败，除非它是最终交付的已知风险。
 - Breaking change 按 final net diff / 对外行为判断，不按中间 commit 机械继承；只有最终净变化确实破坏既有用法时，标题才用 `type(scope)!: short summary`，正文才加 `BREAKING CHANGE:` 说明影响和迁移方式。
+
+## 创建 Issue（非交互）
+以下规范建立在“创建前检查”已完成的前提上。
+1. 若仓库要求 issue 必须包含特定字段、标签、复现步骤、版本信息、最小示例或分类，先据此整理内容；不要跳过必填项。
+2. 若 issue 与当前本地改动或分支上下文有关，先检查相关代码、分支与提交信息，确认 issue 描述与现状一致，不要提交已经过时或与代码不符的内容。
+3. 标题与描述遵循“Issue/MR 标题与正文原则”，内容保持简洁清晰。
+4. Issue 正文默认先写到本地 Markdown 文件；草稿优先放 `/tmp/*.md`，但不要把草稿路径或其它本机路径写进正文。标题通常较短，可直接用 `--title` 传入。
+5. 创建与修改时优先使用 `--description-file`，例如：`./scripts/gitlab_cli.py issue create --title "..." --description-file /tmp/issue-body.md`，或 `./scripts/gitlab_cli.py issue update 123 --title "..." --description-file /tmp/issue-body.md`。
+6. 创建成功后，输出完整 Issue URL。
+
+## 创建 MR
+以下标题与描述规范为默认推荐格式；如与团队/仓库/平台等既有约束冲突，以既有约束为准。若有明确要求（如需中文），则优先遵循。
+1. 先完成“创建前检查”。
+2. 只有在确认仓库要求与本地代码/提交状态都满足后，才创建 MR；若发现不满足，应先修正，再创建。
+3. `git status` 必须干净，且当前分支已推送到远端。
+4. 标题风格：英文、遵循语义化提交规范（如 `feat(scope): short summary`），简洁且描述核心目的；即使标题要求中文，语义化前缀仍需英文。
+5. 遵循“Issue/MR 标题与正文原则”。有 breaking change 时标题用 `type(scope)!: short summary`，正文加 `BREAKING CHANGE:` 说明影响和迁移方式；否则不要加 `!` 或 `BREAKING CHANGE:`。
+6. 描述风格：英文、短句和项目符号，优先让不看代码的读者快速理解动机、改动与验证方式。重点是 what/why/validation，避免流水账与过多实现细节。若上下文不足以明确目标或约束，应主动向开发者确认后再撰写。涉及专有名词、函数名、方法名、类名、API 名称或配置键时，使用 inline code（反引号）包裹以提升可读性与准确性。
+7. 默认正文格式：
+   - `## Why`：1-2 条短句说明为什么要做这次改动，聚焦问题背景或目标。
+   - `## What`：1-3 条说明主要变更，聚焦功能或行为层面的变化，不罗列琐碎实现细节。
+8. 可选正文块：仅在确有必要时再添加。
+   - `BREAKING CHANGE:`：仅当最终 MR 确实包含 breaking change 时添加。
+   - `## Validation`：仅说明有信息增量的真实使用场景、端到端验证、关键边界样例、或 red/green 回归测试；未做这类验证时可以省略。
+   - `## Risks`：兼容性影响、潜在风险、回滚注意事项。
+   - `## Notes`：reviewers 需要特别关注的点，或后续计划。
+9. `## Validation` 不默认引用 CI / pipeline / job 证据；CI 属于合入门槛，不是正文素材。除非 pipeline 本身验证了某个 reviewer 无法从常规 CI 推断的真实场景，否则不要把 CI、格式化、lint、普通单测、构建命令写进正文。
+10. MR 正文默认先写到本地 Markdown 文件；草稿优先放 `/tmp/*.md`，不要在 shell 里拼多行字符串，也不要依赖交互式编辑。标题通常较短，可直接用 `--title` 传入。
+11. 创建 MR 时优先使用 `--description-file`，例如：
+```
+./scripts/gitlab_cli.py mr create \
+  --title "feat(scope): short summary" \
+  --description-file /tmp/mr-body.md \
+  --target-branch main \
+  --squash true \
+  --remove-source-branch true
+```
+12. 修改 MR 时也复用本地文件，避免手工编辑，例如：`./scripts/gitlab_cli.py mr update 123 --title "..." --description-file /tmp/mr-body.md`。
+13. 创建成功后，输出完整 MR URL。
 
 ## 什么时候直接用 glab
 
