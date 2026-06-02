@@ -73,18 +73,13 @@ python skills/gitlab-cli/scripts/gitlab_cli.py --help
 3. `git status` 必须干净，且当前分支已推送到远端。
 4. 标题风格：英文、遵循语义化提交规范（如 `feat(scope): short summary`），简洁且描述核心目的；即使标题要求中文，语义化前缀仍需英文。
 5. 遵循“Issue/MR 标题与正文原则”。有 breaking change 时标题用 `type(scope)!: short summary`，正文加 `BREAKING CHANGE:` 说明影响和迁移方式；否则不要加 `!` 或 `BREAKING CHANGE:`。
-6. 描述风格：英文、短句和项目符号，优先让不看代码的读者快速理解动机、改动与验证方式。重点是 what/why/validation，避免流水账与过多实现细节。若上下文不足以明确目标或约束，应主动向开发者确认后再撰写。涉及专有名词、函数名、方法名、类名、API 名称或配置键时，使用 inline code（反引号）包裹以提升可读性与准确性。
+6. 描述风格：英文、短句和项目符号，优先让不看代码的读者快速理解动机、改动与必要验证，避免流水账与过多实现细节。若上下文不足以明确目标或约束，应主动向开发者确认后再撰写。涉及专有名词、函数名、方法名、类名、API 名称或配置键时，使用 inline code（反引号）包裹以提升可读性与准确性。
 7. 默认正文格式：
    - `## Why`：1-2 条短句说明为什么要做这次改动，聚焦问题背景或目标。
    - `## What`：1-3 条说明主要变更，聚焦功能或行为层面的变化，不罗列琐碎实现细节。
-8. 可选正文块：仅在确有必要时再添加。
-   - `BREAKING CHANGE:`：仅当最终 MR 确实包含 breaking change 时添加。
-   - `## Validation`：仅说明有信息增量的真实使用场景、端到端验证、关键边界样例、或 red/green 回归测试；未做这类验证时可以省略。
-   - `## Risks`：兼容性影响、潜在风险、回滚注意事项。
-   - `## Notes`：reviewers 需要特别关注的点，或后续计划。
-9. `## Validation` 不默认引用 CI / pipeline / job 证据；CI 属于合入门槛，不是正文素材。除非 pipeline 本身验证了某个 reviewer 无法从常规 CI 推断的真实场景，否则不要把 CI、格式化、lint、普通单测、构建命令写进正文。
-10. MR 正文默认先写到本地 Markdown 文件；草稿优先放 `/tmp/*.md`，不要在 shell 里拼多行字符串，也不要依赖交互式编辑。标题通常较短，可直接用 `--title` 传入。
-11. 创建 MR 时优先使用 `--description-file`，例如：
+8. 可选正文块：仅在确有必要时再添加 `BREAKING CHANGE:`、`## Validation`、`## Risks` 或 `## Notes`；具体取舍遵循“Issue/MR 标题与正文原则”。
+9. MR 正文默认先写到本地 Markdown 文件；草稿优先放 `/tmp/*.md`，不要在 shell 里拼多行字符串，也不要依赖交互式编辑。标题通常较短，可直接用 `--title` 传入。
+10. 创建 MR 时优先使用 `--description-file`，例如：
 ```
 ./scripts/gitlab_cli.py mr create \
   --title "feat(scope): short summary" \
@@ -93,8 +88,8 @@ python skills/gitlab-cli/scripts/gitlab_cli.py --help
   --squash true \
   --remove-source-branch true
 ```
-12. 修改 MR 时也复用本地文件，避免手工编辑，例如：`./scripts/gitlab_cli.py mr update 123 --title "..." --description-file /tmp/mr-body.md`。
-13. 创建成功后，输出完整 MR URL。
+11. 修改 MR 时也复用本地文件，避免手工编辑，例如：`./scripts/gitlab_cli.py mr update 123 --title "..." --description-file /tmp/mr-body.md`。
+12. 创建成功后，输出完整 MR URL。
 
 ## 什么时候直接用 glab
 
