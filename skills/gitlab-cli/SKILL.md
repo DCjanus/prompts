@@ -1,6 +1,6 @@
 ---
 name: gitlab-cli
-description: 使用 GitLab CLI（glab）与 GitLab 资源交互；适用于 project、issue、MR、comment、wiki 等查看、更新或创建场景，含自建实例；Issue/MR 标题正文编写配合 change-request-writing。
+description: 使用 GitLab CLI（glab）与 GitLab 资源交互；适用于 project、issue、MR、comment、wiki 等查看、更新或创建场景，含自建实例；Issue/MR 标题正文编写参考 [SKILL.md](../change-request-writing/SKILL.md)。
 ---
 
 ## 使用约定
@@ -43,12 +43,12 @@ python skills/gitlab-cli/scripts/gitlab_cli.py --help
 ## 创建前检查
 在创建 Issue 或 MR 前，先检查对应的 GitLab 模板、表单和当前资源状态。
 1. 优先检查 issue / MR 模板，以及 `.gitlab/issue_templates/`、`.gitlab/merge_request_templates/`、`.gitlab-ci.yml`、项目说明文档等 GitLab 专用配置。
-2. Issue/MR 标题与正文编写统一遵循 [change-request-writing](../change-request-writing/SKILL.md)。
+2. Issue/MR 标题与正文编写统一遵循 [SKILL.md](../change-request-writing/SKILL.md)。
 3. 在正式创建前检查当前代码、分支与提交状态是否和准备提交到平台上的内容一致，避免创建出与现状不符的 Issue 或 MR。
 
 ## 创建 Issue（非交互）
 以下规范建立在“创建前检查”已完成的前提上。
-1. 标题与正文先按 [change-request-writing](../change-request-writing/SKILL.md) 准备。
+1. 标题与正文先按 [SKILL.md](../change-request-writing/SKILL.md) 准备。
 2. Issue 正文默认先写到本地 Markdown 文件；草稿优先放 `/tmp/*.md`，标题通常较短，可直接用 `--title` 传入。
 3. 创建与修改时优先使用 `--description-file`，例如：`./scripts/gitlab_cli.py issue create --title "..." --description-file /tmp/issue-body.md`，或 `./scripts/gitlab_cli.py issue update 123 --title "..." --description-file /tmp/issue-body.md`。
 4. 创建成功后，输出完整 Issue URL。
@@ -58,7 +58,7 @@ python skills/gitlab-cli/scripts/gitlab_cli.py --help
 1. 先完成“创建前检查”。
 2. 只有在确认仓库要求与本地代码/提交状态都满足后，才创建 MR；若发现不满足，应先修正，再创建。
 3. `git status` 必须干净，且当前分支已推送到远端。
-4. 标题与正文先按 [change-request-writing](../change-request-writing/SKILL.md) 准备。
+4. 标题与正文先按 [SKILL.md](../change-request-writing/SKILL.md) 准备。
 5. MR 正文默认先写到本地 Markdown 文件；草稿优先放 `/tmp/*.md`，不要在 shell 里拼多行字符串，也不要依赖交互式编辑。标题通常较短，可直接用 `--title` 传入。
 6. 创建 MR 时优先使用 `--description-file`，例如：
 ```
@@ -172,5 +172,5 @@ glab ci trace test --pipeline-id 123456 --branch main
 - 更新 Issue 或 MR 标题/正文前，先读取当前内容，再修改。
 - 正文只允许通过 `--description-file` 传入；脚本不再支持 `--description`，避免 shell 转义和多行文本处理问题。
 - 创建 MR 前，先检查模板、目标分支、当前分支与工作区状态是否符合仓库要求；除非仓库或用户明确要求保留多 commit 或保留源分支，否则创建 MR 时显式传 `--squash true` 与 `--remove-source-branch true`。
-- 创建或更新 Issue/MR 标题正文时，文案按 [change-request-writing](../change-request-writing/SKILL.md) 重新生成。
+- 创建或更新 Issue/MR 标题正文时，文案按 [SKILL.md](../change-request-writing/SKILL.md) 重新生成。
 - 创建 Issue 前，先检查模板、标签、复现信息与现状是否一致。

@@ -5,7 +5,7 @@ description: 编写或更新 GitHub/GitLab Issue、PR、MR 的标题与正文；
 
 # Change Request Writing Skill
 
-适用于 GitHub Issue/PR、GitLab Issue/MR 等提交给 reviewer/maintainer 的标题与正文。平台命令交给 `github-cli` / `gitlab-cli`；本 skill 只管文案内容。
+适用于 GitHub Issue/PR、GitLab Issue/MR 等提交给 reviewer/maintainer 的标题与正文。平台命令交给 [SKILL.md](../github-cli/SKILL.md) / [SKILL.md](../gitlab-cli/SKILL.md)；本 skill 只管文案内容。
 
 ## 创建前检查
 
