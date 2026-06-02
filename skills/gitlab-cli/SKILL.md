@@ -47,7 +47,8 @@ python skills/gitlab-cli/scripts/gitlab_cli.py --help
 - 先确认 target/source，再用 final net diff 作为正文依据：`git fetch` 后查看 `git diff --stat <target>...HEAD` 与 `git diff --name-status <target>...HEAD`；必要时再用 `glab mr diff` 或关键文件 diff 辅助核对。
 - MR 正文不要包含：中间提交顺序、调试过程、失败尝试、临时方案、merge/rebase/冲突解决过程、曾经实现过但最终 diff 已不存在的行为。
 - MR 正文优先写清 why / what / validation。
-- Validation 默认优先引用 GitLab pipeline / job 证据。若格式化、lint、单测或集成测试已经由 CI 覆盖，不要在正文里重复罗列本地运行过的同类命令；只补充 CI 未覆盖、但对 reviewer 判断最终 diff 有价值的本地或手工验证。不要记录探索性失败、调试命令或临时注入失败，除非它是最终交付的已知风险。
+- Validation 默认可以省略；只有能增加 reviewer 信心的信息才写，例如真实端到端使用过目标场景、线上/页面/API/CLI 行为被实际确认，或修 BUG 时先构造稳定失败的回归 case 再修复到通过。
+- 不要把 GitLab pipeline、格式化、lint、类型检查、普通单元测试、构建通过等常规卫生检查写进 MR 正文；这些属于合入门槛，信息增量低。也不要记录探索性失败、调试命令或临时注入失败，除非它是最终交付的已知风险。
 - Breaking change 按 final net diff / 对外行为判断，不按中间 commit 机械继承；只有最终净变化确实破坏既有用法时，标题才用 `type(scope)!: short summary`，正文才加 `BREAKING CHANGE:` 说明影响和迁移方式。
 
 ## 什么时候直接用 glab
