@@ -1,6 +1,6 @@
 ---
 name: github-cli
-description: 使用 GitHub CLI 与 GitHub 资源交互；适用于 repo、issue、PR、comment、release、workflow 等查看、更新或创建场景；Issue/PR 标题正文编写参考 [SKILL.md](../change-request-writing/SKILL.md)。
+description: 使用 GitHub CLI 与 GitHub 资源交互；适用于 repo、issue、PR、comment、release、workflow 等查看、更新或创建场景。
 ---
 
 # GitHub CLI Skill

@@ -1,6 +1,6 @@
 ---
 name: gitlab-cli
-description: 使用 GitLab CLI（glab）与 GitLab 资源交互；适用于 project、issue、MR、comment、wiki 等查看、更新或创建场景，含自建实例；Issue/MR 标题正文编写参考 [SKILL.md](../change-request-writing/SKILL.md)。
+description: 使用 GitLab CLI（glab）与 GitLab 资源交互；适用于 project、issue、MR、comment、wiki 等查看、更新或创建场景，含自建实例。
 ---
 
 ## 使用约定
