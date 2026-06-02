@@ -52,6 +52,11 @@ app = typer.Typer(add_completion=False, no_args_is_help=False)
 
 ArchiveKind = Literal["zst", "tar.zst", "tar.gz", "zip", "direct"]
 StateStatus = Literal["match", "missing", "stale"]
+VERSION_PATTERN = re.compile(
+    r"(?<![0-9A-Za-z])"
+    r"v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)"
+    r"(?![0-9A-Za-z])"
+)
 
 
 class ReleaseAsset(BaseModel):
@@ -431,6 +436,31 @@ def sha256_bytes(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
 
 
+def verify_asset_digest(payload: bytes, digest: str | None, asset_name: str) -> None:
+    if digest is None:
+        return
+
+    if ":" in digest:
+        algorithm, expected = digest.split(":", 1)
+    else:
+        algorithm, expected = "sha256", digest
+    algorithm = algorithm.lower()
+    expected = expected.lower()
+
+    try:
+        hasher = hashlib.new(algorithm)
+    except ValueError as exc:
+        raise RuntimeError(f"不支持的 release asset digest 算法: {algorithm}") from exc
+
+    hasher.update(payload)
+    actual = hasher.hexdigest()
+    if actual != expected:
+        raise RuntimeError(
+            f"release asset digest 不匹配: {asset_name} "
+            f"expected {digest}, actual {algorithm}:{actual}"
+        )
+
+
 def sha256_file(path: Path) -> str:
     hasher = hashlib.sha256()
     with path.open("rb") as file:
@@ -506,7 +536,14 @@ def state_status(
 
 
 def release_version(tag_name: str) -> str | None:
-    match = re.search(r"(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)", tag_name)
+    match = VERSION_PATTERN.search(tag_name)
+    if match is None:
+        return None
+    return match.group(1)
+
+
+def parse_version_token(output: str) -> str | None:
+    match = VERSION_PATTERN.search(output)
     if match is None:
         return None
     return match.group(1)
@@ -526,7 +563,7 @@ def installed_version_matches(target_path: Path, release: Release) -> bool:
         )
     except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
         return False
-    return version in result.stdout.strip()
+    return parse_version_token(result.stdout.strip()) == version
 
 
 def path_entries() -> list[Path]:
@@ -614,6 +651,7 @@ def run_install(spec: InstallSpec) -> InstallResult:
         token,
         description=f"下载 {selected.asset.name}",
     )
+    verify_asset_digest(payload, selected.asset.digest, selected.asset.name)
     step("解压 release asset")
     executable = extract_executable(payload, selected, target.executable_name)
     step(f"安装到 {target_path}")
