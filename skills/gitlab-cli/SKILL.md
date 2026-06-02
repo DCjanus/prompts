@@ -46,6 +46,7 @@ python skills/gitlab-cli/scripts/gitlab_cli.py --help
 - 创建或更新 MR 标题/正文时，只描述目标分支当前状态到当前分支最终状态的净变化。不要按 commit 历史、开发过程、临时实验或旧正文残留来写。
 - 先确认 target/source，再用 final net diff 作为正文依据：`git fetch` 后查看 `git diff --stat <target>...HEAD` 与 `git diff --name-status <target>...HEAD`；必要时再用 `glab mr diff` 或关键文件 diff 辅助核对。
 - MR 正文不要包含：中间提交顺序、调试过程、失败尝试、临时方案、merge/rebase/冲突解决过程、曾经实现过但最终 diff 已不存在的行为。
+- MR / Issue 正文不要包含本机绝对路径、home 目录、agent 工作区路径、临时正文文件路径或其它会暴露个人/机器环境的信息；如需引用仓库内文件，使用相对路径或 Markdown 链接。
 - MR 正文优先写清 why / what / validation。
 - Validation 默认可以省略；只有能增加 reviewer 信心的信息才写，例如真实端到端使用过目标场景、线上/页面/API/CLI 行为被实际确认，或修 BUG 时先构造稳定失败的回归 case 再修复到通过。
 - 不要把 GitLab pipeline、格式化、lint、类型检查、普通单元测试、构建通过等常规卫生检查写进 MR 正文；这些属于合入门槛，信息增量低。也不要记录探索性失败、调试命令或临时注入失败，除非它是最终交付的已知风险。
