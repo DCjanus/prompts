@@ -110,6 +110,7 @@ glab ci trace test --pipeline-id 123456 --branch main
 ## 脚本支持的场景
 
 - GitLab CI lint：校验本地 `.gitlab-ci.yml`，支持 `--dry-run`、`--include-jobs`、`--ref`、`--json`。
+  - `--dry-run --ref refs/merge-requests/<iid>/head` 会改用 MR source branch 调用 CI Lint。调用方知道源分支时可显式传 `--source-branch <branch>`；否则脚本会根据 ref 里的 MR IID 查询 MR 元数据。部分 GitLab 14.x 实例会因为 MR internal ref 缺少 `source_branch` 在 CI Lint dry-run 返回 500，所以脚本避免直接把 MR internal ref 发给 CI Lint。
 - MR create：非交互创建 MR，可配合 `--cwd`、`--hostname`、`--project` 使用。
 - MR update：非交互更新 MR 标题、正文、labels、reviewers、assignees、milestone、merge 相关选项。
 - Issue create：非交互创建 Issue，可设置正文、labels、assignees、milestone、confidential、due date。
@@ -126,6 +127,8 @@ glab ci trace test --pipeline-id 123456 --branch main
 ```bash
 ./scripts/gitlab_cli.py ci lint --cwd /path/to/repo
 ./scripts/gitlab_cli.py ci lint --cwd /path/to/repo --project group/project --ref main --dry-run --include-jobs
+./scripts/gitlab_cli.py ci lint --cwd /path/to/repo --project 122477 --ref refs/merge-requests/9/head --dry-run
+./scripts/gitlab_cli.py ci lint --cwd /path/to/repo --project 122477 --ref refs/merge-requests/9/head --source-branch chore/sync-knots-api-master --dry-run
 ```
 
 - 创建 MR：
