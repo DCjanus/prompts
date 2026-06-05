@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from pathlib import Path
 from typing import Literal
@@ -283,6 +284,37 @@ def print_ci_result(payload: dict[str, object], show_merged_yaml: bool) -> None:
             console.print(merged_yaml.rstrip())
 
 
+def parse_merge_request_ref(ref: str) -> int | None:
+    """从 GitLab MR internal ref 中解析 MR IID。"""
+
+    match = re.fullmatch(r"refs/merge-requests/(\d+)/(?:head|merge)", ref)
+    if not match:
+        return None
+    return int(match.group(1))
+
+
+def resolve_merge_request_source_branch(
+    *,
+    project: str | None,
+    iid: int,
+    cwd: Path,
+    hostname: str | None,
+) -> str:
+    """读取 MR source_branch，用于避开 CI Lint dry-run 对 MR internal ref 的兼容问题。"""
+
+    response = run_glab_api(
+        endpoint=project_endpoint(project, f"merge_requests/{iid}"),
+        method="GET",
+        payload=None,
+        cwd=cwd,
+        hostname=hostname,
+    )
+    source_branch = response.get("source_branch")
+    if not isinstance(source_branch, str) or not source_branch:
+        raise RuntimeError(f"failed to resolve source_branch for merge request !{iid}")
+    return source_branch
+
+
 def print_resource_result(resource_name: str, payload: dict[str, object]) -> None:
     """输出 MR / Issue 创建或更新结果。"""
 
@@ -329,6 +361,11 @@ def ci_lint(
     ),
     include_jobs: bool = typer.Option(False, "--include-jobs", help="返回 jobs 列表。"),
     ref: str | None = typer.Option(None, "--ref", help="dry-run 时使用的分支或 tag。"),
+    source_branch: str | None = typer.Option(
+        None,
+        "--source-branch",
+        help="--ref 为 MR internal ref 时可显式传入；未传时脚本会按 MR IID 查询。",
+    ),
     show_merged_yaml: bool = typer.Option(
         False, "--show-merged-yaml", help="同时输出 merged_yaml。"
     ),
@@ -337,11 +374,27 @@ def ci_lint(
     """校验本地 `.gitlab-ci.yml`。"""
 
     try:
+        effective_ref = ref
+        mr_iid = parse_merge_request_ref(ref) if dry_run and ref else None
+        if mr_iid is not None:
+            if not source_branch:
+                source_branch = resolve_merge_request_source_branch(
+                    project=project,
+                    iid=mr_iid,
+                    cwd=cwd,
+                    hostname=hostname,
+                )
+            effective_ref = source_branch
+            if not as_json:
+                console.print(
+                    f"using source branch {effective_ref!r} for MR internal ref {ref!r}"
+                )
+
         payload = {
             "content": read_text(path),
             "dry_run": dry_run,
             "include_jobs": include_jobs,
-            "ref": ref,
+            "ref": effective_ref,
         }
         response = run_glab_api(
             endpoint=project_endpoint(project, "ci/lint"),
@@ -355,9 +408,9 @@ def ci_lint(
         if dry_run and ref and ref.startswith("refs/merge-requests/"):
             error_console.print(
                 "hint: GitLab CI Lint dry-run may fail on merge request internal "
-                "refs even when the real MR pipeline can be created. Retry with "
-                "the source branch ref to separate YAML validation from GitLab "
-                "MR-ref simulation issues."
+                "refs when GitLab cannot resolve source_branch. Pass "
+                "--source-branch explicitly, or let this tool resolve the MR "
+                "source branch before linting."
             )
         raise typer.Exit(code=1) from exc
 
