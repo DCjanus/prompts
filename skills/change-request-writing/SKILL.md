@@ -26,6 +26,7 @@ description: 编写或更新 GitHub/GitLab Issue、PR、MR 的标题与正文；
 - `Validation` 默认可以省略；只有能增加 reviewer 信心的信息才写，例如真实端到端使用过目标场景、线上/页面/API/CLI 行为被实际确认，或修 BUG 时先构造稳定失败的回归 case 再修复到通过。
 - 不要把 CI、pipeline、workflow、job、格式化、lint、类型检查、普通单元测试、构建通过等常规卫生检查写进正文；这些通常属于合入门槛，信息增量低。也不要记录探索性失败、调试命令或临时注入失败，除非它是最终交付的已知风险。
 - 更新已有 PR/MR 正文时，不要在旧正文上做局部补丁；先回读当前正文，再基于 final net diff 重写完整正文并替换过时内容。
+- 如果正文经历过实验性修改，最终更新前重新审视完整 PR/MR body，确保它只描述最终 diff；不要写 `rerun`、`after removing`、`now`、`previously` 这类暴露过程的措辞，除非过程本身是 reviewer 需要审查的证据。
 - Breaking change 按 final net diff / 对外行为判断，不按中间 commit 机械继承；只有最终净变化确实破坏既有用法时，才在标题和正文标识。
 
 ## Issue
