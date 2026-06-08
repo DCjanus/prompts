@@ -23,8 +23,6 @@ squash_commit_template:
 
 %{description}
 
-See merge request %{reference}
-
 %{co_authored_by}
 ```
 
@@ -33,8 +31,8 @@ See merge request %{reference}
 - `merge_method=rebase_merge`：使用 GitLab 的 Merge commit with semi-linear history；每个 MR 合并时保留一个 merge commit，但只有 source branch 基于最新目标分支、可以 fast-forward 时才允许合并。
 - `squash_option=always`：每个 MR 的源分支内容先压成一个 squash commit，避免多个中间 commit 直接进入目标分支。
 - `%{title}` 与 `%{description}`：让 squash commit message 直接复用 MR 标题和正文。
-- `See merge request %{reference}`：在 commit message 中保留 MR 链接。
 - `%{co_authored_by}`：追加 GitLab 生成的 `Co-authored-by` trailer。
+- MR 链接与合并边界由 merge commit 承载，squash commit message 不需要重复记录 MR reference。
 
 如果项目只需要 `squash commit + merge commit`，但不要求合并前 source branch 基于最新目标分支，可以改用 `merge_method=merge`。这是更宽松的 merge commit 策略。
 
@@ -48,8 +46,6 @@ cat > "$template" <<'EOF'
 %{title}
 
 %{description}
-
-See merge request %{reference}
 
 %{co_authored_by}
 EOF
