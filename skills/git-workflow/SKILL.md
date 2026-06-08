@@ -31,7 +31,9 @@ python skills/git-workflow/scripts/codex_git_commit.py
 ```bash
 git commit --only \
   -m "type(scope): concise summary" \
-  -m "Assisted-by: <agent-name>:<model-name>" \
+  -m "Optional body explaining the change." \
+  --trailer "Co-authored-by: Name <name@example.com>" \
+  --trailer "Assisted-by: <agent-name>:<model-name>" \
   -- <paths-owned-by-current-task>
 ```
 
@@ -69,13 +71,16 @@ git push <remote> <branch>
 git commit --only \
   -m "type(scope)!: concise summary" \
   -m "BREAKING CHANGE: describe the impact and required migration." \
-  -m "Assisted-by: <agent-name>:<model-name>" \
+  --trailer "Assisted-by: <agent-name>:<model-name>" \
   -- <paths-owned-by-current-task>
 ```
 
 - `BREAKING CHANGE:` footer 应说明影响范围和迁移方式；不要只重复标题。
 - 关键字必须写作 `BREAKING CHANGE:`，不要写成 `BREAK CHANGE:`。
-- 若提交内容存在 AI 编码助手的实质性参与，追加 `Assisted-by: <agent-name>:<model-name>` trailer。
+- commit 标题和正文使用 `-m`；结构化 trailer 使用 `--trailer`。
+- 若提交内容存在 AI 编码助手的实质性参与，用 `--trailer "Assisted-by: <agent-name>:<model-name>"` 追加 trailer。
+- 添加 `Co-authored-by`、`Reviewed-by`、`Assisted-by` 等多个 trailer 时，重复使用 `--trailer "Key: Value"`；不要手工用多个 `-m` 拼 trailer block。
+- 提交后可用 `git show -s --format=%B HEAD | git interpret-trailers --parse` 验证 trailer 解析结果。
 - 用 shell 执行 `git commit -m ...` 时，不要在提交标题或正文里直接放未转义的反引号 `` ` ``。
 
 ## 分支和推送
