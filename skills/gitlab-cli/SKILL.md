@@ -116,7 +116,6 @@ glab ci trace test --pipeline-id 123456 --branch main
 - MR update：非交互更新 MR 标题、正文、labels、reviewers、assignees、milestone、merge 相关选项。
 - Issue create：非交互创建 Issue，可设置正文、labels、assignees、milestone、confidential、due date。
 - Issue update：非交互更新 Issue 标题、正文、labels、assignees、milestone、confidential、due date。
-- configure_squash_merge_policy.py：配置 semi-linear + always squash + squash commit template。
 
 除此之外，优先直接用 `glab`。
 
