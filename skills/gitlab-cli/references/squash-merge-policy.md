@@ -15,7 +15,7 @@
 
 ## 项目配置
 
-项目 MR 配置项设为：
+项目 MR 配置项直接设为：
 
 ```text
 merge_method: rebase_merge
@@ -28,11 +28,7 @@ squash_commit_template:
 %{co_authored_by}
 ```
 
-具体含义：
-
-- `merge_method=rebase_merge`：使用 GitLab 的 Merge commit with semi-linear history；每个 MR 合并时保留一个 merge commit，但只有 source branch 基于最新目标分支、可以 fast-forward 时才允许合并。
-- `squash_option=always`：每个 MR 的源分支内容先压成一个 squash commit，避免多个中间 commit 直接进入目标分支。
-- `squash_commit_template`：设为 `%{title}`、`%{description}`、`%{co_authored_by}` 三段，让 squash commit message 复用 MR 标题与正文，并追加 GitLab 生成的 `Co-authored-by` trailer。
+`merge_method=rebase_merge` 对应 GitLab UI 里的 Merge commit with semi-linear history。
 
 ## API 配置
 
