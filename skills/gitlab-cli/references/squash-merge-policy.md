@@ -4,16 +4,18 @@
 
 ## 期望效果
 
-目标分支的 first-parent 历史应保持线性，便于按 MR 顺序审计长期维护分支。每个 MR 合并后，目标分支应留下两个提交：
-
-1. 一个 squash commit：承载这次 MR 的实际代码变化，commit message 来自 MR 标题与正文，并尽量保留 GitLab 可生成的 `Co-authored-by` trailer。
-2. 一个 merge commit：记录 MR 的合并边界，保留“这批变化是通过哪个 MR 合入”的结构。
+1. 目标分支的 first-parent 历史保持线性，便于按 MR 顺序审计长期维护分支。
+2. 每个 MR 合并后，目标分支留下两个提交：
+   - 一个 squash commit，承载这次 MR 的实际代码变化。
+   - 一个 merge commit，记录 MR 的合并边界。
+3. squash commit message 来自 MR 标题与正文，并尽量保留 GitLab 可生成的 `Co-authored-by` trailer。
+4. MR 链接与合并边界由 merge commit 承载，squash commit message 不重复记录 MR reference。
 
 这样阅读长期维护分支时，可以先看 squash commit 理解单个 MR 做了什么、有哪些协作者；需要追溯合并关系时，再看对应 merge commit 与 MR 链接。
 
-## 推荐项目配置
+## 项目配置
 
-项目 MR 设置建议为：
+项目 MR 配置项设为：
 
 ```text
 merge_method: rebase_merge
@@ -26,17 +28,11 @@ squash_commit_template:
 %{co_authored_by}
 ```
 
-配置效果：
+具体含义：
 
 - `merge_method=rebase_merge`：使用 GitLab 的 Merge commit with semi-linear history；每个 MR 合并时保留一个 merge commit，但只有 source branch 基于最新目标分支、可以 fast-forward 时才允许合并。
 - `squash_option=always`：每个 MR 的源分支内容先压成一个 squash commit，避免多个中间 commit 直接进入目标分支。
-- `%{title}` 与 `%{description}`：让 squash commit message 直接复用 MR 标题和正文。
-- `%{co_authored_by}`：追加 GitLab 生成的 `Co-authored-by` trailer。
-- MR 链接与合并边界由 merge commit 承载，squash commit message 不需要重复记录 MR reference。
-
-如果项目只需要 `squash commit + merge commit`，但不要求合并前 source branch 基于最新目标分支，可以改用 `merge_method=merge`。这是更宽松的 merge commit 策略。
-
-如果项目希望每个 MR 只产生一个提交，且不需要 merge commit，可以改用 `merge_method=ff`。这是另一种策略，不是本文件描述的默认偏好。
+- `squash_commit_template`：设为 `%{title}`、`%{description}`、`%{co_authored_by}` 三段，让 squash commit message 复用 MR 标题与正文，并追加 GitLab 生成的 `Co-authored-by` trailer。
 
 ## API 配置
 
