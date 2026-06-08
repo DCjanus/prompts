@@ -1,9 +1,15 @@
 # GitLab Squash 与 Merge Commit 策略
 
-当希望每个 MR 在目标分支留下两个提交时，使用本参考：
+本参考用于配置 GitLab 项目，让长期维护分支的提交历史更适合按 MR 审计。
 
-1. 一个 squash commit，提交信息来自 MR 标题与正文。
-2. 一个 merge commit，用来记录 MR 的合并边界。
+## 期望效果
+
+每个 MR 合并后，目标分支应留下两个提交：
+
+1. 一个 squash commit：承载这次 MR 的实际代码变化，commit message 来自 MR 标题与正文。
+2. 一个 merge commit：记录 MR 的合并边界，保留“这批变化是通过哪个 MR 合入”的结构。
+
+这样阅读长期维护分支时，可以先看 squash commit 理解单个 MR 做了什么；需要追溯合并关系时，再看对应 merge commit 与 MR 链接。
 
 ## 推荐项目配置
 
