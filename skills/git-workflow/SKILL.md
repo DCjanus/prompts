@@ -91,3 +91,8 @@ git commit --only \
 - 涉及真实 index / 引用的 Git 写操作时默认串行执行，不并行调用多个 `git commit`、`git push` 或其他写操作。
 - 如果遇到 `.git/index.lock`，先判断是否有其他活跃 Git 进程。
 - 推送前，使用 `git status -sb` 确认本次提交、分支和工作区状态符合预期。
+
+## 更新 MR/PR 分支
+
+- 需要解决 MR/PR 与 target branch 的冲突或落后状态时，默认优先 merge target branch 到 source branch，而不是 rebase。
+- 仅当用户明确要求 rebase，或仓库/平台有额外约束要求保持线性历史时，才改用 rebase。
