@@ -18,22 +18,7 @@
 `merge_method=rebase_merge` 对应 GitLab UI 里的 Merge commit with semi-linear history。
 
 ```bash
-template=$(mktemp)
-cat > "$template" <<'EOF'
-%{title}
-
-%{description}
-
-%{co_authored_by}
-EOF
-value=$(cat "$template")
-rm -f "$template"
-
-glab api --method PUT projects/:fullpath \
-  --repo <group/project> \
-  -f merge_method=rebase_merge \
-  -f squash_option=always \
-  -f squash_commit_template="$value"
+./scripts/gitlab_cli.py project squash-merge-policy --project <group/project>
 ```
 
 检查生效配置：

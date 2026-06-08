@@ -35,12 +35,17 @@ mr_app = typer.Typer(add_completion=False, no_args_is_help=True, help="MR 创建
 issue_app = typer.Typer(
     add_completion=False, no_args_is_help=True, help="Issue 创建与更新。"
 )
+project_app = typer.Typer(
+    add_completion=False, no_args_is_help=True, help="Project 配置。"
+)
 
 app.add_typer(ci_app, name="ci")
 app.add_typer(mr_app, name="mr")
 app.add_typer(issue_app, name="issue")
+app.add_typer(project_app, name="project")
 
 ToggleChoice = Literal["true", "false"]
+SQUASH_MERGE_TEMPLATE = "%{title}\n\n%{description}\n\n%{co_authored_by}"
 
 
 class GitLabApiError(RuntimeError):
@@ -89,6 +94,8 @@ def project_endpoint(project: str | None, suffix: str) -> str:
 
     prefix = f"projects/{encode_project(project)}" if project else "projects/:id"
     clean_suffix = suffix.lstrip("/")
+    if not clean_suffix:
+        return prefix
     return f"{prefix}/{clean_suffix}"
 
 
@@ -339,6 +346,32 @@ def print_resource_result(resource_name: str, payload: dict[str, object]) -> Non
         console.print(web_url)
 
 
+def squash_merge_policy_payload() -> dict[str, object]:
+    """生成长期维护分支使用的 MR squash / merge 策略配置。"""
+
+    return {
+        "merge_method": "rebase_merge",
+        "squash_option": "always",
+        "squash_commit_template": SQUASH_MERGE_TEMPLATE,
+    }
+
+
+def print_project_settings(payload: dict[str, object]) -> None:
+    """输出 project merge / squash 配置摘要。"""
+
+    table = Table(show_header=False, box=None)
+    for key in (
+        "merge_method",
+        "squash_option",
+        "squash_commit_template",
+        "merge_commit_template",
+    ):
+        if key in payload:
+            table.add_row(key, str(payload.get(key)))
+    console.print("project:")
+    console.print(table)
+
+
 @ci_app.command("lint")
 def ci_lint(
     path: Path = typer.Argument(Path(".gitlab-ci.yml"), help="要校验的 CI 配置文件。"),
@@ -421,6 +454,44 @@ def ci_lint(
     print_ci_result(response, show_merged_yaml=show_merged_yaml)
     if response.get("valid") is False:
         raise typer.Exit(code=1)
+
+
+@project_app.command("squash-merge-policy")
+def project_squash_merge_policy(
+    cwd: Path = typer.Option(
+        Path.cwd(),
+        "--cwd",
+        resolve_path=True,
+        file_okay=False,
+        dir_okay=True,
+        help="让 glab 在哪个仓库目录下执行。",
+    ),
+    project: str | None = typer.Option(
+        None,
+        "--project",
+        help="GitLab project id 或 group/project。未提供时尝试使用当前仓库。",
+    ),
+    hostname: str | None = typer.Option(None, "--hostname", help="GitLab 实例 host。"),
+    as_json: bool = typer.Option(False, "--json", help="输出原始 JSON。"),
+) -> None:
+    """配置 semi-linear + always squash + squash commit template。"""
+
+    try:
+        response = run_glab_api(
+            endpoint=project_endpoint(project, ""),
+            method="PUT",
+            payload=squash_merge_policy_payload(),
+            cwd=cwd,
+            hostname=hostname,
+        )
+    except RuntimeError as exc:
+        error_console.print(str(exc))
+        raise typer.Exit(code=1) from exc
+
+    if as_json:
+        print_json(response)
+        return
+    print_project_settings(response)
 
 
 @mr_app.command("create")

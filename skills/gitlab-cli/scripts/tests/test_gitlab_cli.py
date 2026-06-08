@@ -18,6 +18,74 @@ def test_parse_merge_request_ref() -> None:
     assert gitlab_cli.parse_merge_request_ref("refs/heads/main") is None
 
 
+def test_project_endpoint_without_suffix() -> None:
+    assert (
+        gitlab_cli.project_endpoint("group/project", "") == "projects/group%2Fproject"
+    )
+    assert gitlab_cli.project_endpoint(None, "") == "projects/:id"
+
+
+def test_squash_merge_policy_payload() -> None:
+    assert gitlab_cli.squash_merge_policy_payload() == {
+        "merge_method": "rebase_merge",
+        "squash_option": "always",
+        "squash_commit_template": "%{title}\n\n%{description}\n\n%{co_authored_by}",
+    }
+
+
+def test_project_squash_merge_policy_updates_project(
+    monkeypatch, tmp_path: Path
+) -> None:
+    calls: list[dict[str, object]] = []
+
+    def fake_run_glab_api(
+        *,
+        endpoint: str,
+        method: str,
+        payload: dict[str, object] | None,
+        cwd: Path,
+        hostname: str | None,
+    ) -> dict[str, object]:
+        calls.append(
+            {
+                "endpoint": endpoint,
+                "method": method,
+                "payload": payload,
+                "cwd": cwd,
+                "hostname": hostname,
+            }
+        )
+        return {
+            "merge_method": "rebase_merge",
+            "squash_option": "always",
+            "squash_commit_template": "%{title}\n\n%{description}\n\n%{co_authored_by}",
+            "merge_commit_template": None,
+        }
+
+    monkeypatch.setattr(gitlab_cli, "run_glab_api", fake_run_glab_api)
+
+    gitlab_cli.project_squash_merge_policy(
+        cwd=tmp_path,
+        project="group/project",
+        hostname="gitlab.example.com",
+        as_json=True,
+    )
+
+    assert calls == [
+        {
+            "endpoint": "projects/group%2Fproject",
+            "method": "PUT",
+            "payload": {
+                "merge_method": "rebase_merge",
+                "squash_option": "always",
+                "squash_commit_template": "%{title}\n\n%{description}\n\n%{co_authored_by}",
+            },
+            "cwd": tmp_path,
+            "hostname": "gitlab.example.com",
+        }
+    ]
+
+
 def test_ci_lint_resolves_merge_request_ref_to_source_branch(
     monkeypatch, tmp_path: Path
 ) -> None:

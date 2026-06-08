@@ -116,6 +116,7 @@ glab ci trace test --pipeline-id 123456 --branch main
 - MR update：非交互更新 MR 标题、正文、labels、reviewers、assignees、milestone、merge 相关选项。
 - Issue create：非交互创建 Issue，可设置正文、labels、assignees、milestone、confidential、due date。
 - Issue update：非交互更新 Issue 标题、正文、labels、assignees、milestone、confidential、due date。
+- Project squash merge policy：配置 semi-linear + always squash + squash commit template。
 
 除此之外，优先直接用 `glab`。
 
@@ -170,6 +171,12 @@ glab ci trace test --pipeline-id 123456 --branch main
   456 \
   --title "updated title" \
   --description-file /tmp/issue-body.md
+```
+
+- 配置项目 squash merge policy：
+
+```bash
+./scripts/gitlab_cli.py project squash-merge-policy --project group/project
 ```
 
 ## 创建或更新前
