@@ -10,6 +10,7 @@
    - 一个 merge commit，记录 MR 的合并边界。
 3. squash commit message 来自 MR 标题与正文，并尽量保留 GitLab 可生成的 `Co-authored-by` trailer。
 4. MR 链接与合并边界由 merge commit 承载，squash commit message 不重复记录 MR reference。
+5. 项目默认启用 Delete source branch；通过 API 创建 MR 时仍显式传 `remove_source_branch`。
 
 这样阅读长期维护分支时，可以先看 squash commit 理解单个 MR 做了什么、有哪些协作者；需要追溯合并关系时，再看对应 merge commit 与 MR 链接。
 

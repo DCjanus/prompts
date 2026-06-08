@@ -50,6 +50,7 @@ def policy_payload() -> dict[str, object]:
         "merge_method": "rebase_merge",
         "squash_option": "always",
         "squash_commit_template": SQUASH_COMMIT_TEMPLATE,
+        "remove_source_branch_after_merge": True,
     }
 
 
@@ -153,6 +154,7 @@ def print_result(payload: dict[str, object]) -> None:
         "merge_method",
         "squash_option",
         "squash_commit_template",
+        "remove_source_branch_after_merge",
         "merge_commit_template",
     ):
         if key in payload:

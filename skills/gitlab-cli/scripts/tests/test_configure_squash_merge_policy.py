@@ -28,6 +28,7 @@ def test_policy_payload() -> None:
         "merge_method": "rebase_merge",
         "squash_option": "always",
         "squash_commit_template": "%{title}\n\n%{description}\n\n%{co_authored_by}",
+        "remove_source_branch_after_merge": True,
     }
 
 
@@ -66,6 +67,7 @@ def test_apply_policy_updates_and_reads_project(monkeypatch, tmp_path: Path) -> 
                     "merge_method": "rebase_merge",
                     "squash_option": "always",
                     "squash_commit_template": "%{title}\n\n%{description}\n\n%{co_authored_by}",
+                    "remove_source_branch_after_merge": True,
                     "merge_commit_template": None,
                 }
             )
@@ -100,6 +102,7 @@ def test_apply_policy_updates_and_reads_project(monkeypatch, tmp_path: Path) -> 
                 "merge_method": "rebase_merge",
                 "squash_option": "always",
                 "squash_commit_template": "%{title}\n\n%{description}\n\n%{co_authored_by}",
+                "remove_source_branch_after_merge": True,
             },
             "text": True,
             "capture_output": True,
