@@ -13,24 +13,9 @@
 
 这样阅读长期维护分支时，可以先看 squash commit 理解单个 MR 做了什么、有哪些协作者；需要追溯合并关系时，再看对应 merge commit 与 MR 链接。
 
-## 项目配置
-
-项目 MR 配置项直接设为：
-
-```text
-merge_method: rebase_merge
-squash_option: always
-squash_commit_template:
-%{title}
-
-%{description}
-
-%{co_authored_by}
-```
+## 配置方式
 
 `merge_method=rebase_merge` 对应 GitLab UI 里的 Merge commit with semi-linear history。
-
-## API 配置
 
 ```bash
 template=$(mktemp)
@@ -51,7 +36,7 @@ glab api --method PUT projects/:fullpath \
   -f squash_commit_template="$value"
 ```
 
-检查最终生效配置：
+检查生效配置：
 
 ```bash
 glab api projects/:fullpath --repo <group/project> \
