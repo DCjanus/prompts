@@ -6,10 +6,10 @@
 
 每个 MR 合并后，目标分支应留下两个提交：
 
-1. 一个 squash commit：承载这次 MR 的实际代码变化，commit message 来自 MR 标题与正文。
+1. 一个 squash commit：承载这次 MR 的实际代码变化，commit message 来自 MR 标题与正文，并尽量保留 GitLab 可生成的 `Co-authored-by` trailer。
 2. 一个 merge commit：记录 MR 的合并边界，保留“这批变化是通过哪个 MR 合入”的结构。
 
-这样阅读长期维护分支时，可以先看 squash commit 理解单个 MR 做了什么；需要追溯合并关系时，再看对应 merge commit 与 MR 链接。
+这样阅读长期维护分支时，可以先看 squash commit 理解单个 MR 做了什么、有哪些协作者；需要追溯合并关系时，再看对应 merge commit 与 MR 链接。
 
 ## 推荐项目配置
 
