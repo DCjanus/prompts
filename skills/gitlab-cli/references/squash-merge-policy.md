@@ -4,7 +4,7 @@
 
 ## 期望效果
 
-每个 MR 合并后，目标分支应留下两个提交：
+目标分支的 first-parent 历史应保持线性，便于按 MR 顺序审计长期维护分支。每个 MR 合并后，目标分支应留下两个提交：
 
 1. 一个 squash commit：承载这次 MR 的实际代码变化，commit message 来自 MR 标题与正文，并尽量保留 GitLab 可生成的 `Co-authored-by` trailer。
 2. 一个 merge commit：记录 MR 的合并边界，保留“这批变化是通过哪个 MR 合入”的结构。
@@ -31,7 +31,7 @@ See merge request %{reference}
 配置效果：
 
 - `merge_method=merge`：每个 MR 合并时保留一个 merge commit。
-- `squash_option=always`：每个 MR 的源分支内容先压成一个 squash commit。
+- `squash_option=always`：每个 MR 的源分支内容先压成一个 squash commit，避免多个中间 commit 直接进入目标分支。
 - `%{title}` 与 `%{description}`：让 squash commit message 直接复用 MR 标题和正文。
 - `See merge request %{reference}`：在 commit message 中保留 MR 链接。
 - `%{co_authored_by}`：追加 GitLab 生成的 `Co-authored-by` trailer。
