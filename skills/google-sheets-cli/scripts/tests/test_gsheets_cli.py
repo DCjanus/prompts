@@ -57,5 +57,5 @@ def test_missing_client_secret_message_is_actionable(tmp_path):
     message = cli.missing_client_secret_message(path)
 
     assert str(path) in message
-    assert "Google Cloud Console" in message
+    assert "references/google-workspace-oauth.md" in message
     assert "./scripts/gsheets_cli.py auth login" in message

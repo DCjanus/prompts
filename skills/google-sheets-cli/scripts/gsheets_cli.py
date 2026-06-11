@@ -33,6 +33,7 @@ APP_NAME = "google-sheets-cli"
 CLIENT_SECRET_FILENAME = "client_secret.json"
 TOKEN_FILENAME = "token.json"
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
+AUTH_DOC = "references/google-workspace-oauth.md"
 
 app = typer.Typer(no_args_is_help=True)
 auth_app = typer.Typer(no_args_is_help=True, help="认证相关操作。")
@@ -85,17 +86,11 @@ def credential_paths_payload() -> dict[str, str]:
 def missing_client_secret_message(path: Path) -> str:
     return f"""缺少 Google OAuth client secret 文件：{path}
 
-请按下面步骤处理：
-1. 在 Google Cloud Console 创建或选择一个项目，并启用 Google Sheets API。
-2. 配置 OAuth consent screen；公司 Workspace 内部使用时，按公司策略选择 Internal 或让管理员信任该 OAuth app。
-3. 创建 OAuth Client ID，应用类型选择 Desktop app。
-4. 下载 JSON，并保存为：
-   {path}
-5. 建议设置权限：
-   chmod 700 {path.parent}
-   chmod 600 {path}
-6. 然后运行：
-   ./scripts/gsheets_cli.py auth login
+处理方式：
+1. 先阅读 {AUTH_DOC}，创建 Google OAuth Desktop app client。
+2. 把下载的 JSON 保存为：{path}
+3. 设置权限：chmod 700 {path.parent} && chmod 600 {path}
+4. 运行：./scripts/gsheets_cli.py auth login
 
 该 JSON 应包含 installed.client_id 和 installed.client_secret 字段。"""
 
@@ -103,10 +98,9 @@ def missing_client_secret_message(path: Path) -> str:
 def missing_token_message(path: Path) -> str:
     return f"""缺少本地 Google OAuth token：{path}
 
-请先运行：
-  ./scripts/gsheets_cli.py auth login
-
-如果这是远程机器，浏览器需要能访问 CLI 启动的 localhost callback；必要时在目标机器本地登录或配置端口转发。"""
+处理方式：
+1. 运行：./scripts/gsheets_cli.py auth login
+2. 如果登录环境、远程 callback 或 Workspace 策略有问题，阅读 {AUTH_DOC}。"""
 
 
 def ensure_client_secret_exists() -> Path:
@@ -169,7 +163,8 @@ def load_credentials() -> Credentials:
         raise CliError(
             f"本地 token 文件无法读取或格式不正确：{path}\n"
             "请运行 `./scripts/gsheets_cli.py auth logout` 后重新执行 "
-            "`./scripts/gsheets_cli.py auth login`。"
+            "`./scripts/gsheets_cli.py auth login`。\n"
+            f"更多处理方式见 {AUTH_DOC}。"
         ) from exc
     if credentials.valid:
         return credentials
@@ -180,14 +175,16 @@ def load_credentials() -> Credentials:
             raise CliError(
                 "Google OAuth token 刷新失败，可能是授权被撤销、scope 变化或公司策略阻止。\n"
                 "请运行：\n"
-                "  ./scripts/gsheets_cli.py auth login"
+                "  ./scripts/gsheets_cli.py auth login\n"
+                f"更多处理方式见 {AUTH_DOC}。"
             ) from exc
         write_token(credentials)
         return credentials
     raise CliError(
         "本地 Google OAuth token 无效且无法刷新。\n"
         "请运行：\n"
-        "  ./scripts/gsheets_cli.py auth login"
+        "  ./scripts/gsheets_cli.py auth login\n"
+        f"更多处理方式见 {AUTH_DOC}。"
     )
 
 
@@ -241,7 +238,8 @@ def handle_http_error(exc: HttpError) -> CliError:
             "1. 当前 Google 账号有访问该 Spreadsheet 的权限。\n"
             "2. OAuth client 已被公司 Workspace 策略允许。\n"
             "3. token scope 包含 https://www.googleapis.com/auth/spreadsheets；"
-            "必要时重新运行 auth login。"
+            "必要时重新运行 auth login。\n"
+            f"更多处理方式见 {AUTH_DOC}。"
         )
     if status == 404:
         hint = "\n\n请确认 spreadsheet id 和 range 是否正确，且当前账号有权限访问。"
