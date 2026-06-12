@@ -1,0 +1,4 @@
+interface:
+  display_name: "Review Fix Loop"
+  short_description: "Run clean subagent review/fix cycles"
+  default_prompt: "Use $review-fix-loop to review this PR with fresh subagents until three clean rounds."
