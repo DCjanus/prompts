@@ -60,6 +60,7 @@ notification_method = "bel"
 | [`confluence-cli`](skills/confluence-cli/SKILL.md) | 查询、检索与阅读 Confluence 文档/页面。 |
 | [`uv-cli-creator`](skills/uv-cli-creator/SKILL.md) | 为本仓库创建或修改 uv --script 风格的 Python CLI；当需要把重复命令封装成 `./scripts/...` 直接执行的工具时使用。 |
 | [`dcjanus-preferences`](skills/dcjanus-preferences/SKILL.md) | 记录 DCjanus 在不同语言中偏好的第三方库与使用场景，供 AI 在选型、引入依赖或替换库时优先参考。适用于 Python/Rust/Go 的库选择、技术方案对比、或需要遵循 DCjanus 个人偏好进行开发的场景。 |
+| [`dcjanus-writing-style`](skills/dcjanus-writing-style/SKILL.md) | 总结 DCjanus 的中文写作风格；适用于代写、改写、润色博客文章、技术经历记录、工程复盘、对外说明、内部分享或任何需要低成本复刻 DCjanus 克制专业文风的中文长短文。 |
 | [`fetch-url`](skills/fetch-url/SKILL.md) | 获取并提取链接正文（默认 Markdown）；内置 X/Twitter URL 处理，提升受限页面的抓取成功率。 |
 | [`change-request-writing`](skills/change-request-writing/SKILL.md) | 编写或更新 GitHub/GitLab Issue、PR、MR 的标题与正文；聚焦 final net diff、Breaking Change、避免低价值验证噪声与本地路径泄露。 |
 | [`review-fix-loop`](skills/review-fix-loop/SKILL.md) | 用三个相互隔离的干净 subagent 并行做代码审查，由主 agent 判断审查意见价值、修复有效问题并提交推送，直到同一批三个 reviewer 都没有有价值审查意见。 |
