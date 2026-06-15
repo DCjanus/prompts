@@ -3,7 +3,7 @@ name: codex-session-reader
 description: 读取 Codex 的单个 session/thread；当已知 thread id 且需要查看或摘要会话内容时使用。
 ---
 
-只读查看单个 Codex session/thread 的 skill，底层通过 `codex app-server` 官方接口读取。
+只读查看单个 Codex session/thread 的 skill，底层通过 Codex 官方 Python SDK 调用 app-server 的 `thread/read` 接口读取。
 
 默认输出全部 turns；如只想看局部，可用 `--turns` 传 0-based、接近 Python 的切片表达式。
 
@@ -16,18 +16,9 @@ cd skills/codex-session-reader
 
 ## 环境注意事项
 
-- 这个 skill 依赖本机可直接执行的 `codex` 命令，底层会调用 `codex app-server`。
-- 对当前 Codex 环境，工具执行不一定沿用交互式 `fish`，可能回退到 `zsh -lc`。
-- 所以只在 `fish` 里设置 `PNPM_HOME` 不够；必须让 `zsh` 启动时的 `PATH` 里也包含 `PNPM_HOME`，否则会报“未找到 `codex`”。
-- 推荐按 pnpm 官方风格在 zsh 配置里同时设置：
-
-```zsh
-export PNPM_HOME="$HOME/Library/pnpm"
-case ":$PATH:" in
-  *":$PNPM_HOME:"*) ;;
-  *) export PATH="$PNPM_HOME:$PATH" ;;
-esac
-```
+- 这个 skill 通过 `openai-codex` Python SDK 读取本机 Codex session。
+- SDK 发布包会携带匹配的 Codex CLI runtime；通常不需要额外保证 `codex` 命令在当前 shell 的 `PATH` 中。
+- 如需强制使用本机某个特定 `codex` binary，应修改脚本里的 `CodexConfig` 并显式设置 `codex_bin`。
 
 ## 何时使用
 

@@ -2,6 +2,7 @@
 # /// script
 # requires-python = ">=3.14"
 # dependencies = [
+#     "openai-codex>=0.1.0b2",
 #     "pydantic>=2.12.5",
 #     "rich>=14.3.3",
 #     "typer>=0.24.1",
@@ -12,17 +13,15 @@
 
 from __future__ import annotations
 
-from collections import deque
 from datetime import UTC, datetime
 import json
-from queue import Empty, Queue
 import re
-import subprocess
 import sys
-import threading
-from time import monotonic
 from typing import Annotated, Any, Literal, TypeVar
 
+from openai_codex import CodexConfig
+from openai_codex.client import CodexClient
+from openai_codex.errors import CodexError
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from rich.console import Console
 import typer
@@ -43,64 +42,6 @@ class AppModel(BaseModel):
         populate_by_name=True,
         extra="allow",
     )
-
-
-class ClientInfo(AppModel):
-    """初始化时声明的客户端信息。"""
-
-    name: str
-    title: str | None = None
-    version: str
-
-
-class InitializeCapabilities(AppModel):
-    """初始化能力声明。"""
-
-    experimental_api: bool = False
-    opt_out_notification_methods: list[str] | None = None
-
-
-class InitializeParams(AppModel):
-    """initialize 请求参数。"""
-
-    client_info: ClientInfo
-    capabilities: InitializeCapabilities | None = None
-
-
-class InitializeResponse(AppModel):
-    """initialize 响应。"""
-
-    user_agent: str
-
-
-class JsonRpcErrorPayload(AppModel):
-    """JSON-RPC 错误体。"""
-
-    code: int
-    message: str
-    data: Any | None = None
-
-
-class JsonRpcResponse(AppModel):
-    """JSON-RPC 响应。"""
-
-    id: int | str | None = None
-    result: Any | None = None
-    error: JsonRpcErrorPayload | None = None
-
-
-class JsonRpcNotification(AppModel):
-    """JSON-RPC 通知。"""
-
-    method: str
-    params: Any | None = None
-
-
-class ThreadReadParams(AppModel):
-    """thread/read 请求参数。"""
-
-    thread_id: str
-    include_turns: bool
 
 
 class ThreadStatus(AppModel):
@@ -189,11 +130,6 @@ class CodexSessionReaderError(RuntimeError):
     """skill 运行失败时的统一异常。"""
 
 
-APP_SERVER_SEND_ERROR = "向 app-server 发送请求失败。"
-APP_SERVER_INVALID_JSON_ERROR = "app-server 返回了非法 JSON。"
-APP_SERVER_TIMEOUT_ERROR = "等待 app-server 响应超时。"
-
-
 THREAD_ID_PATTERN = re.compile(
     r"^(?:urn:uuid:)?[0-9a-fA-F]{8}-"
     r"[0-9a-fA-F]{4}-"
@@ -203,7 +139,6 @@ THREAD_ID_PATTERN = re.compile(
 )
 
 AppModelType = TypeVar("AppModelType", bound=BaseModel)
-STDOUT_EOF = object()
 
 
 def validate_model_or_raise(
@@ -217,250 +152,28 @@ def validate_model_or_raise(
         raise CodexSessionReaderError(f"{label} 结构不合法。") from exc
 
 
-class CodexAppServerClient:
-    """`codex app-server` 的极薄同步 JSON-RPC client。"""
+def read_thread_via_sdk(thread_id: str, include_turns: bool) -> ThreadReadResponse:
+    """通过官方 Codex Python SDK 调用 `thread/read`。"""
 
-    def __init__(self, request_timeout: float = 30.0) -> None:
-        """初始化 client 配置。"""
+    config = CodexConfig(
+        client_name="codex-session-reader",
+        client_title="Codex Session Reader",
+        experimental_api=False,
+    )
+    try:
+        with CodexClient(config) as client:
+            client.initialize()
+            sdk_result = client.thread_read(thread_id, include_turns=include_turns)
+    except CodexError as exc:
+        raise CodexSessionReaderError(f"Codex SDK 调用失败：{exc}") from exc
+    except OSError as exc:
+        reason = exc.strerror or str(exc)
+        raise CodexSessionReaderError(
+            f"无法启动 Codex SDK app-server：{reason}"
+        ) from exc
 
-        self.request_timeout = request_timeout
-        self._process: subprocess.Popen[str] | None = None
-        self._next_id = 1
-        self._stderr_lines: deque[str] = deque(maxlen=200)
-        self._stdout_queue: Queue[str | object] = Queue()
-        self._stdout_thread: threading.Thread | None = None
-        self._stderr_thread: threading.Thread | None = None
-
-    def __enter__(self) -> "CodexAppServerClient":
-        """启动 app-server 子进程并完成握手。"""
-
-        try:
-            process = subprocess.Popen(
-                ["codex", "app-server"],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                encoding="utf-8",
-                bufsize=1,
-            )
-        except OSError as exc:
-            if isinstance(exc, FileNotFoundError):
-                message = "未找到 `codex`，无法启动 `codex app-server`。"
-            else:
-                reason = exc.strerror or str(exc)
-                message = f"无法启动 `codex app-server` ({reason})。"
-            raise CodexSessionReaderError(message) from exc
-
-        self._process = process
-        self._stderr_lines.clear()
-        self._stdout_queue = Queue()
-        self._stdout_thread = threading.Thread(
-            target=self._drain_stdout,
-            name="codex-session-reader-stdout",
-            daemon=True,
-        )
-        self._stderr_thread = threading.Thread(
-            target=self._drain_stderr,
-            name="codex-session-reader-stderr",
-            daemon=True,
-        )
-        self._stdout_thread.start()
-        self._stderr_thread.start()
-        try:
-            self.initialize()
-        except BaseException:
-            self.__exit__(None, None, None)
-            raise
-        return self
-
-    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
-        """关闭 app-server 子进程。"""
-
-        if self._process is None:
-            return
-
-        process = self._process
-        try:
-            if process.stdin:
-                process.stdin.close()
-            if process.poll() is None:
-                process.terminate()
-                try:
-                    process.wait(timeout=3)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait(timeout=3)
-        finally:
-            if process.stdout:
-                process.stdout.close()
-            if process.stderr:
-                process.stderr.close()
-            self._process = None
-
-    def _drain_stderr(self) -> None:
-        """持续读取 stderr，避免阻塞并保留最近日志。"""
-
-        if self._process is None or self._process.stderr is None:
-            return
-
-        for line in self._process.stderr:
-            self._stderr_lines.append(line.rstrip("\n"))
-
-    def _drain_stdout(self) -> None:
-        """持续读取 stdout，并转交给主线程消费。"""
-
-        if self._process is None or self._process.stdout is None:
-            return
-
-        for line in self._process.stdout:
-            self._stdout_queue.put(line)
-        self._stdout_queue.put(STDOUT_EOF)
-
-    def _stderr_tail(self) -> str:
-        """返回最近的 stderr 摘要。"""
-
-        if not self._stderr_lines:
-            return ""
-        return "\n".join(self._stderr_lines)
-
-    def _ensure_running(self) -> subprocess.Popen[str]:
-        """确保子进程可用。"""
-
-        if self._process is None:
-            raise CodexSessionReaderError("app-server 尚未启动。")
-        return self._process
-
-    def _send_json(self, payload: dict[str, Any]) -> None:
-        """发送一条 JSON-RPC 消息。"""
-
-        process = self._ensure_running()
-        if process.stdin is None:
-            raise CodexSessionReaderError("app-server stdin 不可用。")
-
-        try:
-            process.stdin.write(json.dumps(payload, ensure_ascii=False) + "\n")
-            process.stdin.flush()
-        except OSError as exc:
-            message = APP_SERVER_SEND_ERROR
-            if detail := self._stderr_tail():
-                message += f"\nstderr:\n{detail}"
-            raise CodexSessionReaderError(message) from exc
-
-    def _read_message(
-        self, deadline: float | None = None
-    ) -> JsonRpcResponse | JsonRpcNotification:
-        """读取一条来自 app-server 的 JSON-RPC 消息。"""
-
-        process = self._ensure_running()
-        if deadline is not None:
-            timeout = deadline - monotonic()
-            if timeout <= 0:
-                raise CodexSessionReaderError(APP_SERVER_TIMEOUT_ERROR)
-        else:
-            timeout = None
-
-        try:
-            line = self._stdout_queue.get(timeout=timeout)
-        except Empty as exc:
-            raise CodexSessionReaderError(APP_SERVER_TIMEOUT_ERROR) from exc
-
-        if line is STDOUT_EOF:
-            line = ""
-        if not isinstance(line, str):
-            raise CodexSessionReaderError("app-server stdout 返回了未知消息。")
-
-        if line:
-            try:
-                payload = json.loads(line)
-            except json.JSONDecodeError as exc:
-                message = f"{APP_SERVER_INVALID_JSON_ERROR} {line.strip()}"
-                if detail := self._stderr_tail():
-                    message += f"\nstderr:\n{detail}"
-                raise CodexSessionReaderError(message) from exc
-            if not isinstance(payload, dict):
-                message = f"{APP_SERVER_INVALID_JSON_ERROR} 顶层必须是对象。"
-                if detail := self._stderr_tail():
-                    message += f"\nstderr:\n{detail}"
-                raise CodexSessionReaderError(message)
-            if "method" in payload:
-                return validate_model_or_raise(
-                    JsonRpcNotification, payload, "app-server 通知"
-                )
-            return validate_model_or_raise(JsonRpcResponse, payload, "app-server 响应")
-
-        return_code = process.poll()
-        stderr_tail = self._stderr_tail()
-        message = "app-server 已提前退出。"
-        if return_code is not None:
-            message += f" exit_code={return_code}"
-        if stderr_tail:
-            message += f"\nstderr:\n{stderr_tail}"
-        raise CodexSessionReaderError(message)
-
-    def initialize(self) -> InitializeResponse:
-        """执行 initialize / initialized 握手。"""
-
-        response = self.request(
-            "initialize",
-            InitializeParams(
-                client_info=ClientInfo(
-                    name="codex-session-reader",
-                    title="Codex Session Reader",
-                    version="0.1.0",
-                ),
-                capabilities=InitializeCapabilities(experimental_api=False),
-            ),
-        )
-        self.notify("initialized", None)
-        return validate_model_or_raise(InitializeResponse, response, "initialize 响应")
-
-    def notify(
-        self, method: str, params: AppModel | dict[str, Any] | None
-    ) -> None:
-        """发送 JSON-RPC 通知。"""
-
-        payload: dict[str, Any] = {"method": method}
-        if params is not None:
-            if isinstance(params, AppModel):
-                payload["params"] = params.model_dump(by_alias=True, exclude_none=True)
-            else:
-                payload["params"] = params
-        self._send_json(payload)
-
-    def request(self, method: str, params: AppModel | dict[str, Any] | None) -> Any:
-        """发送 JSON-RPC 请求并等待对应响应。"""
-
-        request_id = self._next_id
-        self._next_id += 1
-        deadline = monotonic() + self.request_timeout
-
-        payload: dict[str, Any] = {"id": request_id, "method": method}
-        if params is not None:
-            if isinstance(params, AppModel):
-                payload["params"] = params.model_dump(by_alias=True, exclude_none=True)
-            else:
-                payload["params"] = params
-        self._send_json(payload)
-
-        while True:
-            message = self._read_message(deadline=deadline)
-            if isinstance(message, JsonRpcNotification):
-                continue
-            if message.id != request_id:
-                continue
-            if message.error is not None:
-                detail = f"{message.error.code}: {message.error.message}"
-                if message.error.data is not None:
-                    detail += f"\n{json.dumps(message.error.data, ensure_ascii=False, indent=2)}"
-                raise CodexSessionReaderError(detail)
-            return message.result
-
-    def read_thread(self, params: ThreadReadParams) -> ThreadReadResponse:
-        """调用 `thread/read`。"""
-
-        result = self.request("thread/read", params)
-        return validate_model_or_raise(ThreadReadResponse, result, "thread/read 响应")
+    payload = sdk_result.model_dump(by_alias=True, mode="json")
+    return validate_model_or_raise(ThreadReadResponse, payload, "thread/read 响应")
 
 
 def unix_ts_to_text(value: int) -> str:
@@ -766,13 +479,7 @@ def read_thread_command(
 
     normalized_thread_id = validate_thread_id(thread_id)
 
-    with CodexAppServerClient() as client:
-        result = client.read_thread(
-            ThreadReadParams(
-                thread_id=normalized_thread_id,
-                include_turns=include_turns,
-            )
-        )
+    result = read_thread_via_sdk(normalized_thread_id, include_turns=include_turns)
 
     if format_name == "json":
         selected_turns, selected_start, selected_end = select_turns_by_expr(
