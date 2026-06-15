@@ -3,10 +3,10 @@
 # /// script
 # requires-python = ">=3.14"
 # dependencies = [
-#     "pydantic>=2.12.5",
-#     "rich>=14.2.0",
-#     "tiktoken>=0.12.0",
-#     "typer>=0.20.0",
+#     "pydantic>=2.13.4",
+#     "rich>=15.0.0",
+#     "tiktoken>=0.13.0",
+#     "typer>=0.26.7",
 #     # 交互式 TUI 暂不启用，若需可添加 textual>=6.10.0
 # ]
 # ///
@@ -30,7 +30,8 @@ app = typer.Typer(add_completion=False, no_args_is_help=False)
 
 class InputSpec(BaseModel):
     repo_path: Path | None = Field(
-        default=None, description="Git 仓库路径，默认自动探测为当前工作目录所属仓库根目录"
+        default=None,
+        description="Git 仓库路径，默认自动探测为当前工作目录所属仓库根目录",
     )
 
     @field_validator("repo_path")
@@ -248,7 +249,9 @@ def summarize_tree(node: TokenNode) -> tuple[int, int, str]:
     return count, max_tokens, max_name
 
 
-@app.command(help="统计仓库内 AGENTS.md 与 skills/**/SKILL.md 的 token 数，并以树状图展示。")
+@app.command(
+    help="统计仓库内 AGENTS.md 与 skills/**/SKILL.md 的 token 数，并以树状图展示。"
+)
 def main(
     path: Path | None = typer.Option(
         None, "--path", "-p", help="Git 仓库路径，默认自动探测"

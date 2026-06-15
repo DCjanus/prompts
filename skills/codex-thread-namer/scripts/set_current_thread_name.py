@@ -2,8 +2,10 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#     "openai-codex>=0.1.0b2",
+#     "openai-codex>=0.1.0b3",
 # ]
+# [tool.uv]
+# prerelease = "allow"
 # ///
 
 """Set the current Codex thread name through the Codex Python SDK."""

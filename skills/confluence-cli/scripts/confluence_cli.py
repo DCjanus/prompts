@@ -2,11 +2,11 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#     "httpxyz>=0.28.2",
-#     "markdown-it-py>=4.0.0",
-#     "pydantic>=2.12.5",
-#     "rich>=14.1.0",
-#     "typer>=0.17.4",
+#     "httpxyz>=0.31.2",
+#     "markdown-it-py>=4.2.0",
+#     "pydantic>=2.13.4",
+#     "rich>=15.0.0",
+#     "typer>=0.26.7",
 # ]
 # ///
 """Confluence CLI 工具入口。"""

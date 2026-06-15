@@ -2,9 +2,11 @@
 # /// script
 # requires-python = ">=3.14"
 # dependencies = [
-#     "openai-codex>=0.1.0b2",
-#     "typer>=0.24.1",
+#     "openai-codex>=0.1.0b3",
+#     "typer>=0.26.7",
 # ]
+# [tool.uv]
+# prerelease = "allow"
 # ///
 
 """解析当前 Codex shell 环境对应的 agent/model 信息并输出 JSON。"""

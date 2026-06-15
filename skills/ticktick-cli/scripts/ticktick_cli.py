@@ -2,10 +2,10 @@
 # /// script
 # requires-python = ">=3.14"
 # dependencies = [
-#     "httpxyz>=0.28.2",
-#     "typer>=0.20.1",
-#     "pydantic>=2.12.5",
-#     "rich>=14.2.0",
+#     "httpxyz>=0.31.2",
+#     "typer>=0.26.7",
+#     "pydantic>=2.13.4",
+#     "rich>=15.0.0",
 # ]
 # ///
 
