@@ -1,0 +1,4 @@
+interface:
+  display_name: "Codex 周报 Session 回顾"
+  short_description: "汇总过去一周 Codex sessions 并起草状态更新"
+  default_prompt: "Use $codex-weekly-session-review to summarize my Codex sessions from the past week and draft a concise Chinese status update."
