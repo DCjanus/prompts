@@ -3,7 +3,7 @@ name: codex-session-reader
 description: 读取 Codex 的单个 session/thread；当已知 thread id 且需要查看或摘要会话内容时使用。
 ---
 
-只读查看单个 Codex session/thread 的 skill，底层通过 Codex 官方 Python SDK 调用 app-server 的 `thread/read` 接口读取。
+只读查看单个 Codex session/thread 的 skill。
 
 默认输出全部 turns；如只想看局部，可用 `--turns` 传 0-based、接近 Python 的切片表达式。
 
@@ -16,9 +16,7 @@ cd skills/codex-session-reader
 
 ## 环境注意事项
 
-- 这个 skill 通过 `openai-codex` Python SDK 读取本机 Codex session。
-- SDK 发布包会携带匹配的 Codex CLI runtime；通常不需要额外保证 `codex` 命令在当前 shell 的 `PATH` 中。
-- 如需强制使用本机某个特定 `codex` binary，应修改脚本里的 `CodexConfig` 并显式设置 `codex_bin`。
+- 脚本使用 `uv --script` 管理运行依赖。
 
 ## 何时使用
 
@@ -43,6 +41,6 @@ cd skills/codex-session-reader
 
 - 默认输出 `markdown`，适合继续交给 Codex 阅读或摘要。
 - 默认输出全部 turns。
-- `--format json` 输出 app-server 返回的结构化结果，便于脚本处理。
+- `--format json` 输出结构化结果，便于脚本处理。
 - 若发生区间裁剪，JSON 会额外包含 `truncated` 字段说明实际输出的是哪一段。
 - `--turns` 不支持 step；`1:10:2` 这类表达式会报错。
