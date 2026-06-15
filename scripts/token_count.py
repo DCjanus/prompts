@@ -3,10 +3,10 @@
 # /// script
 # requires-python = ">=3.14"
 # dependencies = [
-#     "pydantic>=2.12.5",
-#     "rich>=14.2.0",
-#     "tiktoken>=0.12.0",
-#     "typer>=0.20.0",
+#     "pydantic>=2.13.4",
+#     "rich>=15.0.0",
+#     "tiktoken>=0.13.0",
+#     "typer>=0.26.7",
 # ]
 # ///
 
@@ -59,7 +59,11 @@ def main(
         raise typer.Exit(code=1)
 
     try:
-        text = spec.file_path.read_text(encoding="utf-8") if spec.file_path else sys.stdin.read()
+        text = (
+            spec.file_path.read_text(encoding="utf-8")
+            if spec.file_path
+            else sys.stdin.read()
+        )
     except OSError as exc:  # noqa: PERF203 - keep clarity
         console.print(f"[red]读取输入失败：{exc}[/red]")
         raise typer.Exit(code=1)

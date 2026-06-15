@@ -3,10 +3,10 @@
 # /// script
 # requires-python = ">=3.14"
 # dependencies = [
-#     "playwright>=1.49.0",
-#     "rich>=14.2.0",
-#     "trafilatura>=2.0.0",
-#     "typer>=0.20.1",
+#     "playwright>=1.60.0",
+#     "rich>=15.0.0",
+#     "trafilatura>=2.1.0",
+#     "typer>=0.26.7",
 # ]
 # ///
 
@@ -33,7 +33,9 @@ import trafilatura
 APP = typer.Typer(add_completion=False)
 CONSOLE = Console()
 
-OutputFormat = Literal["csv", "html", "json", "markdown", "raw-html", "txt", "xml", "xmltei"]
+OutputFormat = Literal[
+    "csv", "html", "json", "markdown", "raw-html", "txt", "xml", "xmltei"
+]
 FetchStrategy = Literal["auto", "agent", "jina", "browser"]
 TWITTER_HOSTS = {
     "x.com",
@@ -114,7 +116,9 @@ def render_html(
                     highlight=False,
                 )
         elif verbose:
-            CONSOLE.print("[cyan]Using Playwright-managed Chromium[/cyan]", highlight=False)
+            CONSOLE.print(
+                "[cyan]Using Playwright-managed Chromium[/cyan]", highlight=False
+            )
 
         browser = playwright.chromium.launch(**launch_options)
         context = browser.new_context()
@@ -128,7 +132,10 @@ def render_html(
                 CONSOLE.print("[cyan]Load event reached[/cyan]", highlight=False)
         except PlaywrightTimeoutError:
             if verbose:
-                CONSOLE.print("[yellow]Load event wait timed out, continue[/yellow]", highlight=False)
+                CONSOLE.print(
+                    "[yellow]Load event wait timed out, continue[/yellow]",
+                    highlight=False,
+                )
 
         # Wait briefly for client-side rendering to settle without risking long hangs.
         deadline = monotonic() + 2.0
@@ -153,15 +160,21 @@ def render_html(
         browser.close()
 
     if verbose:
-        CONSOLE.print(f"[green]Rendered HTML size[/green] {len(html)} chars", highlight=False)
+        CONSOLE.print(
+            f"[green]Rendered HTML size[/green] {len(html)} chars", highlight=False
+        )
 
     return html
 
 
-def extract_content(html: str, url: str, output_format: OutputFormat, verbose: bool) -> str:
+def extract_content(
+    html: str, url: str, output_format: OutputFormat, verbose: bool
+) -> str:
     """使用 trafilatura 从 HTML 提取内容。"""
     if verbose:
-        CONSOLE.print(f"[cyan]Extracting content[/cyan] as {output_format}", highlight=False)
+        CONSOLE.print(
+            f"[cyan]Extracting content[/cyan] as {output_format}", highlight=False
+        )
 
     content = trafilatura.extract(
         html,
@@ -174,7 +187,10 @@ def extract_content(html: str, url: str, output_format: OutputFormat, verbose: b
         raise ValueError("Failed to extract main content from the rendered HTML.")
 
     if verbose:
-        CONSOLE.print(f"[green]Extracted content size[/green] {len(content)} chars", highlight=False)
+        CONSOLE.print(
+            f"[green]Extracted content size[/green] {len(content)} chars",
+            highlight=False,
+        )
 
     return content
 
@@ -183,7 +199,9 @@ def fetch_agent_markdown(url: str, timeout_ms: int, verbose: bool) -> str | None
     """通过 Accept 协商优先请求 text/markdown，命中则直接返回。"""
 
     if verbose:
-        CONSOLE.print("[cyan]Trying Markdown for Agents negotiation[/cyan]", highlight=False)
+        CONSOLE.print(
+            "[cyan]Trying Markdown for Agents negotiation[/cyan]", highlight=False
+        )
 
     request = Request(  # noqa: S310 - 本地 CLI 可信输入, URL 由用户主动提供
         url,
@@ -276,7 +294,9 @@ def is_obvious_jina_block_page(content: str) -> bool:
     """识别少数非常明显的 Jina 限流或挑战页。"""
 
     snippet = content[:4000].lower()
-    return any(all(part in snippet for part in signal) for signal in JINA_BLOCK_PAGE_SIGNALS)
+    return any(
+        all(part in snippet for part in signal) for signal in JINA_BLOCK_PAGE_SIGNALS
+    )
 
 
 def extract_twitter_status_id(url: str) -> str | None:
@@ -299,7 +319,9 @@ def extract_twitter_status_id(url: str) -> str | None:
     return None
 
 
-def fetch_fxtwitter_status(status_id: str, timeout_ms: int, verbose: bool) -> dict[str, Any] | None:
+def fetch_fxtwitter_status(
+    status_id: str, timeout_ms: int, verbose: bool
+) -> dict[str, Any] | None:
     """调用 FxTwitter API 获取结构化推文数据。"""
 
     api_url = f"{FXTWITTER_API_ROOT}/{status_id}"
@@ -336,7 +358,9 @@ def fetch_fxtwitter_status(status_id: str, timeout_ms: int, verbose: bool) -> di
     return payload
 
 
-def _extract_thread_entries(payload: dict[str, Any], root_status_id: str) -> list[dict[str, Any]]:
+def _extract_thread_entries(
+    payload: dict[str, Any], root_status_id: str
+) -> list[dict[str, Any]]:
     """从 FxTwitter payload 中提取 thread 条目并去重。"""
 
     thread = payload.get("thread")
@@ -354,7 +378,9 @@ def _extract_thread_entries(payload: dict[str, Any], root_status_id: str) -> lis
                 raw_entries.append(status_value)
             else:
                 # Best effort fallback: some payloads may store id->status dictionaries.
-                dict_values = [value for value in thread.values() if isinstance(value, dict)]
+                dict_values = [
+                    value for value in thread.values() if isinstance(value, dict)
+                ]
                 raw_entries.extend(dict_values)
 
     entries: list[dict[str, Any]] = []
@@ -476,7 +502,9 @@ def render_fxtwitter_markdown(payload: dict[str, Any], source_url: str) -> str:
                 if not isinstance(item, dict):
                     continue
                 media_type = str(item.get("type") or "media")
-                media_url = str(item.get("url") or item.get("thumbnail_url") or "").strip()
+                media_url = str(
+                    item.get("url") or item.get("thumbnail_url") or ""
+                ).strip()
                 if media_url:
                     lines.append(f"- {media_type}: {media_url}")
 
@@ -492,8 +520,12 @@ def render_fxtwitter_markdown(payload: dict[str, Any], source_url: str) -> str:
 @APP.command()
 def fetch(
     url: str = typer.Argument(..., help="Target URL to render into content."),
-    output: Path | None = typer.Option(None, help="Write output to file instead of stdout."),
-    timeout_ms: int = typer.Option(60000, help="Playwright navigation timeout in milliseconds."),
+    output: Path | None = typer.Option(
+        None, help="Write output to file instead of stdout."
+    ),
+    timeout_ms: int = typer.Option(
+        60000, help="Playwright navigation timeout in milliseconds."
+    ),
     browser_path: Path | None = typer.Option(
         None,
         help="Optional local Chromium-based browser path. Auto-detected if omitted.",
@@ -506,14 +538,18 @@ def fetch(
         "auto",
         help="Fetch strategy for markdown: auto, agent, jina, browser.",
     ),
-    verbose: bool = typer.Option(False, "--verbose", help="Print progress and diagnostic logs."),
+    verbose: bool = typer.Option(
+        False, "--verbose", help="Print progress and diagnostic logs."
+    ),
 ) -> None:
     """通过 Playwright 渲染并用 trafilatura 提取内容。"""
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"}:
         raise typer.BadParameter("Only http or https URLs are supported.")
     if output_format != "markdown" and fetch_strategy != "auto":
-        raise typer.BadParameter("Custom fetch strategy is only supported with markdown output.")
+        raise typer.BadParameter(
+            "Custom fetch strategy is only supported with markdown output."
+        )
 
     resolved_browser_path = str(browser_path) if browser_path else detect_browser_path()
     try:
@@ -533,11 +569,16 @@ def fetch(
                     )
                 content = render_fxtwitter_markdown(payload, source_url=url)
                 if verbose:
-                    CONSOLE.print("[green]Using FxTwitter API markdown path[/green]", highlight=False)
+                    CONSOLE.print(
+                        "[green]Using FxTwitter API markdown path[/green]",
+                        highlight=False,
+                    )
         if output_format == "markdown":
             if content is None:
                 if fetch_strategy == "auto":
-                    content = fetch_agent_markdown(url, timeout_ms=timeout_ms, verbose=verbose)
+                    content = fetch_agent_markdown(
+                        url, timeout_ms=timeout_ms, verbose=verbose
+                    )
                     if content is None:
                         content = fetch_jina_reader_markdown(
                             url,
@@ -545,14 +586,18 @@ def fetch(
                             verbose=verbose,
                         )
                 elif fetch_strategy == "agent":
-                    content = fetch_agent_markdown(url, timeout_ms=timeout_ms, verbose=verbose)
+                    content = fetch_agent_markdown(
+                        url, timeout_ms=timeout_ms, verbose=verbose
+                    )
                     if content is None:
                         raise ValueError(
                             "Markdown negotiation did not return usable content. "
                             "Try --fetch-strategy jina or --fetch-strategy browser."
                         )
                 elif fetch_strategy == "jina":
-                    content = fetch_jina_reader_markdown(url, timeout_ms=timeout_ms, verbose=verbose)
+                    content = fetch_jina_reader_markdown(
+                        url, timeout_ms=timeout_ms, verbose=verbose
+                    )
                     if content is None:
                         raise ValueError(
                             "Jina Reader did not return usable content. "
@@ -560,7 +605,10 @@ def fetch(
                             "--fetch-strategy browser."
                         )
                 elif fetch_strategy == "browser" and verbose:
-                    CONSOLE.print("[cyan]Skipping non-browser markdown readers[/cyan]", highlight=False)
+                    CONSOLE.print(
+                        "[cyan]Skipping non-browser markdown readers[/cyan]",
+                        highlight=False,
+                    )
         if content is None:
             html = render_html(
                 url,

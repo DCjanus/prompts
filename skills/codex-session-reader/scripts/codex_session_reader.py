@@ -2,11 +2,13 @@
 # /// script
 # requires-python = ">=3.14"
 # dependencies = [
-#     "openai-codex>=0.1.0b2",
-#     "pydantic>=2.12.5",
-#     "rich>=14.3.3",
-#     "typer>=0.24.1",
+#     "openai-codex>=0.1.0b3",
+#     "pydantic>=2.13.4",
+#     "rich>=15.0.0",
+#     "typer>=0.26.7",
 # ]
+# [tool.uv]
+# prerelease = "allow"
 # ///
 
 """读取 Codex session/thread 的只读 CLI。"""
