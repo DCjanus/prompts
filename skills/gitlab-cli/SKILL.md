@@ -51,7 +51,7 @@ python skills/gitlab-cli/scripts/gitlab_cli.py --help
 1. 标题与正文先按 [SKILL.md](../change-request-writing/SKILL.md) 准备。
 2. Issue 正文默认先写到本地 Markdown 文件；草稿优先放 `/tmp/*.md`，标题通常较短，可直接用 `--title` 传入。
 3. 创建与修改时优先使用 `--description-file`，例如：`./scripts/gitlab_cli.py issue create --cwd /path/to/repo --title "..." --description-file /tmp/issue-body.md`，或 `./scripts/gitlab_cli.py issue update --cwd /path/to/repo 123 --title "..." --description-file /tmp/issue-body.md`。
-4. 创建成功后，输出完整 Issue URL。
+4. 创建成功后，输出结果链接。
 
 ## 创建 MR
 以下规范建立在“创建前检查”已完成的前提上。
@@ -71,7 +71,7 @@ python skills/gitlab-cli/scripts/gitlab_cli.py --help
   --remove-source-branch true
 ```
 7. 修改 MR 时也复用本地文件，避免手工编辑，例如：`./scripts/gitlab_cli.py mr update --cwd /path/to/repo 123 --title "..." --description-file /tmp/mr-body.md`。
-8. 创建成功后，输出完整 MR URL。
+8. 创建成功后，输出结果链接。
 
 ## 什么时候直接用 glab
 
