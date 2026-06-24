@@ -79,10 +79,8 @@
 ### 4.2 执行脚本与检查
 - 需要执行或编写脚本时，先确认**目标执行环境**是否有 `uv`；目标环境包括本机、远端服务器、容器或通过 SSH / exec 进入的运行环境，不要只依据本机是否安装 `uv` 判断。
 - 目标环境有 `uv` 时，优先使用 `uv run` / `uv run --script` 执行 Python 脚本，避免用临时 shell 拼接复杂逻辑。
-- 涉及循环、分支、状态累积、JSON/YAML/TOML 解析、多文件批量处理、复杂转义或错误处理的任务，若一行 shell 已经不够直观，应优先写成 Python 脚本执行，减少 shell quoting / escaping 错误。
-- 对一次性任务，若 Python 脚本比 shell 管道更清晰，应优先写成 Python 脚本；这类临时脚本默认写到临时目录（如 `${TMPDIR:-/tmp}`）并在用完后清理，避免落到仓库工作区；需要外部依赖时用 `uv run --with <外部依赖包> python ...`。
-- 需要保留、复用或版本控制的脚本，优先采用 PEP 723 / `uv --script` 形式；按需使用 `uv init --script <path>`、`uv add --script <path> <package>` 管理脚本依赖，不手工编辑 `/// script` 依赖块。
-- 仓库级工具默认放在 `scripts/`；skill 专用工具默认放在对应 skill 的 `scripts/`，并保持可直接执行（例如 `./scripts/foo.py`），不要在文档里要求通过 `python <script>` 调用。
+- 本来会写成 inline shell 的一次性复杂逻辑，如循环、分支、状态累积、结构化数据解析、多文件批量处理或复杂转义，优先改写成临时 Python 脚本执行，减少 shell quoting / escaping 错误。
+- 临时 Python 脚本默认写到临时目录（如 `${TMPDIR:-/tmp}`）并在用完后清理，避免落到仓库工作区；需要外部依赖时用 `uv run --with <外部依赖包> python ...`。
 - 修改 Python 脚本后，优先通过 `uvx ruff format --check <paths>` 与 `uvx ruff check <paths>` 检查格式与 lint。
 
 ### 4.3 Git 提交相关操作
