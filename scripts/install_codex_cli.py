@@ -51,6 +51,8 @@ console = Console()
 app = typer.Typer(add_completion=False, no_args_is_help=False)
 
 ArchiveKind = Literal["zst", "tar.zst", "tar.gz", "zip", "direct"]
+CompletionShell = Literal["bash", "elvish", "fish", "powershell", "zsh"]
+CompletionStatus = Literal["installed", "updated", "unchanged", "skipped"]
 StateStatus = Literal["match", "missing", "stale"]
 VERSION_PATTERN = re.compile(
     r"(?<![0-9A-Za-z])"
@@ -78,6 +80,7 @@ class Release(BaseModel):
 
 class InstallSpec(BaseModel):
     install_dir: Path | None = Field(default=None)
+    completion_shell: CompletionShell | None = Field(default=None)
 
     @field_validator("install_dir")
     @classmethod
@@ -85,6 +88,13 @@ class InstallSpec(BaseModel):
         if value is None:
             return value
         return value.expanduser()
+
+    @field_validator("completion_shell", mode="before")
+    @classmethod
+    def normalize_completion_shell(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.lower()
 
 
 @dataclass(frozen=True)
@@ -115,12 +125,27 @@ class InstallResult:
     path_warning: str | None
     status: Literal["installed", "updated", "unchanged"]
     downloaded: bool
+    completion: "CompletionInstallResult"
 
 
 @dataclass(frozen=True)
 class ReleaseSelection:
     release: Release
     candidates_count: int
+
+
+@dataclass(frozen=True)
+class CompletionTarget:
+    shell: CompletionShell
+    path: Path
+
+
+@dataclass(frozen=True)
+class CompletionInstallResult:
+    shell: CompletionShell | None
+    path: Path | None
+    status: CompletionStatus
+    warning: str | None = None
 
 
 class InstallState(BaseModel):
@@ -148,6 +173,16 @@ def xdg_state_file() -> Path:
         else Path.home() / ".local" / "state"
     )
     return base / "prompts" / "install_codex_cli.json"
+
+
+def xdg_config_home() -> Path:
+    raw = os.environ.get("XDG_CONFIG_HOME")
+    return Path(raw).expanduser() if raw else Path.home() / ".config"
+
+
+def xdg_data_home() -> Path:
+    raw = os.environ.get("XDG_DATA_HOME")
+    return Path(raw).expanduser() if raw else Path.home() / ".local" / "share"
 
 
 def current_platform_target() -> PlatformTarget:
@@ -425,6 +460,151 @@ def install_executable(
     return status
 
 
+def write_text_atomic(path: Path, content: str) -> CompletionStatus:
+    if path.exists() and path.read_text(encoding="utf-8") == content:
+        return "unchanged"
+
+    status: CompletionStatus = "updated" if path.exists() else "installed"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        mode="w",
+        encoding="utf-8",
+        delete=False,
+    ) as tmp_file:
+        tmp_path = Path(tmp_file.name)
+        tmp_file.write(content)
+    os.replace(tmp_path, path)
+    return status
+
+
+def detect_completion_shell() -> CompletionShell | None:
+    shell_path = os.environ.get("SHELL")
+    if shell_path:
+        shell_name = Path(shell_path).name.lower()
+        if shell_name in {"bash", "fish", "zsh", "elvish"}:
+            return shell_name
+        if shell_name in {"pwsh", "powershell", "powershell.exe", "pwsh.exe"}:
+            return "powershell"
+
+    if platform.system().lower() == "windows":
+        return "powershell"
+    return None
+
+
+def zsh_fpath_dirs() -> list[Path]:
+    zsh = shutil.which("zsh")
+    if zsh is None:
+        return []
+    try:
+        result = subprocess.run(
+            [zsh, "-lc", "print -r -- $fpath"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        return []
+    return [Path(raw).expanduser() for raw in result.stdout.split() if raw]
+
+
+def writable_zsh_completion_dir() -> Path | None:
+    home = Path.home()
+    for directory in zsh_fpath_dirs():
+        try:
+            resolved = directory.expanduser().resolve()
+        except OSError:
+            continue
+        if not directory.exists() or not directory.is_dir():
+            continue
+        if not same_path_or_child(resolved, home):
+            continue
+        if os.access(directory, os.W_OK):
+            return directory
+    return None
+
+
+def same_path_or_child(path: Path, parent: Path) -> bool:
+    try:
+        path.relative_to(parent.expanduser().resolve())
+    except ValueError:
+        return False
+    except OSError:
+        return False
+    return True
+
+
+def completion_target_for_shell(shell: CompletionShell) -> CompletionTarget | None:
+    if shell == "fish":
+        return CompletionTarget(
+            shell, xdg_config_home() / "fish" / "completions" / "codex.fish"
+        )
+    if shell == "bash":
+        return CompletionTarget(
+            shell, xdg_data_home() / "bash-completion" / "completions" / "codex.bash"
+        )
+    if shell == "zsh":
+        directory = writable_zsh_completion_dir()
+        if directory is None:
+            return None
+        return CompletionTarget(shell, directory / "_codex")
+    if shell == "elvish":
+        return CompletionTarget(
+            shell, xdg_config_home() / "elvish" / "lib" / "codex-completion.elv"
+        )
+    if shell == "powershell":
+        return None
+    raise AssertionError("unreachable")
+
+
+def install_shell_completion(
+    target_path: Path, requested_shell: CompletionShell | None
+) -> CompletionInstallResult:
+    shell = requested_shell or detect_completion_shell()
+    if shell is None:
+        return CompletionInstallResult(
+            shell=None,
+            path=None,
+            status="skipped",
+            warning="未能从 SHELL 环境变量判断当前 shell，跳过补全安装",
+        )
+
+    completion_target = completion_target_for_shell(shell)
+    if completion_target is None:
+        return CompletionInstallResult(
+            shell=shell,
+            path=None,
+            status="skipped",
+            warning=f"当前 shell {shell} 没有可自动写入的用户级补全目录",
+        )
+
+    try:
+        result = subprocess.run(
+            [str(target_path), "completion", shell],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+        return CompletionInstallResult(
+            shell=shell,
+            path=completion_target.path,
+            status="skipped",
+            warning=f"生成 {shell} 补全脚本失败: {exc}",
+        )
+
+    status = write_text_atomic(completion_target.path, result.stdout)
+    return CompletionInstallResult(
+        shell=shell,
+        path=completion_target.path,
+        status=status,
+        warning=None,
+    )
+
+
 def target_key(target_path: Path) -> str:
     try:
         return str(target_path.resolve())
@@ -596,6 +776,31 @@ def path_warning(install_dir: Path, target_path: Path) -> str | None:
     return None
 
 
+def install_result(
+    *,
+    release: Release,
+    selected: SelectedAsset,
+    install_dir: Path,
+    target_path: Path,
+    auth_source: str,
+    status: Literal["installed", "updated", "unchanged"],
+    downloaded: bool,
+    completion_shell: CompletionShell | None,
+) -> InstallResult:
+    completion = install_shell_completion(target_path, completion_shell)
+    return InstallResult(
+        release=release,
+        selected=selected,
+        install_dir=install_dir,
+        target_path=target_path,
+        auth_source=auth_source,
+        path_warning=path_warning(install_dir, target_path),
+        status=status,
+        downloaded=downloaded,
+        completion=completion,
+    )
+
+
 def run_install(spec: InstallSpec) -> InstallResult:
     token = github_token()
     step(f"开始获取 openai/codex release 列表（auth: {token.source}）")
@@ -618,15 +823,15 @@ def run_install(spec: InstallSpec) -> InstallResult:
     current_state = state_status(target_path, release, selected)
     if current_state == "match":
         step("本地状态记录命中，跳过下载")
-        return InstallResult(
+        return install_result(
             release=release,
             selected=selected,
             install_dir=install_dir,
             target_path=target_path,
             auth_source=token.source,
-            path_warning=path_warning(install_dir, target_path),
             status="unchanged",
             downloaded=False,
+            completion_shell=spec.completion_shell,
         )
 
     if current_state == "stale":
@@ -634,15 +839,15 @@ def run_install(spec: InstallSpec) -> InstallResult:
     elif installed_version_matches(target_path, release):
         step("目标文件版本已是最新，跳过下载")
         save_state(make_state(target_path, release, selected, sha256_file(target_path)))
-        return InstallResult(
+        return install_result(
             release=release,
             selected=selected,
             install_dir=install_dir,
             target_path=target_path,
             auth_source=token.source,
-            path_warning=path_warning(install_dir, target_path),
             status="unchanged",
             downloaded=False,
+            completion_shell=spec.completion_shell,
         )
 
     step(f"开始下载 {selected.asset.name}，文件体积 {format_size(selected.asset.size)}")
@@ -658,15 +863,15 @@ def run_install(spec: InstallSpec) -> InstallResult:
     status = install_executable(executable, target_path)
     save_state(make_state(target_path, release, selected, sha256_bytes(executable)))
 
-    return InstallResult(
+    return install_result(
         release=release,
         selected=selected,
         install_dir=install_dir,
         target_path=target_path,
         auth_source=token.source,
-        path_warning=path_warning(install_dir, target_path),
         status=status,
         downloaded=True,
+        completion_shell=spec.completion_shell,
     )
 
 
@@ -681,9 +886,16 @@ def print_result(result: InstallResult) -> None:
     table.add_row("Auth", result.auth_source)
     table.add_row("Status", result.status)
     table.add_row("Downloaded", "yes" if result.downloaded else "no")
+    if result.completion.shell:
+        table.add_row("Completion shell", result.completion.shell)
+    if result.completion.path:
+        table.add_row("Completion path", str(result.completion.path))
+    table.add_row("Completion status", result.completion.status)
     console.print(table)
     if result.path_warning:
         console.print(f"[yellow]Warning:[/yellow] {result.path_warning}")
+    if result.completion.warning:
+        console.print(f"[yellow]Warning:[/yellow] {result.completion.warning}")
 
 
 @app.command(help="从 GitHub release 下载并安装最新 Codex CLI 预编译 binary。")
@@ -695,9 +907,16 @@ def main(
             help="安装目录；默认使用 $XDG_BIN_HOME，未设置时使用 ~/.local/bin",
         ),
     ] = None,
+    completion_shell: Annotated[
+        str | None,
+        typer.Option(
+            "--completion-shell",
+            help="要安装补全脚本的 shell；默认从 $SHELL 自动探测。可选：bash、elvish、fish、powershell、zsh",
+        ),
+    ] = None,
 ) -> None:
     try:
-        spec = InstallSpec(install_dir=install_dir)
+        spec = InstallSpec(install_dir=install_dir, completion_shell=completion_shell)
         result = run_install(spec)
     except (RuntimeError, ValidationError) as exc:
         console.print(f"[red]失败：{exc}[/red]")
