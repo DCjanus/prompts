@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -150,6 +151,128 @@ def ensure_batch_updates(value: Any, option_name: str) -> list[dict[str, Any]]:
             }
         )
     return normalized
+
+
+def ensure_links(value: Any, option_name: str, text: str) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        raise CliError(
+            f'{option_name} 必须是数组，例如 [{{"text":"MR !96","url":"https://..."}}]。'
+        )
+    if not value:
+        raise CliError(f"{option_name} 至少需要包含一个链接。")
+    links: list[dict[str, Any]] = []
+    for index, item in enumerate(value):
+        if not isinstance(item, dict):
+            raise CliError(f"{option_name}[{index}] 必须是对象。")
+        url = item.get("url")
+        if not isinstance(url, str) or not url:
+            raise CliError(f"{option_name}[{index}].url 必须是非空字符串。")
+        if "start" in item or "end" in item:
+            start = item.get("start")
+            end = item.get("end")
+            if not isinstance(start, int) or not isinstance(end, int):
+                raise CliError(f"{option_name}[{index}].start/end 必须是整数。")
+            if start < 0 or end <= start or end > len(text):
+                raise CliError(f"{option_name}[{index}].start/end 超出文本范围。")
+            link_text = text[start:end]
+        else:
+            link_text = item.get("text")
+            if not isinstance(link_text, str) or not link_text:
+                raise CliError(f"{option_name}[{index}].text 必须是非空字符串。")
+            start = text.find(link_text)
+            if start < 0:
+                raise CliError(f"{option_name}[{index}].text 在 --text 中不存在。")
+            if text.find(link_text, start + 1) >= 0:
+                raise CliError(
+                    f"{option_name}[{index}].text 在 --text 中出现多次；"
+                    "请改用 start/end 明确位置。"
+                )
+            end = start + len(link_text)
+        links.append({"start": start, "end": end, "url": url, "text": link_text})
+    links.sort(key=lambda link: link["start"])
+    previous_end = 0
+    for link in links:
+        if link["start"] < previous_end:
+            raise CliError(f"{option_name} 中的链接范围不能重叠。")
+        previous_end = link["end"]
+    return links
+
+
+A1_SINGLE_CELL_RE = re.compile(
+    r"^(?:(?P<sheet>'(?:[^']|'')+'|[^'!]+)!)?(?P<col>[A-Za-z]+)(?P<row>[1-9][0-9]*)$"
+)
+
+
+def unquote_sheet_name(value: str) -> str:
+    if value.startswith("'") and value.endswith("'"):
+        return value[1:-1].replace("''", "'")
+    return value
+
+
+def column_index(column: str) -> int:
+    index = 0
+    for char in column.upper():
+        index = index * 26 + ord(char) - ord("A") + 1
+    return index - 1
+
+
+def parse_single_cell_range(range_: str) -> tuple[str, int, int]:
+    match = A1_SINGLE_CELL_RE.match(range_)
+    if not match or not match.group("sheet"):
+        raise CliError("--range 必须是带 sheet 名的单个单元格，例如 'Sheet1'!I10。")
+    return (
+        unquote_sheet_name(match.group("sheet")),
+        int(match.group("row")) - 1,
+        column_index(match.group("col")),
+    )
+
+
+def sheet_id_for_title(service: Any, spreadsheet_id: str, title: str) -> int:
+    metadata = (
+        service.spreadsheets()
+        .get(
+            spreadsheetId=spreadsheet_id,
+            fields="sheets(properties(sheetId,title))",
+        )
+        .execute()
+    )
+    for sheet in metadata.get("sheets", []):
+        properties = sheet.get("properties", {})
+        if properties.get("title") == title:
+            return properties["sheetId"]
+    raise CliError(f"找不到名为 {title!r} 的 sheet。")
+
+
+def utf16_index(text: str, codepoint_index: int) -> int:
+    return len(text[:codepoint_index].encode("utf-16-le")) // 2
+
+
+def text_format_runs(links: list[dict[str, Any]], text: str) -> list[dict[str, Any]]:
+    runs: list[dict[str, Any]] = [{"startIndex": 0, "format": {}}]
+    for link in links:
+        runs.append(
+            {
+                "startIndex": utf16_index(text, link["start"]),
+                "format": {
+                    "link": {"uri": link["url"]},
+                    "foregroundColor": {
+                        "red": 0.06666667,
+                        "green": 0.33333334,
+                        "blue": 0.8,
+                    },
+                    "underline": True,
+                },
+            }
+        )
+        if link["end"] < len(text):
+            runs.append({"startIndex": utf16_index(text, link["end"]), "format": {}})
+    deduplicated: list[dict[str, Any]] = []
+    for run in runs:
+        if deduplicated and deduplicated[-1]["startIndex"] == run["startIndex"]:
+            deduplicated[-1] = run
+        else:
+            deduplicated.append(run)
+    return deduplicated
 
 
 def load_credentials() -> Credentials:
@@ -478,6 +601,67 @@ def values_clear(
     except HttpError as exc:
         raise handle_http_error(exc) from exc
     render_output(ctx, payload, "Clear")
+
+
+@values_app.command("update-rich-text", help="写入单个单元格，并给部分文字添加链接。")
+def values_update_rich_text(
+    ctx: typer.Context,
+    spreadsheet_id: str = typer.Option(..., "--spreadsheet-id"),
+    range_: str = typer.Option(..., "--range", help="带 sheet 名的单个 A1 单元格。"),
+    text: str = typer.Option(..., "--text", help="单元格完整文本。"),
+    links_json: str = typer.Option(
+        ...,
+        "--links-json",
+        help='链接数组 JSON 或 @path，例如 [{"text":"MR !96","url":"https://..."}]。',
+    ),
+) -> None:
+    links = ensure_links(
+        load_json_arg(links_json, "--links-json"), "--links-json", text
+    )
+    sheet_title, row_index, col_index = parse_single_cell_range(range_)
+    service = get_service()
+    try:
+        sheet_id = sheet_id_for_title(service, spreadsheet_id, sheet_title)
+        payload = (
+            service.spreadsheets()
+            .batchUpdate(
+                spreadsheetId=spreadsheet_id,
+                body={
+                    "requests": [
+                        {
+                            "updateCells": {
+                                "range": {
+                                    "sheetId": sheet_id,
+                                    "startRowIndex": row_index,
+                                    "endRowIndex": row_index + 1,
+                                    "startColumnIndex": col_index,
+                                    "endColumnIndex": col_index + 1,
+                                },
+                                "rows": [
+                                    {
+                                        "values": [
+                                            {
+                                                "userEnteredValue": {
+                                                    "stringValue": text
+                                                },
+                                                "textFormatRuns": text_format_runs(
+                                                    links, text
+                                                ),
+                                            }
+                                        ]
+                                    }
+                                ],
+                                "fields": "userEnteredValue,textFormatRuns",
+                            }
+                        }
+                    ]
+                },
+            )
+            .execute()
+        )
+    except HttpError as exc:
+        raise handle_http_error(exc) from exc
+    render_output(ctx, payload, "Update rich text")
 
 
 app.add_typer(auth_app, name="auth")
