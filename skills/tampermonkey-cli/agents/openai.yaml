@@ -1,0 +1,4 @@
+interface:
+  display_name: "Tampermonkey CLI"
+  short_description: "Manage Tampermonkey scripts from Codex"
+  default_prompt: "Use $tampermonkey-cli to install or update a local userscript in Tampermonkey."
