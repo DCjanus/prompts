@@ -39,6 +39,7 @@ python skills/tampermonkey-cli/scripts/tampermonkey.py --help
 ```bash
 ./scripts/tampermonkey.py status
 ./scripts/tampermonkey.py list
+./scripts/tampermonkey.py get '<script-path>/source' --output /tmp/example.user.js
 ./scripts/tampermonkey.py put /path/to/example.user.js
 ./scripts/tampermonkey.py patch '<script-path>/source' /path/to/example.user.js
 ```
@@ -56,7 +57,7 @@ python skills/tampermonkey-cli/scripts/tampermonkey.py --help
 - `serve`：启动桥接进程，打印一次 connection code，并持有 Tampermonkey Editors 连接。
 - `status`：查看 `serve` 是否存在、Tampermonkey Editors 是否已连接。
 - `list`：列出浏览器中已安装的 userscript；支持 `--pattern` 和重复的 `--include-pattern`。
-- `get <path>`：读取脚本内容；`path` 来自 `list` 输出。
+- `get <path> --output <file>`：读取脚本内容并写入本地文件；`path` 来自 `list` 输出。不要直接把脚本文本输出到终端。
 - `put <file>`：创建新 userscript。
 - `patch <path> <file>`：用本地文件覆盖已有 userscript。
 - `delete <path>`：删除指定 userscript。
@@ -66,5 +67,7 @@ python skills/tampermonkey-cli/scripts/tampermonkey.py --help
 
 - `serve` 只生成一次 connection code；后续命令通过同一个 socket 复用连接。
 - `path` 是 Tampermonkey Editors 返回的内部路径，通常形如 `<script-id>/source`，不要自己猜。
-- `put` 和 `patch` 会修改浏览器里的 Tampermonkey 脚本；执行前确认目标文件内容是最终版本。
+- `get` 必须指定 `--output`；读取后用 `sed`、`rg`、`diff`、编辑器等常规文件工具查看内容。
+- `put`、`patch` 和 `delete` 会修改浏览器里的 Tampermonkey 脚本；执行前确认目标文件内容是最终版本。
+- 如果 `put` 或 `delete` 返回 `405 Method Not Allowed`，这是 Tampermonkey Editors 端拒绝该 action；先在 Tampermonkey UI 中手动创建脚本，再用 `list` 找到 path，并用 `patch` 覆盖内容。
 - 如果命令提示无法连接 socket，先运行 `serve` 并完成 Tampermonkey Editors 连接。

@@ -529,8 +529,9 @@ def list_scripts(
 def get_script(
     path: Annotated[str, typer.Argument(help="脚本 path，来自 list 输出。")],
     output: Annotated[
-        Path | None, typer.Option("--output", "-o", help="把脚本内容写入文件。")
-    ] = None,
+        Path,
+        typer.Option("--output", "-o", help="把脚本内容写入文件；必须指定。"),
+    ],
     if_not_modified_since: Annotated[
         float | None,
         typer.Option(help="只在脚本晚于该 Unix 时间戳修改时返回。"),
@@ -544,7 +545,7 @@ def get_script(
     ] = None,
     timeout: Annotated[float, typer.Option(help="UDS 请求超时秒数。")] = 30.0,
 ) -> None:
-    """读取指定 userscript。"""
+    """读取指定 userscript 并写入本地文件。"""
     payload: dict[str, Any] = {"action": "get", "path": path}
     if if_not_modified_since is not None:
         payload["ifNotModifiedSince"] = if_not_modified_since
@@ -556,19 +557,18 @@ def get_script(
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(1) from exc
 
-    if json_output:
-        stdout.print(as_json(response))
-        return
     if response.get("error"):
         print_response(response, json_output=False)
         return
 
     value = str(response.get("value") or "")
-    if output:
-        output.write_text(value)
-        console.print(f"已写入 {output}")
+    output.write_text(value)
+    if json_output:
+        metadata = {key: val for key, val in response.items() if key != "value"}
+        metadata["output"] = str(output)
+        stdout.print(as_json(metadata))
     else:
-        stdout.print(value)
+        console.print(f"已写入 {output}")
 
 
 @app.command("patch")
