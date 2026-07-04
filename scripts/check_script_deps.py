@@ -5,7 +5,7 @@
 # dependencies = [
 #     "packaging>=26.2",
 #     "rich>=15.0.0",
-#     "typer>=0.26.7",
+#     "typer>=0.26.8",
 # ]
 # ///
 
