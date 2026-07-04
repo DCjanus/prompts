@@ -3,10 +3,10 @@
 # /// script
 # requires-python = ">=3.14"
 # dependencies = [
-#     "playwright>=1.60.0",
+#     "playwright>=1.61.0",
 #     "rich>=15.0.0",
 #     "trafilatura>=2.1.0",
-#     "typer>=0.26.7",
+#     "typer>=0.26.8",
 # ]
 # ///
 

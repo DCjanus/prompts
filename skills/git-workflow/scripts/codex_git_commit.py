@@ -3,7 +3,7 @@
 # requires-python = ">=3.14"
 # dependencies = [
 #     "openai-codex>=0.1.0b3",
-#     "typer>=0.26.7",
+#     "typer>=0.26.8",
 # ]
 # [tool.uv]
 # prerelease = "allow"
