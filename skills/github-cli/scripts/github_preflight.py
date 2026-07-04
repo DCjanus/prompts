@@ -347,17 +347,8 @@ def print_issue_templates(templates: list[IssueTemplate]) -> None:
         console.print("- 未发现 Issue Form 模板\n")
         return
     for template in templates:
-        console.print(f"- {template.path}")
-        if template.name:
-            console.print(f"  名称：{template.name}")
-        if template.labels:
-            console.print(f"  默认标签：{', '.join(template.labels)}")
-        if template.required_fields:
-            console.print("  必填字段：")
-            for field in template.required_fields:
-                console.print(f"    - {field}")
-        else:
-            console.print("  必填字段：未检测到")
+        suffix = f"：{template.name}" if template.name else ""
+        console.print(f"- {template.path}{suffix}")
     console.print()
 
 
@@ -375,14 +366,7 @@ def print_pr_templates(repo: Path) -> None:
         return
     for path in paths:
         rel = path.relative_to(repo)
-        headings = re.findall(r"(?m)^#{1,6}\s+(.+?)\s*$", read_text(path))
         console.print(f"- {rel}")
-        if headings:
-            console.print("  检测到的标题：")
-            for heading in headings[:20]:
-                console.print(f"    - {heading}")
-        else:
-            console.print("  检测到的标题：无")
     console.print()
 
 
