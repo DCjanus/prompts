@@ -16,4 +16,4 @@ jobs:
         with:
           enable-cache: false
       - name: Scan uv script dependencies
-        run: ./scripts/check_script_deps.py --github-summary
+        run: ./scripts/script_deps.py --github-summary

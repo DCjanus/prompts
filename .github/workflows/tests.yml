@@ -17,7 +17,7 @@ jobs:
         with:
           enable-cache: false
       - name: Check uv script dependencies
-        run: ./scripts/check_script_deps.py --only-attention --fail-on-attention --github-summary
+        run: ./scripts/script_deps.py --only-attention --fail-on-attention --github-summary
 
   unittest:
     runs-on: ubuntu-latest
