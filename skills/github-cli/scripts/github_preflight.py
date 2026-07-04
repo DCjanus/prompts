@@ -11,7 +11,6 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any
@@ -39,39 +38,6 @@ PR_EVENTS = {
 }
 COMMON_EVENTS = {"workflow_run", "workflow_dispatch"}
 
-SUSPICIOUS_TOKENS = (
-    "issues: write",
-    "pull-requests: write",
-    "actions/github-script",
-    "github.rest.issues.",
-    "github.rest.pulls.",
-    "gh issue",
-    "gh pr",
-    "gh api",
-    "state: 'closed'",
-    'state: "closed"',
-    "state_reason",
-    "stateReason",
-    "addLabels",
-    "removeLabel",
-    "createComment",
-    "updateComment",
-    "close",
-    "closed",
-    "label",
-    "labels",
-    "template",
-    "ISSUE_TEMPLATE",
-    "PULL_REQUEST_TEMPLATE",
-    "check-issue",
-    "bypass",
-    "required",
-)
-
-SCRIPT_PATH_RE = re.compile(
-    r"(?P<path>(?:scripts|\.github)/(?:[\w@.+-]+/)*[\w@.+-]+\.(?:mjs|js|ts|py|sh|bash|yml|yaml))"
-)
-
 
 @dataclass
 class IssueTemplate:
@@ -83,12 +49,17 @@ class IssueTemplate:
 
 
 @dataclass
+class WorkflowJob:
+    key: str
+    name: str | None
+
+
+@dataclass
 class WorkflowInfo:
     path: Path
+    name: str | None
     events: list[str]
-    permissions: list[str]
-    suspicious: list[str]
-    scripts: list[Path]
+    jobs: list[WorkflowJob]
 
 
 def read_text(path: Path) -> str:
@@ -182,36 +153,6 @@ def workflow_events(data: dict[str, Any]) -> list[str]:
     return []
 
 
-def workflow_permissions(data: dict[str, Any], text: str) -> list[str]:
-    """提取 workflow 权限声明。"""
-    found: set[str] = set()
-    permissions = data.get("permissions")
-    if isinstance(permissions, dict):
-        for key, value in permissions.items():
-            found.add(f"{key}: {value}")
-    for match in re.finditer(
-        r"(?m)^\s*(issues|pull-requests|contents|checks|statuses|actions):\s*(\w+)\s*$",
-        text,
-    ):
-        found.add(f"{match.group(1)}: {match.group(2)}")
-    return sorted(found)
-
-
-def extract_suspicious(text: str) -> list[str]:
-    """提取风险关键词。"""
-    return [token for token in SUSPICIOUS_TOKENS if token in text]
-
-
-def extract_scripts(repo: Path, text: str) -> list[Path]:
-    """提取 workflow 引用的本地脚本。"""
-    scripts: set[Path] = set()
-    for match in SCRIPT_PATH_RE.finditer(text):
-        rel = Path(match.group("path"))
-        if (repo / rel).is_file():
-            scripts.add(rel)
-    return sorted(scripts)
-
-
 def workflow_relevant(events: list[str], mode: str, text: str) -> bool:
     """判断 workflow 是否与 issue/PR 创建相关。"""
     event_set = set(events)
@@ -233,6 +174,20 @@ def workflow_relevant(events: list[str], mode: str, text: str) -> bool:
     return False
 
 
+def workflow_jobs(data: dict[str, Any]) -> list[WorkflowJob]:
+    """提取 workflow job 的定位信息。"""
+    jobs = data.get("jobs")
+    if not isinstance(jobs, dict):
+        return []
+    found: list[WorkflowJob] = []
+    for key, value in sorted(jobs.items()):
+        name = None
+        if isinstance(value, dict) and value.get("name"):
+            name = str(value["name"])
+        found.append(WorkflowJob(key=str(key), name=name))
+    return found
+
+
 def load_workflows(repo: Path, mode: str) -> list[WorkflowInfo]:
     """加载相关 workflow 摘要。"""
     directory = repo / WORKFLOW_DIR
@@ -248,38 +203,12 @@ def load_workflows(repo: Path, mode: str) -> list[WorkflowInfo]:
         workflows.append(
             WorkflowInfo(
                 path=path.relative_to(repo),
+                name=str(data["name"]) if data.get("name") else None,
                 events=events,
-                permissions=workflow_permissions(data, text),
-                suspicious=extract_suspicious(text),
-                scripts=extract_scripts(repo, text),
+                jobs=workflow_jobs(data),
             )
         )
     return workflows
-
-
-def summarize_script(repo: Path, rel_path: Path) -> tuple[list[str], list[str]]:
-    """提取本地脚本中的明显规则信号。"""
-    path = repo / rel_path
-    if not path.is_file():
-        return [], []
-    text = read_text(path)
-    suspicious = extract_suspicious(text)
-    rules = []
-    for pattern, summary in (
-        (
-            r"state_reason|stateReason|not_planned|state:\s*['\"]closed['\"]",
-            "可能关闭 issue/PR 或设置关闭原因",
-        ),
-        (r"createComment|issues\.createComment|gh issue comment", "可能创建自动评论"),
-        (r"addLabels|issues\.addLabels|gh issue edit .*label", "可能添加标签"),
-        (r"labels?\.|issue\.labels|pull_request\.labels", "读取或依赖标签"),
-        (r"heading|headings|remark|markdown", "可能检查 Markdown 标题/正文结构"),
-        (r"required|checkbox|terms", "可能检查必填字段或复选框"),
-        (r"ISSUE_TEMPLATE|PULL_REQUEST_TEMPLATE|template", "可能检查模板合规性"),
-    ):
-        if re.search(pattern, text, re.IGNORECASE):
-            rules.append(summary)
-    return suspicious, rules
 
 
 def section(title: str) -> None:
@@ -292,7 +221,6 @@ def print_checked(
     mode: str,
     templates: list[IssueTemplate],
     workflows: list[WorkflowInfo],
-    scripts: list[Path],
 ) -> None:
     section("已检查")
     config_path = repo / ISSUE_TEMPLATE_DIR / "config.yml"
@@ -321,7 +249,6 @@ def print_checked(
         )
     console.print(f"- {WORKFLOW_DIR}/：发现 {workflow_count} 个 workflow")
     console.print(f"- {mode} 相关 workflow：发现 {len(workflows)} 个")
-    console.print(f"- {mode} 相关 workflow 引用的本地脚本：发现 {len(scripts)} 个")
     console.print(
         "- 外部 GitHub App / branch protection / ruleset：无法通过本地静态扫描确认\n"
     )
@@ -377,51 +304,25 @@ def print_workflows(workflows: list[WorkflowInfo], mode: str) -> None:
         return
     for workflow in workflows:
         console.print(f"- {workflow.path}")
+        if workflow.name:
+            console.print(f"  workflow：{workflow.name}")
         console.print(
             f"  触发事件：{', '.join(workflow.events) if workflow.events else '未静态识别'}"
         )
-        if workflow.permissions:
-            console.print("  权限：")
-            for perm in workflow.permissions:
-                console.print(f"    - {perm}")
-        if workflow.suspicious:
-            console.print("  风险信号：")
-            for item in workflow.suspicious:
-                console.print(f"    - {item}")
-        if workflow.scripts:
-            console.print("  引用本地脚本：")
-            for script in workflow.scripts:
-                console.print(f"    - {script}")
+        if workflow.jobs:
+            console.print("  jobs：")
+            for job in workflow.jobs:
+                suffix = f"：{job.name}" if job.name else ""
+                console.print(f"    - {job.key}{suffix}")
     console.print()
 
 
-def print_scripts(repo: Path, scripts: list[Path]) -> None:
-    section("本地脚本摘要")
-    if not scripts:
-        console.print("- 未发现相关本地脚本\n")
-        return
-    for script in scripts:
-        suspicious, rules = summarize_script(repo, script)
-        console.print(f"- {script}")
-        if suspicious:
-            console.print("  风险信号：")
-            for item in suspicious:
-                console.print(f"    - {item}")
-        if rules:
-            console.print("  检测到的规则：")
-            for rule in rules:
-                console.print(f"    - {rule}")
-    console.print()
-
-
-def print_recommendations(
-    mode: str, workflows: list[WorkflowInfo], scripts: list[Path]
-) -> None:
+def print_recommendations(mode: str, workflows: list[WorkflowInfo]) -> None:
     section("建议")
     if mode == "issue":
-        if workflows or scripts:
+        if workflows:
             console.print(
-                "- 如果 workflow/script 依赖 Issue Form 自动应用的标签或字段，优先使用网页 Issue Form，不要用普通 `gh issue create` 绕过表单。"
+                "- 如果 workflow 依赖 Issue Form 自动应用的标签或字段，优先使用网页 Issue Form，不要用普通 `gh issue create` 绕过表单。"
             )
         console.print(
             "- 创建后等待 10-30 秒并复查：`gh issue view <number> --json state,stateReason,labels,comments,url`"
@@ -461,18 +362,16 @@ def main(
 
     templates = load_issue_templates(repo) if mode == "issue" else []
     workflows = load_workflows(repo, mode)
-    scripts = sorted({script for workflow in workflows for script in workflow.scripts})
 
     console.print(f"# GitHub 创建前检查：{mode}\n")
-    print_checked(repo, mode, templates, workflows, scripts)
+    print_checked(repo, mode, templates, workflows)
     if mode == "issue":
         print_issue_config(repo)
         print_issue_templates(templates)
     else:
         print_pr_templates(repo)
     print_workflows(workflows, mode)
-    print_scripts(repo, scripts)
-    print_recommendations(mode, workflows, scripts)
+    print_recommendations(mode, workflows)
 
 
 if __name__ == "__main__":
