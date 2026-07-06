@@ -138,13 +138,20 @@ class MarkdownToStorageTest(unittest.TestCase):
         expected = f"<p>Intro</p>\n{expected_table}"
         self.assertEqual(self.render(markdown), expected)
 
-    def test_supports_lists_and_inline_formatting(self):
-        markdown = (
-            "1. **bold** item\n"
-            "2. `inline` item\n\n"
-            "- alpha\n"
-            "- *beta*\n"
+    def test_table_alignment_is_preserved(self):
+        markdown = "| Left | Center | Right |\n| :--- | :---: | ---: |\n| 1 | 2 | 3 |"
+        expected = (
+            '<table><thead><tr><th style="text-align: left">Left</th>'
+            '<th style="text-align: center">Center</th>'
+            '<th style="text-align: right">Right</th></tr></thead>'
+            '<tbody><tr><td style="text-align: left">1</td>'
+            '<td style="text-align: center">2</td>'
+            '<td style="text-align: right">3</td></tr></tbody></table>'
         )
+        self.assertEqual(self.render(markdown), expected)
+
+    def test_supports_lists_and_inline_formatting(self):
+        markdown = "1. **bold** item\n2. `inline` item\n\n- alpha\n- *beta*\n"
         expected = (
             "<ol><li><p><strong>bold</strong> item</p></li><li><p><code>inline</code> item</p></li></ol>\n"
             "<ul><li><p>alpha</p></li><li><p><em>beta</em></p></li></ul>"

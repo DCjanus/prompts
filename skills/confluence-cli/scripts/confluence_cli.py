@@ -237,6 +237,8 @@ ALLOWED_TOKEN_ATTRIBUTES = {
     "image": {"alt", "src", "title"},
     "link_open": {"href", "title"},
     "ordered_list_open": {"start"},
+    "td_open": {"style"},
+    "th_open": {"style"},
 }
 
 CONFLUENCE_CODE_LANGUAGE_ALIASES = {
@@ -546,6 +548,29 @@ def validate_token_attributes(token: Token) -> dict[str, str]:
     return attrs
 
 
+def normalize_table_cell_style(style: str) -> str:
+    """只允许 Markdown table alignment 生成的安全 text-align style。"""
+    match = re.fullmatch(
+        r"\s*text-align\s*:\s*(left|center|right)\s*;?\s*", style, re.I
+    )
+    if not match:
+        raise ApiError(f"Unsupported Markdown table cell style: {style}")
+    return f"text-align: {match.group(1).lower()}"
+
+
+def render_block_token_attrs(token: Token, attrs: dict[str, str]) -> str:
+    """渲染已显式支持的 block token 属性。"""
+    rendered_attrs: list[str] = []
+    if token.type == "ordered_list_open" and "start" in attrs:
+        rendered_attrs.append(f'start="{html.escape(attrs["start"])}"')
+    if token.type in {"td_open", "th_open"} and "style" in attrs:
+        style = normalize_table_cell_style(attrs["style"])
+        rendered_attrs.append(f'style="{html.escape(style)}"')
+    if not rendered_attrs:
+        return ""
+    return " " + " ".join(rendered_attrs)
+
+
 def render_image_token(
     token: Token,
     attachment_map: dict[str, str],
@@ -737,9 +762,7 @@ def render_block_tokens(
         if token.type in SUPPORTED_BLOCK_OPEN_TOKENS:
             attrs = validate_token_attributes(token)
             tag = token.tag
-            rendered_attrs = ""
-            if token.type == "ordered_list_open" and "start" in attrs:
-                rendered_attrs = f' start="{html.escape(attrs["start"])}"'
+            rendered_attrs = render_block_token_attrs(token, attrs)
             inner, index = render_block_tokens(
                 tokens,
                 attachment_map,
