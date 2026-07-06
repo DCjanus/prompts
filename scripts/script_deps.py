@@ -5,7 +5,7 @@
 # dependencies = [
 #     "packaging>=26.2",
 #     "rich>=15.0.0",
-#     "typer>=0.26.7",
+#     "typer>=0.26.8",
 # ]
 # ///
 
@@ -63,6 +63,13 @@ class PackageReport:
     @property
     def files(self) -> list[str]:
         return sorted({str(occurrence.path) for occurrence in self.occurrences})
+
+
+@dataclass(frozen=True)
+class UpgradeAction:
+    path: Path
+    package: str
+    requirement: str
 
 
 def read_script_metadata(path: Path) -> dict[str, Any] | None:
@@ -218,6 +225,70 @@ def build_reports(root: Path, timeout: float) -> tuple[list[PackageReport], list
     return sorted(reports.values(), key=lambda item: item.name), errors
 
 
+def upgrade_requirement(report: PackageReport, requirement: Requirement) -> str | None:
+    """构造保留 extras 和 marker 的最新下限声明。"""
+    if not report.latest or report.latest_error or requirement.url:
+        return None
+
+    extras = f"[{','.join(sorted(requirement.extras))}]" if requirement.extras else ""
+    marker = f"; {requirement.marker}" if requirement.marker else ""
+    return f"{requirement.name}{extras}>={report.latest}{marker}"
+
+
+def collect_upgrade_actions(
+    root: Path, reports: list[PackageReport]
+) -> tuple[list[UpgradeAction], list[str]]:
+    """生成 uv add --script 升级动作。"""
+    actions: dict[tuple[Path, str], UpgradeAction] = {}
+    skipped: list[str] = []
+
+    for report in reports:
+        for occurrence in report.occurrences:
+            if occurrence.requirement is None:
+                skipped.append(
+                    f"{occurrence.path}: invalid requirement {occurrence.raw!r}"
+                )
+                continue
+
+            requirement = upgrade_requirement(report, occurrence.requirement)
+            if requirement is None:
+                skipped.append(
+                    f"{occurrence.path}: cannot upgrade {occurrence.raw!r} automatically"
+                )
+                continue
+            if occurrence.raw == requirement:
+                continue
+
+            path = root / occurrence.path
+            key = (path, report.name)
+            actions[key] = UpgradeAction(
+                path=path,
+                package=report.name,
+                requirement=requirement,
+            )
+
+    return sorted(actions.values(), key=lambda item: (item.path, item.package)), skipped
+
+
+def run_upgrade_actions(actions: list[UpgradeAction], *, dry_run: bool) -> None:
+    """调用 uv add --script 更新依赖声明。"""
+    if not actions:
+        console.print("[green]No upgrade actions needed.[/green]")
+        return
+
+    for action in actions:
+        command = [
+            "uv",
+            "add",
+            "--script",
+            str(action.path),
+            action.requirement,
+        ]
+        console.print(f"{'Would run' if dry_run else 'Running'}: {' '.join(command)}")
+        if not dry_run:
+            subprocess.run(command, check=True)
+
+
 def report_to_payload(
     reports: list[PackageReport], errors: list[str]
 ) -> dict[str, Any]:
@@ -306,7 +377,7 @@ def render_markdown(reports: list[PackageReport], errors: list[str]) -> str:
     return "\n".join(lines) + "\n"
 
 
-@app.command(help="扫描仓库内 PEP 723 uv script 依赖，并报告声明下限是否落后。")
+@app.command(help="检查或升级仓库内 PEP 723 uv script 依赖声明。")
 def main(
     root: Annotated[Path, typer.Option("--root", "-C", help="仓库根目录")] = Path("."),
     timeout: Annotated[float, typer.Option(help="PyPI 请求超时时间，单位秒")] = 10.0,
@@ -325,10 +396,32 @@ def main(
         bool,
         typer.Option("--fail-on-attention", help="发现需要关注的依赖时返回非 0"),
     ] = False,
+    upgrade: Annotated[
+        bool,
+        typer.Option("--upgrade", help="使用 uv add --script 自动升级依赖声明下限"),
+    ] = False,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="配合 --upgrade 使用，只输出将执行的命令"),
+    ] = False,
 ) -> None:
     resolved_root = root.expanduser().resolve()
     reports, errors = build_reports(resolved_root, timeout)
     payload = report_to_payload(reports, errors)
+
+    if dry_run and not upgrade:
+        raise typer.BadParameter("--dry-run 必须和 --upgrade 一起使用")
+
+    if upgrade:
+        actions, skipped = collect_upgrade_actions(resolved_root, reports)
+        run_upgrade_actions(actions, dry_run=dry_run)
+        if skipped:
+            console.print("[yellow]Skipped automatic upgrades:[/yellow]")
+            for item in skipped:
+                console.print(f"- {item}")
+        if not dry_run:
+            reports, errors = build_reports(resolved_root, timeout)
+            payload = report_to_payload(reports, errors)
 
     if json_output:
         print(json.dumps(payload, ensure_ascii=False, indent=2))

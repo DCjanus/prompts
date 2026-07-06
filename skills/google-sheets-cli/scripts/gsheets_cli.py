@@ -2,11 +2,11 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#     "google-api-python-client>=2.197.0",
+#     "google-api-python-client>=2.198.0",
 #     "google-auth-httplib2>=0.4.0",
 #     "google-auth-oauthlib>=1.4.0",
 #     "rich>=15.0.0",
-#     "typer>=0.26.7",
+#     "typer>=0.26.8",
 # ]
 # ///
 """Google Sheets CLI for Codex skills."""

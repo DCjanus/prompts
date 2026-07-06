@@ -50,7 +50,7 @@ notification_method = "bel"
   - [`token_tree.py`](scripts/token_tree.py)：统计仓库内所有 Git 跟踪文本文件的 token 数，按树状结构输出；支持全局比例进度条、对齐条形显示与百分比，可用 `--bar-width` 调整条形宽度
   - [`codex_usage.py`](scripts/codex_usage.py)：统计 Codex JSONL session 的 token 用量和预估价格，默认同时读取 `~/.codex/sessions` 与 `~/.codex/archived_sessions`，价格信息缓存到 XDG cache 且最多复用 7 天
   - [`install_codex_cli.py`](scripts/install_codex_cli.py)：从 [openai/codex](https://github.com/openai/codex/releases) 最新 release 下载当前平台的 Codex CLI 预编译 binary，安装到用户级 XDG binary 目录，并为当前 shell 同步安装 Codex completion；可用 `--completion-shell fish` 显式指定目标 shell，可跳过下载时复用本地状态
-  - [`check_script_deps.py`](scripts/check_script_deps.py)：扫描仓库内 PEP 723 / uv script 依赖声明，对比 PyPI 最新版本，并在定时 GitHub Action 中输出依赖下限落后或声明不一致的报告
+  - [`script_deps.py`](scripts/script_deps.py)：检查或升级仓库内 PEP 723 / uv script 依赖声明，对比 PyPI 最新版本，并在 GitHub Actions 中报告依赖下限落后或声明不一致
 
 ### 技能列表
 
@@ -70,3 +70,4 @@ notification_method = "bel"
 | [`golang-lo`](skills/golang-lo/SKILL.md) | Go >= 1.18 项目中希望用 samber/lo（Lodash 风格泛型库）简化集合/映射/字符串、错误处理、重试/节流/防抖、通道并发或指针空值场景时使用。 |
 | [`upstream-pr-staging`](skills/upstream-pr-staging/SKILL.md) | 为 GitHub 上游 PR 先创建 fork 内部 draft、低干扰收敛方案与 CI；必要时构造 red/green 回归测试证据链。 |
 | [`ticktick-cli`](skills/ticktick-cli/SKILL.md) | 使用 Python CLI 与 Dida365 Open API 交互以管理滴答清单任务/项目，适用于需要通过脚本或命令行调用滴答清单接口的场景（如项目/任务的查询、创建、更新、完成、删除）。 |
+| [`tampermonkey-cli`](skills/tampermonkey-cli/SKILL.md) | 通过 Tampermonkey Editors 管理浏览器里的 Tampermonkey userscript，支持安装、更新、读取、列出和删除脚本。 |
