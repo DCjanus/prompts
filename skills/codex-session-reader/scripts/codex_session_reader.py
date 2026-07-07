@@ -18,6 +18,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 import json
 import re
+import os
+import shutil
 import sys
 from typing import Annotated, Any, Literal, TypeVar
 
@@ -154,10 +156,26 @@ def validate_model_or_raise(
         raise CodexSessionReaderError(f"{label} 结构不合法。") from exc
 
 
+def resolve_codex_bin() -> str:
+    """Resolve the host Codex runtime and refuse the SDK-pinned fallback."""
+
+    explicit = os.environ.get("CODEX_BIN", "").strip()
+    if explicit:
+        return explicit
+    resolved = shutil.which("codex")
+    if resolved:
+        return resolved
+    raise CodexSessionReaderError(
+        "找不到宿主机 Codex binary：请安装 codex，确保它在 PATH 中，"
+        "或通过 CODEX_BIN 指定可执行文件路径。"
+    )
+
+
 def read_thread_via_sdk(thread_id: str, include_turns: bool) -> ThreadReadResponse:
     """通过官方 Codex Python SDK 调用 `thread/read`。"""
 
     config = CodexConfig(
+        codex_bin=resolve_codex_bin(),
         client_name="codex-session-reader",
         client_title="Codex Session Reader",
         experimental_api=False,
