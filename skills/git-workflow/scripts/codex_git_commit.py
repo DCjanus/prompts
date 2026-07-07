@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 
 from openai_codex import CodexConfig
 from openai_codex.client import CodexClient
@@ -34,10 +35,26 @@ def require_thread_id() -> str:
     return thread_id
 
 
+def resolve_codex_bin() -> str:
+    """Resolve the host Codex runtime and refuse the SDK-pinned fallback."""
+
+    explicit = os.environ.get("CODEX_BIN", "").strip()
+    if explicit:
+        return explicit
+    resolved = shutil.which("codex")
+    if resolved:
+        return resolved
+    raise RuntimeError(
+        "host Codex binary not found: install codex, make sure it is on PATH, "
+        "or set CODEX_BIN to the executable path"
+    )
+
+
 def resolve_model_name(thread_id: str) -> str:
     """通过 Codex SDK 解析 thread 当前 model 名。"""
 
     config = CodexConfig(
+        codex_bin=resolve_codex_bin(),
         client_name="codex-git-workflow",
         client_title="Codex Git Workflow",
         experimental_api=False,
