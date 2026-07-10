@@ -1,156 +1,78 @@
 ---
 name: upstream-pr-staging
-description: 用于向 GitHub 上游提交 PR 前，在用户 fork 内以中文、接近正式上游 PR 的标题和正文提前审查措辞与证据，同时通过独立的内部记录 comment 低干扰收敛实验、决策、临时 CI 和待办；当用户提到 fork 预审 PR、先内部 review/CI、低干扰收敛或 red/green 证据时使用。
+description: 在向 GitHub 上游提交 PR 前，先用用户 fork 中的中文预审 PR 审查 AI 辅助产出的代码、提交、PR 文案和 CI 证据，并通过独立 comment 收敛内部记录；适用于 fork 预审、低干扰验证、内部 review/CI、red/green 证据和正式上游 PR 重放。
 ---
 
 # Upstream PR Staging
 
-用于向 GitHub 上游提交 PR 前，先在用户 fork 内低干扰收敛方案、提交历史、CI 和证据，再整理成正式上游 PR。
+## 目的
 
-## 为什么需要预审
+AI 可以生成代码、测试和 PR 文案，但贡献者仍须对最终提交的正确性、风险和表述负责。不要把未经本人审查的 AI 输出直接交给上游 maintainer 筛选和纠错。
 
-AI 可以快速产出代码、测试、提交和 PR 文案，但最终向上游提交贡献的人仍然需要对正确性、风险和表述负责。对于审查严格的开源项目，不应把未经贡献者本人审查的 AI 输出直接交给上游 maintainer 筛选和纠错。
+默认先在用户 fork 中创建预审 PR。它提供接近真实上游 PR 的代码审查、文案审查和 GitHub Actions 环境，同时不提前打扰上游。预审通过后，再整理或重放为正式上游 PR。
 
-fork 预审 PR 提供了一个接近真实上游 PR、但不会提前打扰上游的审查面：
+这套流程用于履行贡献者的审查责任，不用于规避上游对 AI 辅助贡献的政策。
 
-- 贡献者可以完整审查代码、测试、提交历史和 PR 措辞，而不只是查看本地 diff。
-- fork 可以运行 GitHub Actions，产出可复查、环境相对统一的 CI、benchmark 和 red/green 证据。
-- 探索过程、临时 workflow、内部决策和待办可以在独立 comment 中持续收敛，不污染未来给上游 reviewer 阅读的正文。
-- 只有在贡献者确认代码、证据和叙述都达到提交标准后，才进入正式上游 PR 流程。
+## 信息分层
 
-预审不是为了把审查责任转交给 AI，也不是为了规避上游对 AI 辅助贡献的政策；它是贡献者在打扰上游之前履行审查责任的工作区。
+fork 预审 PR 使用两个互不混杂的区域：
 
-## 先选路径
+1. **PR 标题和正文**：默认中文，但采用正式上游 PR 的模板、叙述视角和信息密度。只写上游 reviewer 需要的动机、净变化、风险和高信噪比证据。
+2. **内部记录 comment**：默认中文，记录实验过程、fork issue、red/green 明细、临时 workflow、内部决策、未决事项和正式提交前清理项。
 
-默认先做 fork 预审 PR，再准备正式上游 PR。
+内部记录 comment 首行固定为：
 
-- **fork 预审 PR**：用于探索和收敛。PR 开在用户 fork 内，标题和正文默认使用中文，但从一开始就按正式上游 PR 的受众、叙述视角和模板撰写；内部过程放在单独的内部记录 comment。
-- **正式上游 PR**：用于提交给上游 reviewer。复用已经审查过的内容，并按上游语言、最终 diff、证据链接和上游上下文做必要翻译或更新。
-- **正式 PR 重放**：当正式 PR 需要自己的 red/green/cleanup workflow URL 时，从上游基准新建正式分支，在正式 GitHub Draft PR 上按阶段重放提交。
+```html
+<!-- upstream-pr-staging:internal-notes -->
+```
 
-如果用户明确要求跳过 fork 预审 PR，直接进入正式上游 PR 流程；如果用户要求“像预审 PR 没存在过”，从最新上游基准重建正式分支，不复用 fork 预审 PR 分支历史。
+后续先按 marker 查找并编辑这一条 comment；不要为每次进展新增 comment。正式提交上游时不迁移它，只转写已经证实且对 reviewer 有价值的结论。
 
-## 不变量
+## 核心规则
 
-- fork 预审 PR 默认低干扰：不触发上游 issue / PR / discussion backlink、timeline mention 或通知。
-- fork 预审 PR 的标题和正文默认使用中文，同时遵循目标上游仓库的模板和 repo-native 视角；只有用户明确要求时才改用其它语言。
-- fork 预审 PR 的 PR body 只保留上游 reviewer 需要的动机、改动、风险和高信噪比证据，不写 fork 预审状态、内部决策、失败尝试、临时 workflow 生命周期或待办。
-- 创建 fork 预审 PR 后，必须创建一条独立的内部记录 comment，并在首行放置稳定 marker：`<!-- upstream-pr-staging:internal-notes -->`。
-- 内部记录 comment 默认使用中文，集中记录 fork issue、实验过程、red/green 明细、临时 CI、未决事项和正式提交前清理项；这些内容不复制到正式上游 PR。
-- 后续更新内部记录时，先按 marker 查找并编辑原 comment；除非单条 comment 已无法维护，不新增重复的内部记录 comment。
-- fork 预审 PR 的 PR body 应保留 reviewer 真正需要的上游 issue / PR / discussion / commit 背景链接；低干扰靠 `redirect.github.com` 和避免 closing keyword 实现，不靠省略关键上下文。
-- 内部探索阶段不使用 `fixes` / `closes` / `resolves` 等可能自动关闭上游 issue 的关键词。
-- 正式上游 PR 使用 repo-native 视角，不保留“fork 预审 PR”的叙述。
-- 正式上游 PR 是否使用真实 issue 编号、普通 GitHub 链接或 closing keyword，按用户最新指令和目标仓库规范决定。
-- fork 预审阶段，用户要求修改、调整或继续实现时，默认完成改动后提交并推送到预审 PR 分支；除非用户明确要求先停在本地等待 review。
-- 正式上游 PR 阶段，普通修改请求默认只做本地改动和说明，不自动提交或推送；除非用户明确要求提交/推送，或已经明确进入正式 PR 重放的 red/green/cleanup 推送步骤。
-- 提交或推送前使用 `git-workflow`，不要把无关本地修改带进 PR。
-- 创建或读取 GitHub PR、checks、workflow、job 时使用 `github-cli`。
-
-## 链接策略
-
-需要可点击链接时，不裸贴长 URL；按 PR 场景选择链接形式。
-
-- fork 预审 PR 或其它低干扰场景引用上游 issue / PR / commit / discussion 时，默认使用 Markdown 链接配合 `redirect.github.com`，例如 `[RedisShake PR 1050](https://redirect.github.com/tair-opensource/RedisShake/pull/1050)`。
-- 如果 fork 预审 PR 源自明确的上游 issue / PR / discussion，PR body 按正式上游 PR 的写法加入必要背景，但在 fork 阶段把 URL 改为 `redirect.github.com`；不要因为担心 backlink 而省略 reviewer 需要的来源上下文。
-- 仅供内部使用的上游链接也使用 `redirect.github.com`，但放在内部记录 comment，而不是 PR body。
-- 正式上游 PR 使用 repo-native 引用；同仓库 issue / PR 默认写成 `#1050` 这类形式，让 GitHub 自动渲染和关联。只有跨仓库、需要自定义链接文本或用户明确要求低干扰时，才改用 Markdown URL。
-- 正式上游 PR 中，如果希望同仓库 issue / PR 自动显示标题，优先把裸引用写成独立列表项，例如 `- #1050`。普通段落里的 `#1050, #1051` 通常只显示编号，不展开标题。不要为了标题渲染使用 task list，除非确实需要 checkbox / task tracking 语义。
-- 尽量不要用 inline code 表示上游 URL；只有在标题、分支名、commit message 等非 Markdown 环境，或明确不想要点击链接时，才把 `owner/repo#123`、`#123`、URL 写成普通文本或 inline code。
-- 标题、分支名、commit message 不是可靠 Markdown 环境；fork 预审 PR 中不要写 `#123`、`owner/repo#123`、完整 GitHub URL 或 closing keyword。
-- workflow run、job、artifact、日志等证据链接写成短链接文本，例如 `[失败记录](...)`、`[通过记录](...)`、`[CI](...)`；证据含义写在链接前后的正文里。
-- 同仓库 commit 证据默认裸写完整 40 位 SHA，不包 inline code；GitHub 会自动把同仓库 commit SHA 识别成链接并美观展示。
-- 只有跨仓库、需要消歧，或用户明确要求点击 commit 时，才把 commit 写成 Markdown 链接；链接文本也优先使用完整 40 位 SHA。
-- 只有在用户明确要求、界面空间非常受限，或目标上下文只接受短引用时，才退回短 SHA。
+- **低干扰**：预审阶段不触发上游 issue、PR 或 discussion 的 backlink、timeline mention 和通知，也不使用 `fixes`、`closes`、`resolves`。
+- **链接**：预审阶段引用上游资源时使用带描述的 `redirect.github.com` Markdown 链接；正式上游 PR 再改为 repo-native 引用或普通链接。同仓库 issue/PR 需要展开标题时用独立列表项 `- #123`；commit 证据默认写完整 40 位 SHA。workflow、job 和 artifact 使用 `[失败记录](...)`、`[通过记录](...)`、`[CI](...)` 等短文本。
+- **命名**：预审分支名、标题和 commit message 不包含上游 `#123`、`owner/repo#123`、完整 GitHub URL 或 closing keyword。“GitHub Draft PR”只表示平台状态，不用作预审流程名称。
+- **正文**：不写预审状态、内部讨论、失败尝试、临时 CI 生命周期和待办；正文始终仿佛会直接交给上游 reviewer。
+- **提交默认值**：预审阶段的后续修改默认提交并推送到预审分支；正式上游 PR 阶段默认只改本地，除非用户明确要求推送或正在执行正式 PR 重放。
+- **工具**：提交和推送使用 `git-workflow`；GitHub PR、comment、checks 和 workflow 操作使用 `github-cli`；正文先写入 `/tmp/*.md`，再通过 `--body-file` 创建或更新。
 
 ## Fork 预审流程
 
-1. 确认基准。
-   - 确认用户 fork 是否有对齐上游的基准分支，例如 `upstream_main`。
-   - 获取上游目标分支和 fork 基准分支，确认两者是否一致。
-   - 如果 fork 基准分支可 fast-forward 到上游，按用户授权更新；如果分叉或有额外提交，停下来确认。
-2. 创建开发分支。
-   - 从 fork 基准分支新建特性分支。
-   - 分支只包含当前任务需要的提交。
-   - 分支名默认不包含上游 issue / PR 编号。
-3. 创建 fork 预审 PR。
-   - PR repo 指向用户 fork，base 指向 fork 基准分支。
-   - 标题和正文默认使用中文，但仿照最终上游 PR，遵循目标仓库的模板和 reviewer 视角；分支名和 commit message 按低干扰规则处理。
-   - PR body 只说明上游 reviewer 需要的背景、改动、验证和风险，不出现“内部 PR”“等待我们确认”等过程叙述。
-   - 如果存在明确的上游 issue / PR / discussion / commit 背景，PR body 中用 `redirect.github.com` Markdown 链接列出；标题、分支名和 commit message 仍避免直接写 `#123`、`owner/repo#123` 或完整 GitHub URL。
-   - 草稿正文优先写到 `/tmp/*.md`，再用 `gh pr create --body-file` 或 `gh pr edit --body-file`。
-   - PR 创建后，新增一条以 `<!-- upstream-pr-staging:internal-notes -->` 开头的内部记录 comment。建议包含“当前状态”“内部证据”“待确认”“正式提交前清理”四部分。
-4. 内部收敛。
-   - 等待必要 CI 和内部 review。
-   - 对内部 PR 的后续修改，默认以 follow-up commit 正常推送到内部 PR 分支。
-   - PR body 始终维护为可供上游审查的版本；探索过程、临时 workflow、内部讨论和清理清单只更新到带 marker 的原内部记录 comment。
-   - 更新 comment 前先读取现有 comments 并确认 marker 唯一；通过 comment ID 编辑原 comment，避免制造时间线噪音。
+1. **确认基准**
+   - 获取上游目标分支和 fork 基准分支，确认二者一致。
+   - 可 fast-forward 时按用户授权更新；出现分叉或额外提交时停下来确认。
+2. **创建分支和 PR**
+   - 从 fork 基准创建只包含当前任务的分支。
+   - PR 开在用户 fork 内，base 指向 fork 基准；标题和正文默认中文并遵循目标仓库模板。
+   - 创建带 marker 的内部记录 comment，建议包含“当前状态、内部证据、待确认、正式提交前清理”。
+3. **收敛**
+   - 运行必要 CI 和内部 review；通过 follow-up commit 正常推进，不默认改写历史。
+   - PR 正文只随最终净变化更新；过程信息只更新到原内部记录 comment。
 
-## 正式上游 PR 流程
+用户明确要求跳过预审时，直接进入正式上游 PR 流程。用户要求“像预审 PR 没存在过”时，从最新上游基准重建正式分支，不复用预审历史。
 
-1. 从最新上游基准创建正式 PR 分支，或从 fork 预审 PR 中整理出只包含最终改动的分支。
-2. 根据目标仓库语言和最终 diff 翻译或复核已经审查过的标题和正文，并整理提交历史，让最终 diff 看起来像一开始就是这样设计的。
-3. PR body 只写上游 reviewer 需要的信息：
-   - 为什么需要这个改动。
-   - 改了什么用户可见行为或维护边界。
-   - 如何验证，证据入口在哪里。
-4. PR body 应从最终净变化重写；不要保留 fork 预审过程、临时实验、rerun、或曾经添加又移除的设计痕迹。必要时可以临时在 PR 描述里做渲染实验，但最终正文只反映最终状态。
-5. 不迁移内部记录 comment；只把其中已经证明、且对上游 reviewer 有价值的结论转写到正式 PR body。
-6. 默认不列本地格式化、lint、测试命令；如果 CI 覆盖这些内容，直接引用 CI 证据。
-7. 如果上游 maintainer 不希望保留多段提交，再按 reviewer 要求 squash 或重排历史。
-8. 正式上游 PR 的后续修改默认先停在本地，等用户确认后再提交和推送。
+## Red / Green / Cleanup
 
-## Red / Green 证据
+仅在 bugfix 需要证明回归测试有效，或临时 CI 能提供关键证据时使用。三个阶段必须分别推送并等待结果，否则通常无法获得独立 job URL。
 
-只有 bugfix 需要证明回归测试有效时，才使用三阶段证据。不要一次性推送 red 和 green；多数平台只会为最终 head 触发 workflow，red commit 通常不会有独立 job URL。
+1. **Red**：只加入能在旧实现上编译、并因目标行为断言而失败的测试或临时 CI。记录 commit、job URL 和失败摘要；配置、依赖、lint 或缺少修复符号导致的失败无效。
+2. **Green**：只加入修复，不修改已证明有效的 red 测试。等待同一检查或等价检查通过并记录证据。
+3. **Cleanup**：删除临时 workflow、脚本、配置和 matrix，保留修复与正式回归测试。最终 CI 尚在运行时可以更新正文，但要继续观察结果。
 
-1. **Red**：只加入复现问题需要的回归测试、focused check 或临时 CI，不包含修复代码。
-   - 旧实现必须能编译。
-   - 失败必须来自行为断言，不是缺少修复里的符号、平台配置、依赖解析、生成文件、lint 或临时 workflow 本身。
-   - 推送后等待目标 workflow/job 明确失败，记录 commit SHA、workflow/job URL 和失败摘要。
-2. **Green**：只加入生产代码或真实实现。
-   - 不修改 red 阶段已经确认有效的测试。
-   - 推送后等待同一个检查或等价检查通过，记录 commit SHA 和 workflow/job URL。
-3. **Cleanup**：删除临时 workflow、调试脚本、一次性配置或临时 matrix。
-   - 保留正式回归测试和修复代码。
-   - cleanup 推送后即可更新 PR 描述；不必先等待 cleanup 提交触发的正常 CI 全部通过。
-   - 如果最终 CI 还在运行，PR body 简短说明正在运行；随后继续观察并按结果更新。
+PR 正文先解释验证方法，再给简洁证据，不用阶段名代替结论。完整过程留在内部记录 comment。正文不重复列出 CI 已自然覆盖的 fmt、lint、build 和普通测试命令。
 
-## 正式 PR 重放
+## 转为正式上游 PR
 
-当 fork 预审 PR 已经收敛，但正式 PR 需要自己的 red/green/cleanup workflow URL 时，按这个流程重放。
-
-1. 从最新上游基准创建正式 PR 分支。
-2. 只应用 red 提交并推送，创建到上游目标分支的 GitHub Draft PR。
-3. 等待正式 PR 的 pull_request workflow 或上游接受的等价检查失败，记录正式 PR/repo 下的 URL。
-4. 应用 green 提交并推送，等待同一个检查或等价检查通过，记录正式 PR/repo 下的 URL。
-5. 应用 cleanup 提交并推送，更新正式 PR 标题和正文。
-6. 等 PR 描述、提交历史和必要 CI 状态都达到正式提交标准后，再标记 ready for review。
-
-正式上游 PR 默认优先使用该 PR 自己触发的 workflow/job URL。只有无法取得正式 PR URL，且用户接受时，才退而使用 fork 分支 push 自动触发的 workflow/job URL，并在 PR body 里说明来源。
-
-## PR Body 证据写法
-
-PR body 要先说明验证方法论，再给证据；不要一上来用 Red / Green / Cleanup 这类内部阶段标签代替解释。完整阶段记录留在内部记录 comment。
-
-Validation 只写 CI 之外能增加 reviewer 信心的手动验证。不要列出 GitHub CI 已自然覆盖的 lint、unit test、build 等常规检查。
-
-推荐写法：
-
-```markdown
-提交历史按“测试有效性 -> 实现修复 -> 清理临时 CI”拆成三段，便于确认新增测试不是只覆盖最终状态。
-
-- c6bb4448e6d337f0b1a7c4a3a3a1bb8b6a0d1234：只加入测试；确认测试能在缺少目标行为时失败：[失败记录](https://github.com/owner/repo/actions/runs/123)。
-- a1ec55ef8d2a8c66b5d6c3c2f4a7e9b0c1d23456：只加入修复；确认同一检查通过：[通过记录](https://github.com/owner/repo/actions/runs/456)。
-- f00ba47c2a6d9f0b7e8c4d3a2b1c0e9f8a765432：删除临时 workflow；最终 CI 见：[CI](https://github.com/owner/repo/actions/runs/789)。
-```
-
-保持三条证据各占一行；每行只保留 commit、动作和证据入口，不展开完整失败细节。
+1. 从最新上游基准创建正式分支，或从预审分支整理出只包含最终改动的分支。
+2. 按最终 diff 和目标仓库语言复核或翻译标题、正文与提交历史；移除预审、实验、rerun 和临时方案痕迹。
+3. 使用真实上游上下文和 repo-native 链接；不要迁移内部记录 comment。
+4. 优先使用正式 PR 自己的 CI 证据。若需要该 PR 自己的 red/green URL，在 GitHub Draft PR 中依次重放 red、green、cleanup，最后更新正文并标记 ready for review。
+5. 只有无法取得正式 PR 的证据且用户接受时，才引用 fork CI，并在正文说明来源。
 
 ## 停下来确认
 
-- fork 基准分支和上游分叉，或含有无法解释的额外提交。
-- 需要 force-push 或重写 fork 基准分支。
-- red 阶段失败不是目标行为断言导致的。
-- green 阶段必须修改 red 测试才能通过。
-- 正式 PR 需要引用上游 issue/PR，但无法判断链接是否会产生不希望的 backlink。
+- fork 基准与上游分叉，或包含无法解释的额外提交。
+- 需要 force-push 或重写 fork 基准历史。
+- red 失败不是目标行为断言导致，或 green 必须修改 red 测试才能通过。
+- 无法判断某个上游引用是否会产生不希望的关联或通知。
