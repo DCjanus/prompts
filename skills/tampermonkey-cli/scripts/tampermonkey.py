@@ -5,7 +5,7 @@
 #     "pydantic>=2.13.4",
 #     "rich>=15.0.0",
 #     "typer>=0.26.8",
-#     "websockets>=16.0",
+#     "websockets>=16.1",
 # ]
 # ///
 
