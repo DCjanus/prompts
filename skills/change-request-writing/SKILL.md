@@ -23,7 +23,7 @@ description: 编写或更新 GitHub/GitLab Issue、PR、MR 的标题与正文；
 - 先确认 base/head 或 target/source，再用 final net diff 作为正文依据：`git fetch` 后查看 `git diff --stat <base-or-target>...HEAD` 与 `git diff --name-status <base-or-target>...HEAD`；必要时再看关键文件 diff 或平台 diff。
 - 正文不要包含：中间提交顺序、调试过程、失败尝试、临时方案、merge/rebase/冲突解决过程、曾经实现过但最终 diff 已不存在的行为。
 - 正文不要包含本机绝对路径、home 目录、agent 工作区路径、临时正文文件路径或其它会暴露个人/机器环境的信息；如需引用仓库内文件，使用相对路径或 Markdown 链接。
-- GitHub Issue/PR 正文引用同仓库 commit 时，直接写裸的完整 40 位 SHA，让 GitHub 原生自动链接；不要包反引号，也不要手写 Markdown URL。引用其它仓库 commit 时使用 `owner/repo@完整 SHA`；需要显示短 SHA 时再使用 Markdown 链接。此规则不覆盖 inline review reply，后者遵循平台交互 skill 的专门格式。
+- GitHub Issue/PR 正文引用同仓库 commit 时，直接写裸的完整 40 位 SHA；GitHub 会原生自动链接并缩短显示。不要包反引号，也不要手写 Markdown URL。引用其它仓库 commit 时使用 `owner/repo@完整 SHA`；需要自行指定链接文本时再使用 Markdown 链接。此规则不覆盖 inline review reply，后者遵循平台交互 skill 的专门格式。
 - GitLab MR/Issue 正文里的关联资源一律使用完整 Markdown URL，不要依赖短引用自动链接。
 - 更新已有 PR/MR 正文时，不要在旧正文上做局部补丁；先回读当前正文，再基于 final net diff 重写完整正文并替换过时内容。
 - 如果正文经历过实验性修改，最终更新前重新审视完整 PR/MR body，确保它只描述最终 diff；不要写 `rerun`、`after removing`、`now`、`previously` 这类暴露过程的措辞，除非过程本身是 reviewer 需要审查的证据。
