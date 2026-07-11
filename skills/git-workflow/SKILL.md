@@ -19,6 +19,10 @@ git status -sb
 (cd <skill_dir> && ./scripts/codex_git_commit.py)
 ```
 
+只有脚本成功退出，且输出为包含非空 `agent_name` 与 `model_name` 的有效 JSON 时，才可继续提交。
+
+如果脚本执行失败、超时、输出无法解析，或任一字段缺失/为空，必须立即停止提交流程并请求人工介入。禁止猜测 agent/model 信息，禁止使用随机值、占位符、硬编码值或其它来源构造假的 `Assisted-by` trailer，也不得省略该失败后继续提交。
+
 错误示例：
 
 ```bash
