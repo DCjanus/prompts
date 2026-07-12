@@ -3,6 +3,7 @@
 # requires-python = ">=3.14"
 # dependencies = [
 #     "openai-codex>=0.1.0b3",
+#     "pydantic>=2.13.4",
 #     "typer>=0.26.8",
 # ]
 # [tool.uv]
@@ -20,10 +21,17 @@ import shutil
 from openai_codex import CodexConfig
 from openai_codex.client import CodexClient
 from openai_codex.errors import CodexError
+from pydantic import BaseModel
 import typer
 
 AGENT_NAME = "Codex"
 app = typer.Typer(add_completion=False, help="输出当前 Codex agent/model 的 JSON。")
+
+
+class ThreadModelResponse(BaseModel):
+    """只解析 thread/resume 中提交信息需要的 model 字段。"""
+
+    model: str | None = None
 
 
 def require_thread_id() -> str:
@@ -62,7 +70,11 @@ def resolve_model_name(thread_id: str) -> str:
     try:
         with CodexClient(config) as client:
             client.initialize()
-            response = client.thread_resume(thread_id)
+            response = client.request(
+                "thread/resume",
+                {"threadId": thread_id},
+                response_model=ThreadModelResponse,
+            )
     except CodexError as exc:
         raise RuntimeError(f"failed to resolve model via Codex SDK: {exc}") from exc
     except OSError as exc:

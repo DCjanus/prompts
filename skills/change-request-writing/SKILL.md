@@ -28,6 +28,8 @@ description: 编写或更新 GitHub/GitLab Issue、PR、MR 的标题与正文；
 - 更新已有 PR/MR 正文时，不要在旧正文上做局部补丁；先回读当前正文，再基于 final net diff 重写完整正文并替换过时内容。
 - 如果正文经历过实验性修改，最终更新前重新审视完整 PR/MR body，确保它只描述最终 diff；不要写 `rerun`、`after removing`、`now`、`previously` 这类暴露过程的措辞，除非过程本身是 reviewer 需要审查的证据。
 - Breaking change 按 final net diff / 对外行为判断，不按中间 commit 机械继承；只有最终净变化确实破坏既有用法时，才在标题和正文标识。
+- PR/MR 存在 breaking change 时，正文默认使用独立的 `## BREAKING CHANGE` 章节，至少分别说明影响范围与迁移方式；不要只在正文末尾放一行普通的 `BREAKING CHANGE:` 文本。
+- Conventional Commit 的提交信息仍使用精确的 `BREAKING CHANGE:` footer；不要把提交 footer 语法机械套用为 PR/MR Markdown 的展示结构。
 
 ## Validation Gate
 
@@ -66,10 +68,10 @@ description: 编写或更新 GitHub/GitLab Issue、PR、MR 的标题与正文；
 默认标题与正文格式如下；如与团队、仓库、平台模板冲突，以既有约束为准。若有明确要求（如需中文），则优先遵循。
 
 1. 标题风格：英文、遵循语义化提交规范（如 `feat(scope): short summary`），简洁且描述核心目的；即使标题要求中文，语义化前缀仍需英文。
-2. 有 breaking change 时标题用 `type(scope)!: short summary`，正文加 `BREAKING CHANGE:` 说明影响和迁移方式；否则不要加 `!` 或 `BREAKING CHANGE:`。
+2. 有 breaking change 时标题用 `type(scope)!: short summary`，正文增加独立的 `## BREAKING CHANGE` 章节，明确列出影响范围与迁移方式；否则不要加 `!` 或 breaking change 章节。
 3. 描述风格：英文、短句和项目符号，优先让不看代码的读者快速理解动机、改动与影响，避免流水账与过多实现细节。涉及专有名词、函数名、方法名、类名、API 名称或配置键时，使用 inline code（反引号）包裹。
 4. 默认正文格式：
    - `## Why`：1-2 条短句说明为什么要做这次改动，聚焦问题背景或目标。
    - `## What`：1-3 条说明主要变更，聚焦功能或行为层面的变化，不罗列琐碎实现细节。
-5. 默认正文只包含 `## Why` 和 `## What`。不要添加 `## Validation`；只有通过上面的 Validation Gate 时才允许添加，否则省略。
-6. 可选正文块：仅在确有必要时添加 `BREAKING CHANGE:`、`## Risks` 或 `## Notes`。
+5. 默认正文只包含 `## Why` 和 `## What`；存在 breaking change 时必须再增加 `## BREAKING CHANGE`。不要添加 `## Validation`；只有通过上面的 Validation Gate 时才允许添加，否则省略。
+6. 可选正文块：仅在确有必要时添加 `## Risks` 或 `## Notes`。
