@@ -56,7 +56,6 @@ notification_method = "bel"
 
 | 技能 | 说明 |
 | --- | --- |
-| [`codex-session-reader`](skills/codex-session-reader/SKILL.md) | 读取 Codex 的单个 session/thread；当已知 thread id 且需要查看或摘要会话内容时使用。 |
 | [`codex-thread-namer`](skills/codex-thread-namer/SKILL.md) | 为当前 Codex thread 设置名称；先草拟 3 个候选名让用户选择，再调用脚本写入当前会话标题。 |
 | [`confluence-cli`](skills/confluence-cli/SKILL.md) | 查询、检索与阅读 Confluence 文档/页面。 |
 | [`uv-cli-creator`](skills/uv-cli-creator/SKILL.md) | 为本仓库创建或修改 uv --script 风格的 Python CLI；当需要把重复命令封装成 `./scripts/...` 直接执行的工具时使用。 |
