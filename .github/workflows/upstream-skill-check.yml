@@ -1,0 +1,28 @@
+name: upstream skill check
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+  schedule:
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.3
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v8.2.0
+        with:
+          enable-cache: false
+      - name: Check upstream skills
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ./scripts/upstream_skills.py --github-summary
