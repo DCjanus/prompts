@@ -1,0 +1,4 @@
+interface:
+  display_name: "方案拷问"
+  short_description: "每次聚焦一个问题持续深入追问，对计划、决策或想法做压力测试"
+  default_prompt: "使用 $grilling 逐项拷问我的方案，直到我们达成共识。"

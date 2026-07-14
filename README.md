@@ -66,7 +66,14 @@ notification_method = "bel"
 | [`git-workflow`](skills/git-workflow/SKILL.md) | 处理 git 提交、推送、分支命名与提交信息规范；当任务涉及 commit、push、起分支或整理 commit message 时使用。 |
 | [`github-cli`](skills/github-cli/SKILL.md) | GitHub CLI 使用指引，面向 GitHub 资源交互（如 repo、issue、PR、comment、release、workflow） |
 | [`gitlab-cli`](skills/gitlab-cli/SKILL.md) | GitLab CLI（glab）使用指引，面向 GitLab 资源交互（如 project、issue、MR、comment、wiki） |
+| [`grilling`](skills/grilling/SKILL.md) | 针对计划、决策或想法逐项深入追问，每次聚焦一个问题，对用户的思路做压力测试。 |
 | [`golang-lo`](skills/golang-lo/SKILL.md) | Go >= 1.18 项目中希望用 samber/lo（Lodash 风格泛型库）简化集合/映射/字符串、错误处理、重试/节流/防抖、通道并发或指针空值场景时使用。 |
 | [`upstream-pr-staging`](skills/upstream-pr-staging/SKILL.md) | 为 GitHub 上游 PR 先创建 fork 内部 draft、低干扰收敛方案与 CI；必要时构造 red/green 回归测试证据链。 |
 | [`ticktick-cli`](skills/ticktick-cli/SKILL.md) | 使用 Python CLI 与 Dida365 Open API 交互以管理滴答清单任务/项目，适用于需要通过脚本或命令行调用滴答清单接口的场景（如项目/任务的查询、创建、更新、完成、删除）。 |
 | [`tampermonkey-cli`](skills/tampermonkey-cli/SKILL.md) | 通过 Tampermonkey Editors 管理浏览器里的 Tampermonkey userscript，支持安装、更新、读取、列出和删除脚本。 |
+
+## 第三方来源与许可
+
+### grilling
+
+本仓库中的 [`grilling`](skills/grilling/SKILL.md) 翻译自 Matt Pocock 的[原始 skill](https://github.com/mattpocock/skills/blob/170ad48655825783d0193e850e31a9aac957bb95/skills/productivity/grilling/SKILL.md)，基于上游 commit [`170ad48655825783d0193e850e31a9aac957bb95`](https://github.com/mattpocock/skills/commit/170ad48655825783d0193e850e31a9aac957bb95)，按 [MIT License](licenses/grilling/LICENSE) 使用和修改。
