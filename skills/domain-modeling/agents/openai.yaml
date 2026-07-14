@@ -1,0 +1,4 @@
+interface:
+  display_name: "Domain Modeling"
+  short_description: "主动校准领域术语与边界，维护统一语言并记录重要架构决策"
+  default_prompt: "使用 $domain-modeling 帮我明确领域术语、边界和重要架构决策。"

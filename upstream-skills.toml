@@ -1,0 +1,11 @@
+[[skills]]
+name = "grilling"
+repository = "mattpocock/skills"
+path = "skills/productivity/grilling"
+commit = "697d4ce9742da558fd1ba6697c8e9775e2e302dd"
+
+[[skills]]
+name = "domain-modeling"
+repository = "mattpocock/skills"
+path = "skills/engineering/domain-modeling"
+commit = "697d4ce9742da558fd1ba6697c8e9775e2e302dd"

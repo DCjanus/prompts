@@ -51,6 +51,7 @@ notification_method = "bel"
   - [`codex_usage.py`](scripts/codex_usage.py)：统计 Codex JSONL session 的 token 用量和预估价格，默认同时读取 `~/.codex/sessions` 与 `~/.codex/archived_sessions`，价格信息缓存到 XDG cache 且最多复用 7 天
   - [`install_codex_cli.py`](scripts/install_codex_cli.py)：从 [openai/codex](https://github.com/openai/codex/releases) 最新 release 下载当前平台的 Codex CLI 预编译 binary，安装到用户级 XDG binary 目录，并为当前 shell 同步安装 Codex completion；可用 `--completion-shell fish` 显式指定目标 shell，可跳过下载时复用本地状态
   - [`script_deps.py`](scripts/script_deps.py)：检查或升级仓库内 PEP 723 / uv script 依赖声明，对比 PyPI 最新版本，并在 GitHub Actions 中报告依赖下限落后或声明不一致
+  - [`upstream_skills.py`](scripts/upstream_skills.py)：根据 [`upstream-skills.toml`](upstream-skills.toml) 检查第三方 skill 的上游目录是否出现新 commit；发现变更或查询失败时返回非 0，并写入 GitHub Actions summary
 
 ### 技能列表
 
@@ -60,6 +61,7 @@ notification_method = "bel"
 | [`confluence-cli`](skills/confluence-cli/SKILL.md) | 查询、检索与阅读 Confluence 文档/页面。 |
 | [`uv-cli-creator`](skills/uv-cli-creator/SKILL.md) | 为本仓库创建或修改 uv --script 风格的 Python CLI；当需要把重复命令封装成 `./scripts/...` 直接执行的工具时使用。 |
 | [`dcjanus-preferences`](skills/dcjanus-preferences/SKILL.md) | 记录 DCjanus 在不同语言中偏好的第三方库与使用场景，供 AI 在选型、引入依赖或替换库时优先参考。适用于 Python/Rust/Go 的库选择、技术方案对比、或需要遵循 DCjanus 个人偏好进行开发的场景。 |
+| [`domain-modeling`](skills/domain-modeling/SKILL.md) | 构建并持续校准领域模型，明确领域术语与边界，并在必要时记录重要架构决策。 |
 | [`fetch-url`](skills/fetch-url/SKILL.md) | 获取并提取链接正文（默认 Markdown）；内置 X/Twitter URL 处理，提升受限页面的抓取成功率。 |
 | [`change-request-writing`](skills/change-request-writing/SKILL.md) | 编写或更新 GitHub/GitLab Issue、PR、MR 的标题与正文；聚焦 final net diff、Breaking Change、避免低价值验证噪声与本地路径泄露。 |
 | [`review-fix-loop`](skills/review-fix-loop/SKILL.md) | 用三个相互隔离的干净 subagent 并行做代码审查，由主 agent 判断审查意见价值、修复有效问题并提交推送，直到同一批三个 reviewer 都没有有价值审查意见。 |
@@ -76,4 +78,8 @@ notification_method = "bel"
 
 ### grilling
 
-本仓库中的 [`grilling`](skills/grilling/SKILL.md) 翻译自 Matt Pocock 的[原始 skill](https://github.com/mattpocock/skills/blob/170ad48655825783d0193e850e31a9aac957bb95/skills/productivity/grilling/SKILL.md)，基于上游 commit [`170ad48655825783d0193e850e31a9aac957bb95`](https://github.com/mattpocock/skills/commit/170ad48655825783d0193e850e31a9aac957bb95)，按 [MIT License](licenses/grilling/LICENSE) 使用和修改。
+本仓库中的 [`grilling`](skills/grilling/SKILL.md) 翻译自 Matt Pocock 的[原始 skill](https://github.com/mattpocock/skills/blob/697d4ce9742da558fd1ba6697c8e9775e2e302dd/skills/productivity/grilling/SKILL.md)，基于上游 commit [`697d4ce9742da558fd1ba6697c8e9775e2e302dd`](https://github.com/mattpocock/skills/commit/697d4ce9742da558fd1ba6697c8e9775e2e302dd)，按 [MIT License](licenses/grilling/LICENSE) 使用和修改。
+
+### domain-modeling
+
+本仓库中的 [`domain-modeling`](skills/domain-modeling/SKILL.md) 翻译自 Matt Pocock 的[原始 skill](https://github.com/mattpocock/skills/blob/697d4ce9742da558fd1ba6697c8e9775e2e302dd/skills/engineering/domain-modeling/SKILL.md)，基于上游 commit [`697d4ce9742da558fd1ba6697c8e9775e2e302dd`](https://github.com/mattpocock/skills/commit/697d4ce9742da558fd1ba6697c8e9775e2e302dd)，按 [MIT License](licenses/domain-modeling/LICENSE) 使用和修改。

@@ -41,3 +41,5 @@ jobs:
           --with typer
           --with zstandard
           python -m unittest scripts/tests/test_install_codex_cli.py
+      - name: Run upstream skill checker tests
+        run: uv run --python 3.11 python -m unittest scripts/tests/test_upstream_skills.py
