@@ -29,8 +29,8 @@ def set_thread_name(thread_id: str, name: str) -> None:
     """Set the thread name through the official Codex SDK."""
 
     config = CodexConfig(
-        client_name="codex-thread-namer",
-        client_title="Codex Thread Namer",
+        client_name="codex-thread-renamer",
+        client_title="Codex Thread Renamer",
         experimental_api=False,
     )
     try:
