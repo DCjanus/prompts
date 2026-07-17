@@ -256,6 +256,14 @@ class JiraApiClient:
             "PUT", f"rest/api/2/issue/{issue_key}", json_data={"fields": fields}
         )
 
+    def assign_issue(self, issue_key: str, username: str) -> None:
+        issue_key = self._segment(issue_key, "issue_key")
+        self.request(
+            "PUT",
+            f"rest/api/2/issue/{issue_key}/assignee",
+            json_data={"name": username},
+        )
+
     def delete_issue(self, issue_key: str, *, delete_subtasks: bool = False) -> None:
         issue_key = self._segment(issue_key, "issue_key")
         self.request(
@@ -368,6 +376,10 @@ class JiraApiClient:
     def delete_attachment(self, attachment_id: str) -> None:
         attachment_id = self._segment(attachment_id, "attachment_id")
         self.request("DELETE", f"rest/api/2/attachment/{attachment_id}")
+
+    def get_attachment(self, attachment_id: str) -> dict[str, Any]:
+        attachment_id = self._segment(attachment_id, "attachment_id")
+        return self.request("GET", f"rest/api/2/attachment/{attachment_id}")
 
     def list_link_types(self) -> dict[str, Any]:
         return self.request("GET", "rest/api/2/issueLinkType")
@@ -512,17 +524,21 @@ class JiraApiClient:
         issue_key: str,
         worklog_id: str,
         *,
-        time_spent: str,
+        time_spent: str | None = None,
         comment: str | None = None,
         started: str | None = None,
     ) -> dict[str, Any]:
         issue_key = self._segment(issue_key, "issue_key")
         worklog_id = self._segment(worklog_id, "worklog_id")
-        payload: dict[str, Any] = {"timeSpent": time_spent}
+        payload: dict[str, Any] = {}
+        if time_spent is not None:
+            payload["timeSpent"] = time_spent
         if comment is not None:
             payload["comment"] = comment
         if started is not None:
             payload["started"] = started
+        if not payload:
+            raise ValueError("At least one worklog change is required")
         return self.request(
             "PUT",
             f"rest/api/2/issue/{issue_key}/worklog/{worklog_id}",

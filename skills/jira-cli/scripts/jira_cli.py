@@ -25,6 +25,7 @@ from pydantic import ValidationError
 from rich.console import Console
 from rich.pretty import Pretty
 from rich.table import Table
+from rich.text import Text
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
@@ -222,6 +223,19 @@ def _print_result(ctx: typer.Context, value: Any) -> None:
         _print_json(value)
     else:
         console.print(Pretty(value, expand_all=True))
+
+
+def _plain_text(value: Any) -> Text:
+    return Text(str(value))
+
+
+def _verify_attachment_target(metadata: dict[str, Any], expected_filename: str) -> None:
+    actual_filename = str(metadata.get("filename", ""))
+    if actual_filename != expected_filename:
+        raise typer.BadParameter(
+            f"Attachment filename mismatch: expected {expected_filename!r}, "
+            f"got {actual_filename!r}"
+        )
 
 
 def _body(body: str | None, body_file: Path | None, name: str = "body") -> str:
@@ -647,10 +661,10 @@ def issue_list(
     for issue in result.get("issues", []):
         fields = issue.get("fields", {})
         table.add_row(
-            str(issue.get("key", "")),
-            str(fields.get("summary", "")),
-            str((fields.get("status") or {}).get("name", "")),
-            str((fields.get("assignee") or {}).get("displayName", "")),
+            _plain_text(issue.get("key", "")),
+            _plain_text(fields.get("summary", "")),
+            _plain_text((fields.get("status") or {}).get("name", "")),
+            _plain_text((fields.get("assignee") or {}).get("displayName", "")),
         )
     console.print(table)
     console.print(
@@ -744,7 +758,7 @@ def issue_assign(ctx: typer.Context, issue_key: str, username: str) -> None:
     """Assign an issue to a Jira username."""
     client = _state(ctx).client()
     client.get_issue(issue_key, fields=["assignee"])
-    client.edit_issue(issue_key, {"assignee": {"name": username}})
+    client.assign_issue(issue_key, username)
     _print_result(ctx, {"key": issue_key, "assignee": username})
 
 
@@ -999,13 +1013,17 @@ def attachment_add(ctx: typer.Context, issue_key: str, file: Path) -> None:
 def attachment_delete(
     ctx: typer.Context,
     attachment_id: str,
+    filename: Annotated[str, typer.Option(help="Expected attachment filename.")],
     yes: Annotated[bool, typer.Option("--yes")] = False,
 ) -> None:
     """Permanently delete an attachment by ID."""
     if not yes:
         raise typer.BadParameter("Pass --yes to confirm permanent deletion")
-    _state(ctx).client().delete_attachment(attachment_id)
-    _print_result(ctx, {"deleted_attachment": attachment_id})
+    client = _state(ctx).client()
+    metadata = client.get_attachment(attachment_id)
+    _verify_attachment_target(metadata, filename)
+    client.delete_attachment(attachment_id)
+    _print_result(ctx, {"deleted_attachment": attachment_id, "filename": filename})
 
 
 @link_app.command("types")
@@ -1194,11 +1212,13 @@ def worklog_edit(
     ctx: typer.Context,
     issue_key: str,
     worklog_id: str,
-    time_spent: Annotated[str, typer.Option()],
+    time_spent: Annotated[str | None, typer.Option()] = None,
     comment: Annotated[str | None, typer.Option()] = None,
     started: Annotated[str | None, typer.Option()] = None,
 ) -> None:
     """Edit a worklog."""
+    if time_spent is None and comment is None and started is None:
+        raise typer.BadParameter("At least one worklog change is required")
     _print_result(
         ctx,
         _state(ctx)

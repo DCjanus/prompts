@@ -162,6 +162,39 @@ class JiraApiClientTest(unittest.TestCase):
 
         self.make_client(handler).delete_issue("SATOS-1")
 
+    def test_assign_uses_dedicated_endpoint(self):
+        def handler(request: httpx2.Request) -> httpx2.Response:
+            self.assertEqual(request.method, "PUT")
+            self.assertEqual(request.url.path, "/rest/api/2/issue/SATOS-1/assignee")
+            self.assertEqual(json.loads(request.content), {"name": "jun"})
+            return httpx2.Response(204)
+
+        self.make_client(handler).assign_issue("SATOS-1", "jun")
+
+    def test_attachment_metadata_is_read_before_deletion(self):
+        requests: list[httpx2.Request] = []
+
+        def handler(request: httpx2.Request) -> httpx2.Response:
+            requests.append(request)
+            if request.method == "GET":
+                return httpx2.Response(200, json={"id": "123", "filename": "a.txt"})
+            return httpx2.Response(204)
+
+        client = self.make_client(handler)
+        self.assertEqual(client.get_attachment("123")["filename"], "a.txt")
+        client.delete_attachment("123")
+        self.assertEqual([request.method for request in requests], ["GET", "DELETE"])
+
+    def test_worklog_edit_sends_only_changed_fields(self):
+        def handler(request: httpx2.Request) -> httpx2.Response:
+            self.assertEqual(json.loads(request.content), {"comment": "updated"})
+            return httpx2.Response(200, json={"id": "9"})
+
+        client = self.make_client(handler)
+        client.edit_worklog("SATOS-1", "9", comment="updated")
+        with self.assertRaisesRegex(ValueError, "change"):
+            client.edit_worklog("SATOS-1", "9")
+
     def test_destructive_path_segments_are_rejected_before_request(self):
         requests: list[httpx2.Request] = []
 

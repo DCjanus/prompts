@@ -383,6 +383,18 @@ class JiraCliTest(unittest.TestCase):
         self.assertEqual(json.loads(errors.getvalue()), {"error": "failed"})
         self.assertNotIn("\x1b", output.getvalue() + errors.getvalue())
 
+    def test_jira_values_are_rendered_as_plain_text(self):
+        value = "[link=https://evil.example]trusted.example[/link]"
+        rendered = self.cli._plain_text(value)
+        self.assertEqual(rendered.plain, value)
+        self.assertEqual(rendered.spans, [])
+
+    def test_attachment_filename_must_match_before_delete(self):
+        metadata = {"id": "123", "filename": "expected.txt"}
+        self.cli._verify_attachment_target(metadata, "expected.txt")
+        with self.assertRaisesRegex(self.cli.typer.BadParameter, "expected.txt"):
+            self.cli._verify_attachment_target(metadata, "wrong.txt")
+
     def test_clone_omits_empty_optional_fields_rejected_by_create_screen(self):
         fields = self.cli._clone_fields(
             {
@@ -482,7 +494,7 @@ class JiraCliTest(unittest.TestCase):
         for args in (
             ["comment", "delete", "SATOS-1", "123"],
             ["issue", "delete", "SATOS-1"],
-            ["attachment", "delete", "123"],
+            ["attachment", "delete", "123", "--filename", "a.txt"],
             ["worklog", "delete", "SATOS-1", "123"],
         ):
             with self.subTest(args=args):
