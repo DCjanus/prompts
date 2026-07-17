@@ -383,6 +383,22 @@ class JiraCliTest(unittest.TestCase):
         self.assertEqual(json.loads(errors.getvalue()), {"error": "failed"})
         self.assertNotIn("\x1b", output.getvalue() + errors.getvalue())
 
+    def test_json_output_escapes_c1_controls_without_escaping_chinese(self):
+        output = io.StringIO()
+        original_console = self.cli.console
+        self.cli.console = Console(file=output, force_terminal=False)
+        value = {"summary": "中文\x9b31m\x9d52;c;YQ==\x9c"}
+        try:
+            self.cli._print_json(value)
+        finally:
+            self.cli.console = original_console
+        rendered = output.getvalue()
+        self.assertIn("中文", rendered)
+        self.assertNotIn("\x9b", rendered)
+        self.assertNotIn("\x9c", rendered)
+        self.assertNotIn("\x9d", rendered)
+        self.assertEqual(json.loads(rendered), value)
+
     def test_jira_values_are_rendered_as_plain_text(self):
         value = "[link=https://evil.example]trusted.example[/link]"
         rendered = self.cli._plain_text(value)
@@ -629,6 +645,47 @@ class JiraCliTest(unittest.TestCase):
         with self.assertRaises(self.cli.JiraApiError):
             self.cli._update_epic_membership(
                 client, ["SATOS-1", "BAD-1"], "customfield_1", "SATOS-100"
+            )
+        self.assertEqual(client.edits, [])
+
+    def test_epic_membership_rejects_unexpected_existing_epic(self):
+        class FakeClient:
+            def __init__(self):
+                self.edits: list[str] = []
+
+            def get_issue(self, key, *, fields):
+                return {"key": key, "fields": {"customfield_1": "SATOS-OLD"}}
+
+            def edit_issue(self, key, fields):
+                self.edits.append(key)
+
+        client = FakeClient()
+        with self.assertRaisesRegex(self.cli.typer.BadParameter, "SATOS-OLD"):
+            self.cli._update_epic_membership(
+                client,
+                ["SATOS-1"],
+                "customfield_1",
+                "SATOS-NEW",
+            )
+        self.assertEqual(client.edits, [])
+
+        moved = self.cli._update_epic_membership(
+            client,
+            ["SATOS-1"],
+            "customfield_1",
+            "SATOS-NEW",
+            allow_move=True,
+        )
+        self.assertEqual(moved, ["SATOS-1"])
+
+        client.edits.clear()
+        with self.assertRaisesRegex(self.cli.typer.BadParameter, "SATOS-OLD"):
+            self.cli._update_epic_membership(
+                client,
+                ["SATOS-1"],
+                "customfield_1",
+                None,
+                expected_epic="SATOS-NEW",
             )
         self.assertEqual(client.edits, [])
 

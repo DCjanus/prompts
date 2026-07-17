@@ -122,8 +122,11 @@ Epic 使用配置中的 `epic_name_field` 和 `epic_link_field`：
 ```bash
 ./scripts/jira_cli.py epic create --summary 'Epic 标题' --epic-name '简短名称'
 ./scripts/jira_cli.py epic add SATOS-100 SATOS-101 SATOS-102
-./scripts/jira_cli.py epic remove SATOS-101 SATOS-102
+./scripts/jira_cli.py epic remove SATOS-100 SATOS-101 SATOS-102
 ```
+
+`epic add` 不会默认覆盖 Issue 已有的其他 Epic 归属；确认需要迁移时显式传
+`--allow-move`。`epic remove` 的第一个参数是预期 Epic，只有当前归属匹配时才会移除。
 
 ## 评论与链接
 

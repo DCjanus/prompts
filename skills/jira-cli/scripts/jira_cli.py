@@ -212,9 +212,12 @@ def _state(ctx: typer.Context) -> State:
 
 def _print_json(value: Any, *, error: bool = False) -> None:
     target = err_console if error else console
-    target.file.write(
-        json.dumps(value, ensure_ascii=False, default=str, indent=2) + "\n"
+    serialized = json.dumps(value, ensure_ascii=False, default=str, indent=2)
+    serialized = "".join(
+        f"\\u{ord(character):04x}" if 127 <= ord(character) <= 159 else character
+        for character in serialized
     )
+    target.file.write(serialized + "\n")
     target.file.flush()
 
 
@@ -980,9 +983,37 @@ def _update_epic_membership(
     issue_keys: list[str],
     field: str,
     value: str | None,
+    *,
+    expected_epic: str | None = None,
+    allow_move: bool = False,
 ) -> list[str]:
+    current_memberships: dict[str, str | None] = {}
     for key in issue_keys:
-        client.get_issue(key, fields=[field])
+        issue = client.get_issue(key, fields=[field])
+        current_value = issue.get("fields", {}).get(field)
+        if isinstance(current_value, dict):
+            current_value = current_value.get("key")
+        current = str(current_value) if current_value else None
+        current_memberships[key] = current
+
+    for key, current in current_memberships.items():
+        if value is None:
+            if expected_epic is None:
+                raise typer.BadParameter(
+                    "expected_epic is required when removing Epic membership"
+                )
+            if current is None or current.upper() != expected_epic.upper():
+                raise typer.BadParameter(
+                    f"Issue {key} belongs to {current or 'no Epic'}, "
+                    f"not expected Epic {expected_epic}"
+                )
+        elif (
+            current is not None and current.upper() != value.upper() and not allow_move
+        ):
+            raise typer.BadParameter(
+                f"Issue {key} already belongs to Epic {current}; "
+                "pass --allow-move to replace it"
+            )
 
     completed: list[str] = []
     for index, key in enumerate(issue_keys):
@@ -1004,27 +1035,39 @@ def _update_epic_membership(
 
 
 @epic_app.command("add")
-def epic_add(ctx: typer.Context, epic_key: str, issue_key: list[str]) -> None:
+def epic_add(
+    ctx: typer.Context,
+    epic_key: str,
+    issue_key: list[str],
+    allow_move: Annotated[bool, typer.Option("--allow-move")] = False,
+) -> None:
     """Assign one or more issues to an Epic."""
     state = _state(ctx)
     field = state.settings.epic_link_field
     if not field:
         raise typer.BadParameter("Configure epic_link_field before editing membership")
     client = state.client()
-    client.get_issue(epic_key, fields=["issuetype"])
-    added = _update_epic_membership(client, issue_key, field, epic_key)
+    epic = client.get_issue(epic_key, fields=["issuetype"])
+    issue_type = (epic.get("fields", {}).get("issuetype") or {}).get("name")
+    if issue_type != "Epic":
+        raise typer.BadParameter(f"{epic_key} is not an Epic")
+    added = _update_epic_membership(
+        client, issue_key, field, epic_key, allow_move=allow_move
+    )
     _print_result(ctx, {"epic": epic_key, "added": added})
 
 
 @epic_app.command("remove")
-def epic_remove(ctx: typer.Context, issue_key: list[str]) -> None:
+def epic_remove(ctx: typer.Context, epic_key: str, issue_key: list[str]) -> None:
     """Remove one or more issues from their Epic."""
     state = _state(ctx)
     field = state.settings.epic_link_field
     if not field:
         raise typer.BadParameter("Configure epic_link_field before editing membership")
-    removed = _update_epic_membership(state.client(), issue_key, field, None)
-    _print_result(ctx, {"removed": removed})
+    removed = _update_epic_membership(
+        state.client(), issue_key, field, None, expected_epic=epic_key
+    )
+    _print_result(ctx, {"epic": epic_key, "removed": removed})
 
 
 @comment_app.command("list")
