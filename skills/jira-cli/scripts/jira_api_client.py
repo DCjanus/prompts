@@ -289,7 +289,7 @@ class JiraApiClient:
         required_fields = {
             key
             for key, metadata in (selected.get("fields") or {}).items()
-            if metadata.get("required")
+            if metadata.get("required") and not metadata.get("hasDefaultValue")
         }
         missing_fields = sorted(required_fields - provided_fields.keys())
         if missing_fields:

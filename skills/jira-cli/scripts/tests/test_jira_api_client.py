@@ -102,7 +102,13 @@ class JiraApiClientTest(unittest.TestCase):
                             {
                                 "id": "31",
                                 "name": "Resolve",
-                                "fields": {"resolution": {"required": True}},
+                                "fields": {
+                                    "resolution": {"required": True},
+                                    "environment": {
+                                        "required": True,
+                                        "hasDefaultValue": True,
+                                    },
+                                },
                             }
                         ]
                     },

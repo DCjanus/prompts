@@ -182,19 +182,17 @@ def configure(
     try:
         persisted_settings = load_settings(config_path)
         updates = {
-            "server": _first(
-                server, os.getenv("JIRA_SERVER"), os.getenv("JIRA_BASE_URL")
-            ),
-            "token": _first(os.getenv("JIRA_API_TOKEN"), os.getenv("JIRA_TOKEN")),
+            "server": _first(server, os.getenv("JIRA_SERVER")),
+            "token": os.getenv("JIRA_API_TOKEN"),
             "username": _first(username, os.getenv("JIRA_USERNAME")),
             "auth_type": _first(auth_type, os.getenv("JIRA_AUTH_TYPE")),
             "timeout_seconds": _first(timeout, os.getenv("JIRA_TIMEOUT")),
             "dangerously_allow_http": _env_bool("JIRA_DANGEROUSLY_ALLOW_HTTP"),
-            "dangerously_disable_tls_verification": None,
+            "dangerously_disable_tls_verification": _env_bool(
+                "JIRA_DANGEROUSLY_DISABLE_TLS_VERIFICATION"
+            ),
         }
         if dangerously_disable_tls_verification:
-            updates["dangerously_disable_tls_verification"] = True
-        if _env_bool("JIRA_DANGEROUSLY_DISABLE_TLS_VERIFICATION"):
             updates["dangerously_disable_tls_verification"] = True
         if dangerously_allow_http:
             updates["dangerously_allow_http"] = True
@@ -277,11 +275,30 @@ def _issue_fields(
     fix_versions: list[str] | None,
     custom_fields: list[str] | None,
 ) -> dict[str, Any]:
+    parsed_custom_fields = _parse_pairs(custom_fields)
+    reserved_fields = {
+        "project",
+        "issuetype",
+        "summary",
+        "description",
+        "parent",
+        "assignee",
+        "reporter",
+        "priority",
+        "labels",
+        "components",
+        "fixVersions",
+    }
+    conflicts = sorted(parsed_custom_fields.keys() & reserved_fields)
+    if conflicts:
+        raise typer.BadParameter(
+            "--field conflicts with explicit options: " + ", ".join(conflicts)
+        )
     fields: dict[str, Any] = {
         "project": {"key": project},
         "issuetype": {"name": issue_type},
         "summary": summary,
-        **_parse_pairs(custom_fields),
+        **parsed_custom_fields,
     }
     if description is not None:
         fields["description"] = description
@@ -307,6 +324,7 @@ def _clone_fields(
     *,
     project: str,
     summary: str | None,
+    parent: str | None = None,
     allowed_fields: set[str] | None = None,
 ) -> dict[str, Any]:
     fields: dict[str, Any] = {
@@ -320,6 +338,17 @@ def _clone_fields(
             allowed_fields is None or name in allowed_fields
         ):
             fields[name] = value
+    source_parent = (source_fields.get("parent") or {}).get("key")
+    if source_parent:
+        source_project = (source_fields.get("project") or {}).get("key")
+        selected_parent = (
+            parent or source_parent if project == source_project else parent
+        )
+        if not selected_parent:
+            raise typer.BadParameter(
+                "Cloning a sub-task across projects requires --parent"
+            )
+        fields["parent"] = {"key": selected_parent}
     return fields
 
 
@@ -687,6 +716,7 @@ def issue_clone(
     issue_key: str,
     summary: Annotated[str | None, typer.Option()] = None,
     project: Annotated[str | None, typer.Option()] = None,
+    parent: Annotated[str | None, typer.Option()] = None,
 ) -> None:
     """Clone common fields into a new issue."""
     state = _state(ctx)
@@ -701,6 +731,7 @@ def issue_clone(
         source_fields,
         project=project_key,
         summary=summary,
+        parent=parent,
         allowed_fields=_create_field_ids(metadata),
     )
     _print_result(ctx, state.client().create_issue(fields))

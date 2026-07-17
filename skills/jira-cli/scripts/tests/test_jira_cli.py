@@ -91,6 +91,35 @@ class JiraCliTest(unittest.TestCase):
         self.assertEqual(result.exit_code, 0, result.output)
         self.assertNotIn("temporary-environment-token", contents)
 
+    def test_undocumented_environment_aliases_are_ignored(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "config.toml"
+            target.write_text(
+                'server = "https://jira.example"\ntoken = "persisted-secret-token"\n',
+                encoding="utf-8",
+            )
+            old_values = {
+                name: os.environ.get(name) for name in ("JIRA_BASE_URL", "JIRA_TOKEN")
+            }
+            os.environ["JIRA_BASE_URL"] = "https://evil.example"
+            os.environ["JIRA_TOKEN"] = "unexpected-token"
+            try:
+                result = self.runner.invoke(
+                    self.cli.app,
+                    ["--config", str(target), "--json", "config", "show"],
+                )
+            finally:
+                for name, value in old_values.items():
+                    if value is None:
+                        os.environ.pop(name, None)
+                    else:
+                        os.environ[name] = value
+
+        payload = json.loads(result.output)
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertEqual(payload["server"], "https://jira.example")
+        self.assertNotIn("unexpected-token", result.output)
+
     def test_token_is_read_interactively_instead_of_from_argv(self):
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory) / "config.toml"
@@ -265,6 +294,31 @@ class JiraCliTest(unittest.TestCase):
         )
         self.assertEqual(allowed.exit_code, 0, allowed.output)
 
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "config.toml"
+            target.write_text(
+                'server = "https://jira.example"\n'
+                "dangerously_disable_tls_verification = true\n",
+                encoding="utf-8",
+            )
+            old_disable = os.environ.get("JIRA_DANGEROUSLY_DISABLE_TLS_VERIFICATION")
+            os.environ["JIRA_DANGEROUSLY_DISABLE_TLS_VERIFICATION"] = "false"
+            try:
+                restored = self.runner.invoke(
+                    self.cli.app,
+                    ["--config", str(target), "--json", "config", "show"],
+                )
+            finally:
+                if old_disable is None:
+                    os.environ.pop("JIRA_DANGEROUSLY_DISABLE_TLS_VERIFICATION", None)
+                else:
+                    os.environ["JIRA_DANGEROUSLY_DISABLE_TLS_VERIFICATION"] = (
+                        old_disable
+                    )
+        self.assertFalse(
+            json.loads(restored.output)["dangerously_disable_tls_verification"]
+        )
+
     def test_transition_fields_and_remote_link_upsert_are_explicit(self):
         move_help = self.runner.invoke(self.cli.app, ["issue", "move", "--help"])
         add_help = self.runner.invoke(self.cli.app, ["remote-link", "add", "--help"])
@@ -301,6 +355,53 @@ class JiraCliTest(unittest.TestCase):
         self.assertNotIn("components", fields)
         self.assertEqual(fields["description"], "Body")
         self.assertEqual(fields["priority"], {"name": "Medium"})
+
+    def test_issue_create_rejects_custom_field_collisions(self):
+        for field in (
+            'project={"key":"OTHER"}',
+            "summary=overridden",
+            'parent={"key":"OTHER-1"}',
+        ):
+            with (
+                self.subTest(field=field),
+                self.assertRaises(self.cli.typer.BadParameter),
+            ):
+                self.cli._issue_fields(
+                    project="SATOS",
+                    issue_type="Task",
+                    summary="Expected",
+                    description=None,
+                    parent=None,
+                    assignee=None,
+                    reporter=None,
+                    priority=None,
+                    labels=None,
+                    components=None,
+                    fix_versions=None,
+                    custom_fields=[field],
+                )
+
+    def test_subtask_clone_preserves_parent_only_within_project(self):
+        source = {
+            "project": {"key": "SATOS"},
+            "issuetype": {"name": "Sub-task", "subtask": True},
+            "summary": "Source",
+            "parent": {"key": "SATOS-1"},
+        }
+        fields = self.cli._clone_fields(
+            source,
+            project="SATOS",
+            summary=None,
+            allowed_fields={"summary", "parent"},
+        )
+        self.assertEqual(fields["parent"], {"key": "SATOS-1"})
+        with self.assertRaisesRegex(self.cli.typer.BadParameter, "--parent"):
+            self.cli._clone_fields(
+                source,
+                project="OTHER",
+                summary=None,
+                allowed_fields={"summary", "parent"},
+            )
 
     def test_comment_and_issue_deletion_require_yes(self):
         for args in (
