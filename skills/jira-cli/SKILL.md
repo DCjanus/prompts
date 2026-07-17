@@ -1,30 +1,24 @@
 ---
 name: jira-cli
-description: 通过内置 Python CLI 直接调用 Jira Server/Data Center REST API v2，查询、创建、编辑、流转和删除 Issue、Epic、Sub-task、评论、附件、关联、Watcher、Vote 与 Worklog，并查询项目、字段、Board 和 Sprint。适用于需要可控地操作 Jira、保留 Jira wiki markup、避免 smc jira 参数或转义行为影响请求的场景。
+description: 通过内置 Python CLI 直接调用 Jira Server/Data Center REST API v2，查询、创建、编辑、流转和删除 Issue、Epic、Sub-task、评论、附件、关联、Watcher、Vote 与 Worklog，并查询项目、字段、Board 和 Sprint。适用于需要可控地操作 Jira、保留 Jira wiki markup 并精确管理请求与输出的场景。
 ---
 
 # Jira CLI
 
-使用本 skill 自带的 `scripts/jira_cli.py`，不要改用 `smc jira`。当前契约面向 Jira Server/Data Center 8.20.6，不支持 Jira Cloud API v3 或 ADF。
+使用本 skill 自带的 `scripts/jira_cli.py`。当前契约面向 Jira Server/Data Center 8.20.6，不支持 Jira Cloud API v3 或 ADF。
 
 ## 首次配置
 
-默认配置文件为 `~/.config/jira-cli/config.toml`。已有 `smc jira` 配置时，执行一次迁移：
+默认配置文件为 `~/.config/jira-cli/config.toml`。使用 `config set` 创建或修改配置：
 
 ```bash
 cd skills/jira-cli
-./scripts/jira_cli.py config import-smc
+./scripts/jira_cli.py config set --default-project SATOS
+./scripts/jira_cli.py config set --server https://jira.example --prompt-token
 ./scripts/jira_cli.py config show
 ```
 
-迁移从 `~/.agents/jira_config.json` 读取 server、token、认证方式、默认项目和 Epic 自定义字段，目标 TOML 权限固定为 `0600`。默认不覆盖已有配置；确需覆盖时显式传 `--force`。
-
-使用 `config set` 修改配置：
-
-```bash
-./scripts/jira_cli.py config set --default-project SATOS
-./scripts/jira_cli.py config set --server https://jira.example --prompt-token
-```
+配置文件权限固定为 `0600`。已有配置只会在显式执行 `config set` 时更新。
 
 环境变量和全局选项可以临时覆盖配置，但不会反写 TOML：
 
@@ -125,7 +119,7 @@ Epic 使用配置中的 `epic_name_field` 和 `epic_link_field`：
 ./scripts/jira_cli.py epic remove SATOS-100 SATOS-101 SATOS-102
 ```
 
-`epic add` 不会默认覆盖 Issue 已有的其他 Epic 归属；确认需要迁移时显式传
+`epic add` 不会默认覆盖 Issue 已有的其他 Epic 归属；确认需要移动时显式传
 `--allow-move`。`epic remove` 的第一个参数是预期 Epic，只有当前归属匹配时才会移除。
 
 ## 评论与链接

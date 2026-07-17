@@ -34,9 +34,7 @@ if str(SCRIPT_DIR) not in sys.path:
 from jira_api_client import JiraApiClient, JiraApiError, JiraConfig  # noqa: E402
 from jira_config import (  # noqa: E402
     DEFAULT_CONFIG_PATH,
-    DEFAULT_SMC_CONFIG_PATH,
     JiraCliSettings,
-    import_smc_settings,
     load_settings,
     masked_settings,
     save_settings,
@@ -96,8 +94,8 @@ class State:
         if self._client is None:
             if not self.settings.token:
                 raise typer.BadParameter(
-                    "Jira token is required. Run 'config import-smc', configure "
-                    f"{self.config_path}, or set JIRA_API_TOKEN."
+                    f"Jira token is required. Configure {self.config_path} with "
+                    "'config set --prompt-token', or set JIRA_API_TOKEN."
                 )
             self._client = JiraApiClient(
                 JiraConfig(
@@ -485,43 +483,6 @@ def config_path(ctx: typer.Context) -> None:
 def config_show(ctx: typer.Context) -> None:
     """Show effective settings with the token masked."""
     _print_result(ctx, masked_settings(_state(ctx).settings))
-
-
-@config_app.command("import-smc")
-def config_import_smc(
-    ctx: typer.Context,
-    source: Annotated[
-        Path, typer.Option(help="smc jira JSON config path.")
-    ] = DEFAULT_SMC_CONFIG_PATH,
-    force: Annotated[
-        bool, typer.Option("--force", help="Overwrite existing TOML config.")
-    ] = False,
-    dangerously_disable_tls_verification: Annotated[
-        bool,
-        typer.Option(
-            "--dangerously-disable-tls-verification",
-            help="Preserve insecure=true from SMC config. This is unsafe.",
-        ),
-    ] = False,
-) -> None:
-    """Import the existing smc jira JSON configuration into TOML."""
-    state = _state(ctx)
-    try:
-        imported = import_smc_settings(
-            source.expanduser(),
-            dangerously_disable_tls_verification=dangerously_disable_tls_verification,
-        )
-        save_settings(imported, state.config_path, overwrite=force)
-    except (ValueError, FileExistsError, ValidationError) as exc:
-        raise typer.BadParameter(_safe_error_message(exc)) from exc
-    _print_result(
-        ctx,
-        {
-            "path": str(state.config_path),
-            "mode": "0600",
-            "settings": masked_settings(imported),
-        },
-    )
 
 
 @config_app.command("set")

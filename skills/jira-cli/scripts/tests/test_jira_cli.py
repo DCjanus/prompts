@@ -32,40 +32,6 @@ class JiraCliTest(unittest.TestCase):
         cls.cli = load_cli_module()
         cls.runner = CliRunner()
 
-    def test_import_smc_creates_private_toml_and_masks_token(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            source = root / "smc.json"
-            target = root / "config.toml"
-            source.write_text(
-                json.dumps(
-                    {
-                        "server": "https://jira.example",
-                        "api_token": "top-secret-token",
-                        "auth_type": "bearer",
-                        "project": {"key": "SATOS"},
-                    }
-                ),
-                encoding="utf-8",
-            )
-            result = self.runner.invoke(
-                self.cli.app,
-                [
-                    "--config",
-                    str(target),
-                    "--json",
-                    "config",
-                    "import-smc",
-                    "--source",
-                    str(source),
-                ],
-            )
-            contents = target.read_text(encoding="utf-8")
-
-        self.assertEqual(result.exit_code, 0, result.output)
-        self.assertNotIn("top-secret-token", result.output)
-        self.assertIn("top-secret-token", contents)
-
     def test_config_set_does_not_persist_environment_token_override(self):
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory) / "config.toml"
@@ -238,17 +204,6 @@ class JiraCliTest(unittest.TestCase):
     def test_tls_disable_requires_dangerously_named_controls(self):
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory) / "config.toml"
-            source = Path(directory) / "smc.json"
-            source.write_text(
-                json.dumps(
-                    {
-                        "server": "https://jira.example",
-                        "api_token": "secret",
-                        "insecure": True,
-                    }
-                ),
-                encoding="utf-8",
-            )
             old_verify = os.environ.get("JIRA_VERIFY_SSL")
             os.environ["JIRA_VERIFY_SSL"] = "false"
             try:
@@ -261,41 +216,11 @@ class JiraCliTest(unittest.TestCase):
                     os.environ.pop("JIRA_VERIFY_SSL", None)
                 else:
                     os.environ["JIRA_VERIFY_SSL"] = old_verify
-            rejected = self.runner.invoke(
-                self.cli.app,
-                [
-                    "--config",
-                    str(target),
-                    "config",
-                    "import-smc",
-                    "--source",
-                    str(source),
-                ],
-            )
-            allowed = self.runner.invoke(
-                self.cli.app,
-                [
-                    "--config",
-                    str(target),
-                    "config",
-                    "import-smc",
-                    "--source",
-                    str(source),
-                    "--dangerously-disable-tls-verification",
-                ],
-            )
 
         self.assertEqual(show.exit_code, 0, show.output)
         self.assertFalse(
             json.loads(show.output)["dangerously_disable_tls_verification"]
         )
-        self.assertNotEqual(rejected.exit_code, 0)
-        self.assertIn(
-            "dangerously-disable-tls-verification",
-            Text.from_ansi(rejected.output).plain,
-        )
-        self.assertEqual(allowed.exit_code, 0, allowed.output)
-
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory) / "config.toml"
             target.write_text(
