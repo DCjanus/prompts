@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from rich.text import Text
 from typer.testing import CliRunner
 
 
@@ -124,7 +125,7 @@ class JiraCliTest(unittest.TestCase):
             with self.subTest(args=args):
                 result = self.runner.invoke(self.cli.app, args)
                 self.assertNotEqual(result.exit_code, 0)
-                self.assertIn("--yes", result.output)
+                self.assertIn("--yes", Text.from_ansi(result.output).plain)
 
 
 if __name__ == "__main__":
