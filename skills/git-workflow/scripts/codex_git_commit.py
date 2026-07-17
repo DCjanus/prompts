@@ -4,7 +4,7 @@
 # dependencies = [
 #     "openai-codex>=0.1.0b3",
 #     "pydantic>=2.13.4",
-#     "typer>=0.26.8",
+#     "typer>=0.27.0",
 # ]
 # [tool.uv]
 # prerelease = "allow"

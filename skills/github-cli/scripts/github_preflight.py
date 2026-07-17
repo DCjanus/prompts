@@ -4,7 +4,7 @@
 # dependencies = [
 #     "pyyaml>=6.0.3",
 #     "rich>=15.0.0",
-#     "typer>=0.26.8",
+#     "typer>=0.27.0",
 # ]
 # ///
 """输出中文 GitHub issue/PR 创建前静态检查摘要。"""

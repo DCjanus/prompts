@@ -3,7 +3,7 @@
 # requires-python = ">=3.14"
 # dependencies = [
 #     "rich>=15.0.0",
-#     "typer>=0.26.8",
+#     "typer>=0.27.0",
 # ]
 # ///
 
