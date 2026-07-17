@@ -229,6 +229,13 @@ def _plain_text(value: Any) -> Text:
     return Text(str(value))
 
 
+def _print_error(label: str, message: Any) -> None:
+    output = Text()
+    output.append(f"{label}: ", style="bold red")
+    output.append(str(message))
+    err_console.print(output)
+
+
 def _verify_attachment_target(metadata: dict[str, Any], expected_filename: str) -> None:
     actual_filename = str(metadata.get("filename", ""))
     if actual_filename != expected_filename:
@@ -718,7 +725,6 @@ def issue_edit(
     summary: Annotated[str | None, typer.Option()] = None,
     description: Annotated[str | None, typer.Option()] = None,
     description_file: Annotated[Path | None, typer.Option()] = None,
-    assignee: Annotated[str | None, typer.Option()] = None,
     reporter: Annotated[str | None, typer.Option()] = None,
     priority: Annotated[str | None, typer.Option()] = None,
     label: Annotated[list[str] | None, typer.Option("--label")] = None,
@@ -733,8 +739,6 @@ def issue_edit(
     body = _optional_body(description, description_file, "description")
     if body is not None:
         fields["description"] = body
-    if assignee is not None:
-        fields["assignee"] = {"name": assignee}
     if reporter is not None:
         fields["reporter"] = {"name": reporter}
     if priority is not None:
@@ -1319,7 +1323,7 @@ def main() -> None:
         if _json_errors:
             _print_json(payload, error=True)
         else:
-            err_console.print(f"[bold red]Jira API error:[/] {exc}")
+            _print_error("Jira API error", exc)
             if exc.payload is not None:
                 err_console.print(Pretty(exc.payload, expand_all=True))
         raise SystemExit(1) from None
@@ -1327,19 +1331,19 @@ def main() -> None:
         if _json_errors:
             _print_json({"error": str(exc)}, error=True)
         else:
-            err_console.print(f"[bold red]Error:[/] {exc}")
+            _print_error("Error", exc)
         raise SystemExit(2) from None
     except OSError as exc:
         if _json_errors:
             _print_json({"error": str(exc)}, error=True)
         else:
-            err_console.print(f"[bold red]I/O error:[/] {exc}")
+            _print_error("I/O error", exc)
         raise SystemExit(2) from None
     except typer.Abort:
         if _json_errors:
             _print_json({"error": "Aborted"}, error=True)
         else:
-            err_console.print("[bold red]Aborted[/]")
+            err_console.print(Text("Aborted", style="bold red"))
         raise SystemExit(1) from None
     except typer.core._click.ClickException as exc:
         if _json_errors:

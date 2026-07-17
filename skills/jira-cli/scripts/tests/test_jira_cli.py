@@ -389,6 +389,27 @@ class JiraCliTest(unittest.TestCase):
         self.assertEqual(rendered.plain, value)
         self.assertEqual(rendered.spans, [])
 
+    def test_error_messages_are_rendered_as_plain_text(self):
+        output = io.StringIO()
+        original_err_console = self.cli.err_console
+        self.cli.err_console = Console(
+            file=output, force_terminal=True, color_system="truecolor"
+        )
+        try:
+            self.cli._print_error(
+                "Jira API error",
+                "[link=https://evil.example]trusted.example[/link]",
+            )
+        finally:
+            self.cli.err_console = original_err_console
+        self.assertIn("[link=https://evil.example]", output.getvalue())
+        self.assertNotIn("\x1b]8;", output.getvalue())
+
+    def test_issue_edit_does_not_offer_assignee_shortcut(self):
+        help_result = self.runner.invoke(self.cli.app, ["issue", "edit", "--help"])
+        self.assertEqual(help_result.exit_code, 0, help_result.output)
+        self.assertNotIn("--assignee", Text.from_ansi(help_result.output).plain)
+
     def test_attachment_filename_must_match_before_delete(self):
         metadata = {"id": "123", "filename": "expected.txt"}
         self.cli._verify_attachment_target(metadata, "expected.txt")
