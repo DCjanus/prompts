@@ -329,7 +329,7 @@ class JiraCliTest(unittest.TestCase):
                     "config",
                     "set",
                     "--server",
-                    "http://jira.example",
+                    "HTTP://jira.example",
                     "--dangerously-allow-http",
                 ],
             )

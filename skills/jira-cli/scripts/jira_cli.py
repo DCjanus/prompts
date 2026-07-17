@@ -495,11 +495,9 @@ def config_set(
     if (
         require_https
         and server_update is None
-        and state.persisted_settings.server.startswith("http://")
+        and state.persisted_settings.server.lower().startswith("http://")
     ):
-        server_update = "https://" + state.persisted_settings.server.removeprefix(
-            "http://"
-        )
+        server_update = "https://" + state.persisted_settings.server.split("://", 1)[1]
     updates = {
         "server": server_update,
         "token": token,
