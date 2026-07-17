@@ -1,0 +1,106 @@
+"""TOML configuration management for jira-cli."""
+
+from __future__ import annotations
+
+import os
+import tempfile
+import tomllib
+from pathlib import Path
+from typing import Any
+from urllib.parse import urlsplit
+
+import tomli_w
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+DEFAULT_CONFIG_PATH = Path("~/.config/jira-cli/config.toml").expanduser()
+
+
+class JiraCliSettings(BaseModel):
+    """Persistent jira-cli settings."""
+
+    server: str = "https://jira.shopee.io"
+    token: str | None = None
+    username: str | None = None
+    auth_type: str = "auto"
+    timeout_seconds: float = Field(default=30.0, gt=0)
+    dangerously_disable_tls_verification: bool = False
+    dangerously_allow_http: bool = False
+    default_project: str | None = None
+    default_board: str | None = None
+    epic_name_field: str | None = None
+    epic_link_field: str | None = None
+    timezone: str | None = None
+
+    @field_validator("auth_type")
+    @classmethod
+    def validate_auth_type(cls, value: str) -> str:
+        normalized = value.lower()
+        if normalized not in {"auto", "bearer", "basic"}:
+            raise ValueError("auth_type must be auto, bearer, or basic")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_server_transport(self) -> JiraCliSettings:
+        parsed = urlsplit(self.server)
+        scheme = parsed.scheme.lower()
+        if scheme not in {"http", "https"}:
+            raise ValueError("server must use http or https")
+        if not parsed.hostname:
+            raise ValueError("server must include a hostname")
+        if parsed.username is not None or parsed.password is not None:
+            raise ValueError("server must not include userinfo")
+        if parsed.query or parsed.fragment:
+            raise ValueError("server must not include a query or fragment")
+        if scheme == "http" and not self.dangerously_allow_http:
+            raise ValueError(
+                "HTTP requires dangerously_allow_http=true because credentials "
+                "would be sent without transport encryption"
+            )
+        return self
+
+
+def load_settings(path: Path = DEFAULT_CONFIG_PATH) -> JiraCliSettings:
+    if not path.exists():
+        return JiraCliSettings()
+    try:
+        data = tomllib.loads(path.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        raise ValueError(f"Cannot read config {path}: {exc}") from exc
+    return JiraCliSettings.model_validate(data)
+
+
+def save_settings(
+    settings: JiraCliSettings,
+    path: Path = DEFAULT_CONFIG_PATH,
+    *,
+    overwrite: bool = False,
+) -> None:
+    if path.exists() and not overwrite:
+        raise FileExistsError(f"Config already exists: {path}")
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    payload = settings.model_dump(exclude_none=True)
+    encoded = tomli_w.dumps(payload)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", dir=path.parent
+    )
+    temporary_path = Path(temporary_name)
+    try:
+        os.fchmod(descriptor, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as file_handle:
+            file_handle.write(encoded)
+            file_handle.flush()
+            os.fsync(file_handle.fileno())
+        os.replace(temporary_path, path)
+        path.chmod(0o600)
+    finally:
+        temporary_path.unlink(missing_ok=True)
+
+
+def masked_settings(settings: JiraCliSettings) -> dict[str, Any]:
+    result = settings.model_dump(exclude_none=True)
+    token = result.get("token")
+    if token:
+        result["token"] = (
+            f"{token[:4]}...{token[-4:]}" if len(token) > 10 else "********"
+        )
+    return result
