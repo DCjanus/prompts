@@ -106,9 +106,16 @@ cd skills/jira-cli
 
 ```bash
 ./scripts/jira_cli.py issue edit SATOS-261728 --summary '新的标题'
+./scripts/jira_cli.py issue edit SATOS-261728 --set-label reviewed
 ./scripts/jira_cli.py issue assign SATOS-261728 'user@example.com'
-./scripts/jira_cli.py issue clone SATOS-261728 --summary '复制后的标题'
+./scripts/jira_cli.py issue clone SATOS-261728 --summary '复制后的标题' \
+  --field customfield_10001='复制后的 Epic 名称'
 ```
+
+`issue edit` 的 `--set-label`、`--set-component` 和 `--set-fix-version`
+会替换对应字段的完整集合；追加或移除单项时应先读取 Issue，再显式提交完整目标集合。
+clone 会依据 Jira create metadata 复制无默认值的必填字段；目标项目缺少可复用值时，
+使用 `--field KEY=VALUE` 显式提供。
 
 Epic 使用配置中的 `epic_name_field` 和 `epic_link_field`：
 
@@ -151,6 +158,11 @@ Issue link 和外部链接分别使用 `link`、`remote-link`：
 ./scripts/jira_cli.py vote get SATOS-1
 ./scripts/jira_cli.py worklog add SATOS-1 --time-spent 30m --comment '排查问题'
 ```
+
+Worklog 默认使用 `--adjust-estimate leave`，不会隐式修改 Remaining Estimate。
+需要联动估时时可显式选择 `auto`、`new` 或 `manual`；`new` 搭配
+`--new-estimate`，新增时的 `manual` 搭配 `--reduce-by`，删除时搭配
+`--increase-by`。
 
 使用各命令的 `--help` 查看完整参数。
 

@@ -350,7 +350,11 @@ def _clone_fields(
     summary: str | None,
     parent: str | None = None,
     allowed_fields: set[str] | None = None,
+    field_metadata: dict[str, dict[str, Any]] | None = None,
+    overrides: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    if field_metadata is not None:
+        allowed_fields = set(field_metadata)
     fields: dict[str, Any] = {
         "project": {"key": project},
         "issuetype": {"name": (source_fields.get("issuetype") or {}).get("name")},
@@ -366,6 +370,16 @@ def _clone_fields(
             allowed_fields is None or name in allowed_fields
         ):
             fields[name] = value
+    if field_metadata is not None and not cross_project:
+        for name, metadata in field_metadata.items():
+            if (
+                metadata.get("required")
+                and not metadata.get("hasDefaultValue")
+                and name not in fields
+            ):
+                value = source_fields.get(name)
+                if value not in (None, "", [], {}):
+                    fields[name] = value
     source_parent = (source_fields.get("parent") or {}).get("key")
     if source_parent:
         selected_parent = (
@@ -376,6 +390,20 @@ def _clone_fields(
                 "Cloning a sub-task across projects requires --parent"
             )
         fields["parent"] = {"key": selected_parent}
+    fields.update(overrides or {})
+    if field_metadata is not None:
+        missing = [
+            str(metadata.get("name") or name)
+            for name, metadata in field_metadata.items()
+            if metadata.get("required")
+            and not metadata.get("hasDefaultValue")
+            and fields.get(name) in (None, "", [], {})
+        ]
+        if missing:
+            raise typer.BadParameter(
+                "Required clone fields are missing; provide --field for: "
+                + ", ".join(sorted(missing))
+            )
     return fields
 
 
@@ -390,12 +418,12 @@ def _clone_target_project(
     return source_project
 
 
-def _create_field_ids(metadata: dict[str, Any]) -> set[str]:
+def _create_fields_metadata(metadata: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {
-        field_id
+        field_id: field_metadata
         for project in metadata.get("projects", [])
         for issue_type in project.get("issuetypes", [])
-        for field_id in issue_type.get("fields", {})
+        for field_id, field_metadata in issue_type.get("fields", {}).items()
     }
 
 
@@ -727,9 +755,18 @@ def issue_edit(
     description_file: Annotated[Path | None, typer.Option()] = None,
     reporter: Annotated[str | None, typer.Option()] = None,
     priority: Annotated[str | None, typer.Option()] = None,
-    label: Annotated[list[str] | None, typer.Option("--label")] = None,
-    component: Annotated[list[str] | None, typer.Option("--component")] = None,
-    fix_version: Annotated[list[str] | None, typer.Option("--fix-version")] = None,
+    set_label: Annotated[
+        list[str] | None,
+        typer.Option("--set-label", help="Replace the complete label set."),
+    ] = None,
+    set_component: Annotated[
+        list[str] | None,
+        typer.Option("--set-component", help="Replace the complete component set."),
+    ] = None,
+    set_fix_version: Annotated[
+        list[str] | None,
+        typer.Option("--set-fix-version", help="Replace the complete fix-version set."),
+    ] = None,
     field: Annotated[list[str] | None, typer.Option("--field")] = None,
 ) -> None:
     """Edit selected issue fields."""
@@ -743,12 +780,12 @@ def issue_edit(
         fields["reporter"] = {"name": reporter}
     if priority is not None:
         fields["priority"] = {"name": priority}
-    if label is not None:
-        fields["labels"] = label
-    if component is not None:
-        fields["components"] = [{"name": value} for value in component]
-    if fix_version is not None:
-        fields["fixVersions"] = [{"name": value} for value in fix_version]
+    if set_label is not None:
+        fields["labels"] = set_label
+    if set_component is not None:
+        fields["components"] = [{"name": value} for value in set_component]
+    if set_fix_version is not None:
+        fields["fixVersions"] = [{"name": value} for value in set_fix_version]
     if not fields:
         raise typer.BadParameter("No changes were provided")
     client = _state(ctx).client()
@@ -773,6 +810,7 @@ def issue_clone(
     summary: Annotated[str | None, typer.Option()] = None,
     project: Annotated[str | None, typer.Option()] = None,
     parent: Annotated[str | None, typer.Option()] = None,
+    field: Annotated[list[str] | None, typer.Option("--field")] = None,
 ) -> None:
     """Clone common fields into a new issue."""
     state = _state(ctx)
@@ -783,12 +821,19 @@ def issue_clone(
     metadata = state.client().create_meta(
         project_keys=[project_key], issue_type_names=[issue_type_name]
     )
+    overrides = _parse_pairs(field)
+    conflicts = sorted(overrides.keys() & {"project", "issuetype", "summary", "parent"})
+    if conflicts:
+        raise typer.BadParameter(
+            "--field conflicts with explicit clone fields: " + ", ".join(conflicts)
+        )
     fields = _clone_fields(
         source_fields,
         project=project_key,
         summary=summary,
         parent=parent,
-        allowed_fields=_create_field_ids(metadata),
+        field_metadata=_create_fields_metadata(metadata),
+        overrides=overrides,
     )
     _print_result(ctx, state.client().create_issue(fields))
 
@@ -1199,6 +1244,11 @@ def worklog_add(
     time_spent: Annotated[str, typer.Option(help="Jira duration, such as 30m.")],
     comment: Annotated[str | None, typer.Option()] = None,
     started: Annotated[str | None, typer.Option()] = None,
+    adjust_estimate: Annotated[
+        str, typer.Option(help="leave, auto, new, or manual. Defaults to leave.")
+    ] = "leave",
+    new_estimate: Annotated[str | None, typer.Option()] = None,
+    reduce_by: Annotated[str | None, typer.Option()] = None,
 ) -> None:
     """Add a worklog."""
     _print_result(
@@ -1206,7 +1256,13 @@ def worklog_add(
         _state(ctx)
         .client()
         .add_worklog(
-            issue_key, time_spent=time_spent, comment=comment, started=started
+            issue_key,
+            time_spent=time_spent,
+            comment=comment,
+            started=started,
+            adjust_estimate=adjust_estimate,
+            new_estimate=new_estimate,
+            reduce_by=reduce_by,
         ),
     )
 
@@ -1219,6 +1275,10 @@ def worklog_edit(
     time_spent: Annotated[str | None, typer.Option()] = None,
     comment: Annotated[str | None, typer.Option()] = None,
     started: Annotated[str | None, typer.Option()] = None,
+    adjust_estimate: Annotated[
+        str, typer.Option(help="leave, auto, or new. Defaults to leave.")
+    ] = "leave",
+    new_estimate: Annotated[str | None, typer.Option()] = None,
 ) -> None:
     """Edit a worklog."""
     if time_spent is None and comment is None and started is None:
@@ -1233,6 +1293,8 @@ def worklog_edit(
             time_spent=time_spent,
             comment=comment,
             started=started,
+            adjust_estimate=adjust_estimate,
+            new_estimate=new_estimate,
         ),
     )
 
@@ -1243,11 +1305,22 @@ def worklog_delete(
     issue_key: str,
     worklog_id: str,
     yes: Annotated[bool, typer.Option("--yes")] = False,
+    adjust_estimate: Annotated[
+        str, typer.Option(help="leave, auto, new, or manual. Defaults to leave.")
+    ] = "leave",
+    new_estimate: Annotated[str | None, typer.Option()] = None,
+    increase_by: Annotated[str | None, typer.Option()] = None,
 ) -> None:
     """Permanently delete a worklog."""
     if not yes:
         raise typer.BadParameter("Pass --yes to confirm permanent deletion")
-    _state(ctx).client().delete_worklog(issue_key, worklog_id)
+    _state(ctx).client().delete_worklog(
+        issue_key,
+        worklog_id,
+        adjust_estimate=adjust_estimate,
+        new_estimate=new_estimate,
+        increase_by=increase_by,
+    )
     _print_result(ctx, {"issue_key": issue_key, "deleted_worklog": worklog_id})
 
 

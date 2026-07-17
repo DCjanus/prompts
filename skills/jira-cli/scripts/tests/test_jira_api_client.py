@@ -187,6 +187,7 @@ class JiraApiClientTest(unittest.TestCase):
 
     def test_worklog_edit_sends_only_changed_fields(self):
         def handler(request: httpx2.Request) -> httpx2.Response:
+            self.assertEqual(request.url.params["adjustEstimate"], "leave")
             self.assertEqual(json.loads(request.content), {"comment": "updated"})
             return httpx2.Response(200, json={"id": "9"})
 
@@ -194,6 +195,83 @@ class JiraApiClientTest(unittest.TestCase):
         client.edit_worklog("SATOS-1", "9", comment="updated")
         with self.assertRaisesRegex(ValueError, "change"):
             client.edit_worklog("SATOS-1", "9")
+
+    def test_worklog_estimate_adjustments_are_explicit(self):
+        requests: list[httpx2.Request] = []
+
+        def handler(request: httpx2.Request) -> httpx2.Response:
+            requests.append(request)
+            return httpx2.Response(200, json={"id": "9"})
+
+        client = self.make_client(handler)
+        client.add_worklog("SATOS-1", time_spent="30m")
+        client.add_worklog(
+            "SATOS-1",
+            time_spent="30m",
+            adjust_estimate="manual",
+            reduce_by="15m",
+        )
+        client.delete_worklog(
+            "SATOS-1",
+            "9",
+            adjust_estimate="manual",
+            increase_by="15m",
+        )
+        self.assertEqual(requests[0].url.params["adjustEstimate"], "leave")
+        self.assertEqual(requests[1].url.params["reduceBy"], "15m")
+        self.assertEqual(requests[2].url.params["increaseBy"], "15m")
+        with self.assertRaisesRegex(ValueError, "new_estimate"):
+            client.add_worklog("SATOS-1", time_spent="30m", adjust_estimate="new")
+        with self.assertRaisesRegex(ValueError, "manual"):
+            client.edit_worklog(
+                "SATOS-1", "9", comment="updated", adjust_estimate="manual"
+            )
+
+    def test_remote_link_upsert_preserves_existing_metadata(self):
+        requests: list[httpx2.Request] = []
+
+        def handler(request: httpx2.Request) -> httpx2.Response:
+            requests.append(request)
+            if request.method == "GET":
+                return httpx2.Response(
+                    200,
+                    json=[
+                        {
+                            "id": 7,
+                            "self": "https://jira.example/rest/api/2/issue/SATOS-1/remotelink/7",
+                            "globalId": "mr-38",
+                            "application": {"type": "gitlab", "name": "GitLab"},
+                            "relationship": "reviewed by",
+                            "object": {
+                                "url": "https://old.example",
+                                "title": "Old title",
+                                "summary": "Keep me",
+                                "icon": {"url16x16": "https://icon.example/16.png"},
+                                "status": {"resolved": False},
+                            },
+                        }
+                    ],
+                )
+            payload = json.loads(request.content)
+            self.assertNotIn("id", payload)
+            self.assertNotIn("self", payload)
+            self.assertEqual(payload["application"]["name"], "GitLab")
+            self.assertEqual(payload["relationship"], "reviewed by")
+            self.assertEqual(payload["object"]["summary"], "Keep me")
+            self.assertEqual(
+                payload["object"]["icon"]["url16x16"], "https://icon.example/16.png"
+            )
+            self.assertEqual(payload["object"]["url"], "https://new.example")
+            self.assertEqual(payload["object"]["title"], "New title")
+            return httpx2.Response(200, json={"id": 7})
+
+        self.make_client(handler).upsert_remote_link(
+            "SATOS-1",
+            url="https://new.example",
+            title="New title",
+            global_id="mr-38",
+        )
+        self.assertEqual([request.method for request in requests], ["GET", "POST"])
 
     def test_destructive_path_segments_are_rejected_before_request(self):
         requests: list[httpx2.Request] = []

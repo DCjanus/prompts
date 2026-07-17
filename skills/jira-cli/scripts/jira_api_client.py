@@ -452,12 +452,40 @@ class JiraApiClient:
         global_id: str,
         summary: str | None = None,
     ) -> dict[str, Any]:
-        return self._write_remote_link(
-            issue_key,
-            url=url,
-            title=title,
-            global_id=global_id,
-            summary=summary,
+        matches = [
+            link
+            for link in self.list_remote_links(issue_key)
+            if link.get("globalId") == global_id
+        ]
+        if len(matches) > 1:
+            raise JiraApiError(
+                f"Multiple remote links use globalId {global_id!r}; refusing to replace"
+            )
+        if not matches:
+            return self._write_remote_link(
+                issue_key,
+                url=url,
+                title=title,
+                global_id=global_id,
+                summary=summary,
+            )
+        existing = matches[0]
+        payload = {
+            key: existing[key]
+            for key in ("application", "relationship", "object")
+            if key in existing
+        }
+        payload["globalId"] = global_id
+        object_value = dict(payload.get("object") or {})
+        object_value.update({"url": url, "title": title})
+        if summary is not None:
+            object_value["summary"] = summary
+        payload["object"] = object_value
+        issue_key = self._segment(issue_key, "issue_key")
+        return self.request(
+            "POST",
+            f"rest/api/2/issue/{issue_key}/remotelink",
+            json_data=payload,
         )
 
     def delete_remote_link(self, issue_key: str, link_id: str) -> None:
@@ -501,6 +529,50 @@ class JiraApiClient:
         issue_key = self._segment(issue_key, "issue_key")
         return self.request("GET", f"rest/api/2/issue/{issue_key}/worklog")
 
+    @staticmethod
+    def _worklog_estimate_params(
+        adjust_estimate: str,
+        *,
+        new_estimate: str | None = None,
+        manual_value: str | None = None,
+        manual_parameter: str | None = None,
+    ) -> dict[str, str]:
+        allowed = {"auto", "leave", "new"}
+        if manual_parameter is not None:
+            allowed.add("manual")
+        elif adjust_estimate == "manual":
+            raise ValueError(
+                "adjust_estimate=manual is not supported for this operation"
+            )
+        if adjust_estimate not in allowed:
+            raise ValueError(
+                f"adjust_estimate must be one of: {', '.join(sorted(allowed))}"
+            )
+        if adjust_estimate == "new":
+            if not new_estimate:
+                raise ValueError("new_estimate is required when adjust_estimate=new")
+            if manual_value is not None:
+                raise ValueError(
+                    f"{manual_parameter} is only valid when adjust_estimate=manual"
+                )
+        elif new_estimate is not None:
+            raise ValueError("new_estimate is only valid when adjust_estimate=new")
+        if adjust_estimate == "manual":
+            if not manual_value:
+                raise ValueError(
+                    f"{manual_parameter} is required when adjust_estimate=manual"
+                )
+        elif manual_value is not None:
+            raise ValueError(
+                f"{manual_parameter} is only valid when adjust_estimate=manual"
+            )
+        params = {"adjustEstimate": adjust_estimate}
+        if new_estimate is not None:
+            params["newEstimate"] = new_estimate
+        if manual_value is not None and manual_parameter is not None:
+            params[manual_parameter] = manual_value
+        return params
+
     def add_worklog(
         self,
         issue_key: str,
@@ -508,6 +580,9 @@ class JiraApiClient:
         time_spent: str,
         comment: str | None = None,
         started: str | None = None,
+        adjust_estimate: str = "leave",
+        new_estimate: str | None = None,
+        reduce_by: str | None = None,
     ) -> dict[str, Any]:
         issue_key = self._segment(issue_key, "issue_key")
         payload: dict[str, Any] = {"timeSpent": time_spent}
@@ -516,7 +591,15 @@ class JiraApiClient:
         if started is not None:
             payload["started"] = started
         return self.request(
-            "POST", f"rest/api/2/issue/{issue_key}/worklog", json_data=payload
+            "POST",
+            f"rest/api/2/issue/{issue_key}/worklog",
+            params=self._worklog_estimate_params(
+                adjust_estimate,
+                new_estimate=new_estimate,
+                manual_value=reduce_by,
+                manual_parameter="reduceBy",
+            ),
+            json_data=payload,
         )
 
     def edit_worklog(
@@ -527,6 +610,8 @@ class JiraApiClient:
         time_spent: str | None = None,
         comment: str | None = None,
         started: str | None = None,
+        adjust_estimate: str = "leave",
+        new_estimate: str | None = None,
     ) -> dict[str, Any]:
         issue_key = self._segment(issue_key, "issue_key")
         worklog_id = self._segment(worklog_id, "worklog_id")
@@ -542,13 +627,33 @@ class JiraApiClient:
         return self.request(
             "PUT",
             f"rest/api/2/issue/{issue_key}/worklog/{worklog_id}",
+            params=self._worklog_estimate_params(
+                adjust_estimate, new_estimate=new_estimate
+            ),
             json_data=payload,
         )
 
-    def delete_worklog(self, issue_key: str, worklog_id: str) -> None:
+    def delete_worklog(
+        self,
+        issue_key: str,
+        worklog_id: str,
+        *,
+        adjust_estimate: str = "leave",
+        new_estimate: str | None = None,
+        increase_by: str | None = None,
+    ) -> None:
         issue_key = self._segment(issue_key, "issue_key")
         worklog_id = self._segment(worklog_id, "worklog_id")
-        self.request("DELETE", f"rest/api/2/issue/{issue_key}/worklog/{worklog_id}")
+        self.request(
+            "DELETE",
+            f"rest/api/2/issue/{issue_key}/worklog/{worklog_id}",
+            params=self._worklog_estimate_params(
+                adjust_estimate,
+                new_estimate=new_estimate,
+                manual_value=increase_by,
+                manual_parameter="increaseBy",
+            ),
+        )
 
     def list_boards(
         self,

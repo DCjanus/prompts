@@ -408,7 +408,14 @@ class JiraCliTest(unittest.TestCase):
     def test_issue_edit_does_not_offer_assignee_shortcut(self):
         help_result = self.runner.invoke(self.cli.app, ["issue", "edit", "--help"])
         self.assertEqual(help_result.exit_code, 0, help_result.output)
-        self.assertNotIn("--assignee", Text.from_ansi(help_result.output).plain)
+        help_text = Text.from_ansi(help_result.output).plain
+        self.assertNotIn("--assignee", help_text)
+        self.assertNotIn("--label ", help_text)
+        self.assertNotIn("--component ", help_text)
+        self.assertNotIn("--fix-version ", help_text)
+        self.assertIn("--set-label", help_text)
+        self.assertIn("--set-component", help_text)
+        self.assertIn("--set-fix-version", help_text)
 
     def test_attachment_filename_must_match_before_delete(self):
         metadata = {"id": "123", "filename": "expected.txt"}
@@ -435,6 +442,55 @@ class JiraCliTest(unittest.TestCase):
         self.assertNotIn("components", fields)
         self.assertEqual(fields["description"], "Body")
         self.assertEqual(fields["priority"], {"name": "Medium"})
+
+    def test_clone_copies_required_fields_and_preflights_missing_values(self):
+        metadata = {
+            "summary": {"required": True, "name": "Summary"},
+            "customfield_10001": {"required": True, "name": "Epic Name"},
+            "customfield_10002": {
+                "required": True,
+                "hasDefaultValue": True,
+                "name": "Defaulted field",
+            },
+        }
+        fields = self.cli._clone_fields(
+            {
+                "project": {"key": "SATOS"},
+                "summary": "Source",
+                "issuetype": {"name": "Epic"},
+                "customfield_10001": "Stable name",
+            },
+            project="SATOS",
+            summary=None,
+            field_metadata=metadata,
+        )
+        self.assertEqual(fields["customfield_10001"], "Stable name")
+        self.assertNotIn("customfield_10002", fields)
+
+        with self.assertRaisesRegex(self.cli.typer.BadParameter, "Epic Name"):
+            self.cli._clone_fields(
+                {
+                    "project": {"key": "SATOS"},
+                    "summary": "Source",
+                    "issuetype": {"name": "Epic"},
+                },
+                project="SATOS",
+                summary=None,
+                field_metadata=metadata,
+            )
+
+        overridden = self.cli._clone_fields(
+            {
+                "project": {"key": "SATOS"},
+                "summary": "Source",
+                "issuetype": {"name": "Epic"},
+            },
+            project="SATOS",
+            summary=None,
+            field_metadata=metadata,
+            overrides={"customfield_10001": "Explicit name"},
+        )
+        self.assertEqual(overridden["customfield_10001"], "Explicit name")
 
     def test_issue_create_rejects_custom_field_collisions(self):
         for field in (
