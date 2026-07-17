@@ -80,6 +80,14 @@ class JiraConfigTest(unittest.TestCase):
         self.assertEqual(masked["token"], "abcd...mnop")
         self.assertNotIn("abcdefghijklmnop", str(masked))
 
+    def test_http_server_requires_explicit_dangerous_opt_in(self):
+        with self.assertRaisesRegex(ValueError, "dangerously_allow_http"):
+            JiraCliSettings(server="http://jira.example")
+        settings = JiraCliSettings(
+            server="http://jira.example", dangerously_allow_http=True
+        )
+        self.assertTrue(settings.dangerously_allow_http)
+
 
 if __name__ == "__main__":
     unittest.main()

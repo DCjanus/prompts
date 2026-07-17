@@ -5,9 +5,10 @@ from __future__ import annotations
 import base64
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx2
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class JiraApiError(RuntimeError):
@@ -34,6 +35,7 @@ class JiraConfig(BaseModel):
     auth_type: str = "auto"
     timeout_seconds: float = Field(default=30.0, gt=0)
     verify_ssl: bool = True
+    dangerously_allow_http: bool = False
 
     @field_validator("auth_type")
     @classmethod
@@ -42,6 +44,18 @@ class JiraConfig(BaseModel):
         if normalized not in {"auto", "bearer", "basic"}:
             raise ValueError("auth_type must be auto, bearer, or basic")
         return normalized
+
+    @model_validator(mode="after")
+    def validate_server_transport(self) -> JiraConfig:
+        scheme = urlsplit(self.server).scheme.lower()
+        if scheme not in {"http", "https"}:
+            raise ValueError("server must use http or https")
+        if scheme == "http" and not self.dangerously_allow_http:
+            raise ValueError(
+                "HTTP requires dangerously_allow_http=true because credentials "
+                "would be sent without transport encryption"
+            )
+        return self
 
 
 class JiraApiClient:
@@ -89,6 +103,18 @@ class JiraApiClient:
         except ValueError:
             return response.text
 
+    @staticmethod
+    def _segment(value: str, name: str) -> str:
+        if (
+            not value
+            or value in {".", ".."}
+            or "/" in value
+            or "\\" in value
+            or any(ord(character) < 32 or ord(character) == 127 for character in value)
+        ):
+            raise ValueError(f"{name} is not a valid URL path segment")
+        return value
+
     def request(
         self,
         method: str,
@@ -99,14 +125,19 @@ class JiraApiClient:
         files: Any | None = None,
         headers: dict[str, str] | None = None,
     ) -> Any:
-        response = self.client.request(
-            method,
-            path,
-            params=params,
-            json=json_data,
-            files=files,
-            headers=headers,
-        )
+        try:
+            response = self.client.request(
+                method,
+                path,
+                params=params,
+                json=json_data,
+                files=files,
+                headers=headers,
+            )
+        except httpx2.RequestError as exc:
+            raise JiraApiError(
+                f"{method.upper()} {path} request failed: {type(exc).__name__}"
+            ) from None
         payload = self._payload(response)
         if not response.is_success:
             raise JiraApiError(
@@ -143,12 +174,15 @@ class JiraApiClient:
         return self.request("GET", "rest/api/2/project")
 
     def get_project(self, project_key: str) -> dict[str, Any]:
+        project_key = self._segment(project_key, "project_key")
         return self.request("GET", f"rest/api/2/project/{project_key}")
 
     def list_versions(self, project_key: str) -> list[dict[str, Any]]:
+        project_key = self._segment(project_key, "project_key")
         return self.request("GET", f"rest/api/2/project/{project_key}/versions")
 
     def list_components(self, project_key: str) -> list[dict[str, Any]]:
+        project_key = self._segment(project_key, "project_key")
         return self.request("GET", f"rest/api/2/project/{project_key}/components")
 
     def list_fields(self) -> list[dict[str, Any]]:
@@ -197,6 +231,7 @@ class JiraApiClient:
         fields: list[str] | None = None,
         expand: list[str] | None = None,
     ) -> dict[str, Any]:
+        issue_key = self._segment(issue_key, "issue_key")
         params: dict[str, Any] = {}
         if fields:
             params["fields"] = ",".join(fields)
@@ -210,11 +245,13 @@ class JiraApiClient:
         return self.request("POST", "rest/api/2/issue", json_data={"fields": fields})
 
     def edit_issue(self, issue_key: str, fields: dict[str, Any]) -> None:
+        issue_key = self._segment(issue_key, "issue_key")
         self.request(
             "PUT", f"rest/api/2/issue/{issue_key}", json_data={"fields": fields}
         )
 
     def delete_issue(self, issue_key: str, *, delete_subtasks: bool = False) -> None:
+        issue_key = self._segment(issue_key, "issue_key")
         self.request(
             "DELETE",
             f"rest/api/2/issue/{issue_key}",
@@ -222,6 +259,7 @@ class JiraApiClient:
         )
 
     def list_transitions(self, issue_key: str) -> dict[str, Any]:
+        issue_key = self._segment(issue_key, "issue_key")
         return self.request(
             "GET",
             f"rest/api/2/issue/{issue_key}/transitions",
@@ -229,6 +267,7 @@ class JiraApiClient:
         )
 
     def transition_issue(self, issue_key: str, transition: str) -> dict[str, Any]:
+        issue_key = self._segment(issue_key, "issue_key")
         transitions = self.list_transitions(issue_key).get("transitions", [])
         matching = [
             item
@@ -255,6 +294,7 @@ class JiraApiClient:
     def list_comments(
         self, issue_key: str, *, start_at: int = 0, max_results: int = 100
     ) -> dict[str, Any]:
+        issue_key = self._segment(issue_key, "issue_key")
         return self.request(
             "GET",
             f"rest/api/2/issue/{issue_key}/comment",
@@ -262,6 +302,7 @@ class JiraApiClient:
         )
 
     def add_comment(self, issue_key: str, body: str) -> dict[str, Any]:
+        issue_key = self._segment(issue_key, "issue_key")
         return self.request(
             "POST",
             f"rest/api/2/issue/{issue_key}/comment",
@@ -271,6 +312,8 @@ class JiraApiClient:
     def edit_comment(
         self, issue_key: str, comment_id: str, body: str
     ) -> dict[str, Any]:
+        issue_key = self._segment(issue_key, "issue_key")
+        comment_id = self._segment(comment_id, "comment_id")
         return self.request(
             "PUT",
             f"rest/api/2/issue/{issue_key}/comment/{comment_id}",
@@ -278,6 +321,8 @@ class JiraApiClient:
         )
 
     def delete_comment(self, issue_key: str, comment_id: str) -> None:
+        issue_key = self._segment(issue_key, "issue_key")
+        comment_id = self._segment(comment_id, "comment_id")
         self.request("DELETE", f"rest/api/2/issue/{issue_key}/comment/{comment_id}")
 
     def list_attachments(self, issue_key: str) -> list[dict[str, Any]]:
@@ -285,6 +330,7 @@ class JiraApiClient:
         return issue.get("fields", {}).get("attachment", [])
 
     def add_attachment(self, issue_key: str, file_path: Path) -> Any:
+        issue_key = self._segment(issue_key, "issue_key")
         with file_path.open("rb") as file_handle:
             return self.request(
                 "POST",
@@ -294,6 +340,7 @@ class JiraApiClient:
             )
 
     def delete_attachment(self, attachment_id: str) -> None:
+        attachment_id = self._segment(attachment_id, "attachment_id")
         self.request("DELETE", f"rest/api/2/attachment/{attachment_id}")
 
     def list_link_types(self) -> dict[str, Any]:
@@ -317,12 +364,15 @@ class JiraApiClient:
         self.request("POST", "rest/api/2/issueLink", json_data=payload)
 
     def get_issue_link(self, link_id: str) -> dict[str, Any]:
+        link_id = self._segment(link_id, "link_id")
         return self.request("GET", f"rest/api/2/issueLink/{link_id}")
 
     def delete_issue_link(self, link_id: str) -> None:
+        link_id = self._segment(link_id, "link_id")
         self.request("DELETE", f"rest/api/2/issueLink/{link_id}")
 
     def list_remote_links(self, issue_key: str) -> list[dict[str, Any]]:
+        issue_key = self._segment(issue_key, "issue_key")
         return self.request("GET", f"rest/api/2/issue/{issue_key}/remotelink")
 
     def add_remote_link(
@@ -334,6 +384,7 @@ class JiraApiClient:
         global_id: str | None = None,
         summary: str | None = None,
     ) -> dict[str, Any]:
+        issue_key = self._segment(issue_key, "issue_key")
         object_value: dict[str, Any] = {"url": url, "title": title}
         if summary is not None:
             object_value["summary"] = summary
@@ -345,12 +396,16 @@ class JiraApiClient:
         )
 
     def delete_remote_link(self, issue_key: str, link_id: str) -> None:
+        issue_key = self._segment(issue_key, "issue_key")
+        link_id = self._segment(link_id, "link_id")
         self.request("DELETE", f"rest/api/2/issue/{issue_key}/remotelink/{link_id}")
 
     def get_watchers(self, issue_key: str) -> dict[str, Any]:
+        issue_key = self._segment(issue_key, "issue_key")
         return self.request("GET", f"rest/api/2/issue/{issue_key}/watchers")
 
     def add_watcher(self, issue_key: str, username: str) -> None:
+        issue_key = self._segment(issue_key, "issue_key")
         self.request(
             "POST",
             f"rest/api/2/issue/{issue_key}/watchers",
@@ -358,6 +413,7 @@ class JiraApiClient:
         )
 
     def remove_watcher(self, issue_key: str, username: str) -> None:
+        issue_key = self._segment(issue_key, "issue_key")
         self.request(
             "DELETE",
             f"rest/api/2/issue/{issue_key}/watchers",
@@ -365,15 +421,19 @@ class JiraApiClient:
         )
 
     def get_votes(self, issue_key: str) -> dict[str, Any]:
+        issue_key = self._segment(issue_key, "issue_key")
         return self.request("GET", f"rest/api/2/issue/{issue_key}/votes")
 
     def add_vote(self, issue_key: str) -> None:
+        issue_key = self._segment(issue_key, "issue_key")
         self.request("POST", f"rest/api/2/issue/{issue_key}/votes")
 
     def remove_vote(self, issue_key: str) -> None:
+        issue_key = self._segment(issue_key, "issue_key")
         self.request("DELETE", f"rest/api/2/issue/{issue_key}/votes")
 
     def list_worklogs(self, issue_key: str) -> dict[str, Any]:
+        issue_key = self._segment(issue_key, "issue_key")
         return self.request("GET", f"rest/api/2/issue/{issue_key}/worklog")
 
     def add_worklog(
@@ -384,6 +444,7 @@ class JiraApiClient:
         comment: str | None = None,
         started: str | None = None,
     ) -> dict[str, Any]:
+        issue_key = self._segment(issue_key, "issue_key")
         payload: dict[str, Any] = {"timeSpent": time_spent}
         if comment is not None:
             payload["comment"] = comment
@@ -402,6 +463,8 @@ class JiraApiClient:
         comment: str | None = None,
         started: str | None = None,
     ) -> dict[str, Any]:
+        issue_key = self._segment(issue_key, "issue_key")
+        worklog_id = self._segment(worklog_id, "worklog_id")
         payload: dict[str, Any] = {"timeSpent": time_spent}
         if comment is not None:
             payload["comment"] = comment
@@ -414,6 +477,8 @@ class JiraApiClient:
         )
 
     def delete_worklog(self, issue_key: str, worklog_id: str) -> None:
+        issue_key = self._segment(issue_key, "issue_key")
+        worklog_id = self._segment(worklog_id, "worklog_id")
         self.request("DELETE", f"rest/api/2/issue/{issue_key}/worklog/{worklog_id}")
 
     def list_boards(
@@ -436,6 +501,7 @@ class JiraApiClient:
         start_at: int = 0,
         max_results: int = 50,
     ) -> dict[str, Any]:
+        board_id = self._segment(board_id, "board_id")
         params: dict[str, Any] = {"startAt": start_at, "maxResults": max_results}
         if state:
             params["state"] = state

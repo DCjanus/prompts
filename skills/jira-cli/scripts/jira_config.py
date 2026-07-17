@@ -8,9 +8,10 @@ import tempfile
 import tomllib
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import tomli_w
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 DEFAULT_CONFIG_PATH = Path("~/.config/jira-cli/config.toml").expanduser()
 DEFAULT_SMC_CONFIG_PATH = Path("~/.agents/jira_config.json").expanduser()
@@ -25,6 +26,7 @@ class JiraCliSettings(BaseModel):
     auth_type: str = "auto"
     timeout_seconds: float = Field(default=30.0, gt=0)
     verify_ssl: bool = True
+    dangerously_allow_http: bool = False
     default_project: str | None = None
     default_board: str | None = None
     epic_name_field: str | None = None
@@ -38,6 +40,18 @@ class JiraCliSettings(BaseModel):
         if normalized not in {"auto", "bearer", "basic"}:
             raise ValueError("auth_type must be auto, bearer, or basic")
         return normalized
+
+    @model_validator(mode="after")
+    def validate_server_transport(self) -> JiraCliSettings:
+        scheme = urlsplit(self.server).scheme.lower()
+        if scheme not in {"http", "https"}:
+            raise ValueError("server must use http or https")
+        if scheme == "http" and not self.dangerously_allow_http:
+            raise ValueError(
+                "HTTP requires dangerously_allow_http=true because credentials "
+                "would be sent without transport encryption"
+            )
+        return self
 
 
 def load_settings(path: Path = DEFAULT_CONFIG_PATH) -> JiraCliSettings:

@@ -106,6 +106,40 @@ class JiraApiClientTest(unittest.TestCase):
 
         self.make_client(handler).delete_issue("SATOS-1")
 
+    def test_destructive_path_segments_are_rejected_before_request(self):
+        requests: list[httpx2.Request] = []
+
+        def handler(request: httpx2.Request) -> httpx2.Response:
+            requests.append(request)
+            return httpx2.Response(204)
+
+        client = self.make_client(handler)
+        for attachment_id in ("../issue/SATOS-1", "1/../../issue/SATOS-1", "1\\x"):
+            with (
+                self.subTest(attachment_id=attachment_id),
+                self.assertRaises(ValueError),
+            ):
+                client.delete_attachment(attachment_id)
+        self.assertEqual(requests, [])
+
+    def test_http_server_requires_explicit_dangerous_opt_in(self):
+        with self.assertRaisesRegex(ValueError, "dangerously_allow_http"):
+            JiraConfig(server="http://jira.example", token="secret")
+        config = JiraConfig(
+            server="http://jira.example",
+            token="secret",
+            dangerously_allow_http=True,
+        )
+        self.assertTrue(config.dangerously_allow_http)
+
+    def test_transport_errors_are_converted_to_jira_api_errors(self):
+        def handler(request: httpx2.Request) -> httpx2.Response:
+            raise httpx2.ConnectError("connection refused", request=request)
+
+        with self.assertRaisesRegex(JiraApiError, "request failed") as raised:
+            self.make_client(handler).server_info()
+        self.assertIsNone(raised.exception.status_code)
+
     def test_attachment_uses_x_atlassian_token_header(self):
         def handler(request: httpx2.Request) -> httpx2.Response:
             self.assertEqual(request.headers["X-Atlassian-Token"], "no-check")

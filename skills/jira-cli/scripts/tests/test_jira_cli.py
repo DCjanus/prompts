@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -90,6 +91,52 @@ class JiraCliTest(unittest.TestCase):
         self.assertEqual(result.exit_code, 0, result.output)
         self.assertNotIn("temporary-environment-token", contents)
 
+    def test_token_is_read_interactively_instead_of_from_argv(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "config.toml"
+            help_result = self.runner.invoke(self.cli.app, ["config", "set", "--help"])
+            result = self.runner.invoke(
+                self.cli.app,
+                ["--config", str(target), "config", "set", "--prompt-token"],
+                input="top-secret-token\ntop-secret-token\n",
+            )
+            contents = target.read_text(encoding="utf-8")
+
+        self.assertEqual(help_result.exit_code, 0, help_result.output)
+        self.assertNotIn("--token ", Text.from_ansi(help_result.output).plain)
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertNotIn("top-secret-token", result.output)
+        self.assertIn("top-secret-token", contents)
+
+    def test_json_mode_serializes_usage_and_network_errors(self):
+        script = Path(self.cli.__file__)
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / "config.toml"
+            config.write_text(
+                'server = "https://127.0.0.1:1"\n'
+                'token = "secret"\n'
+                "timeout_seconds = 0.1\n",
+                encoding="utf-8",
+            )
+            cases = (
+                ["--config", str(config), "--json", "issue", "delete", "SATOS-1"],
+                ["--config", str(config), "--json", "server-info"],
+            )
+            for args in cases:
+                with self.subTest(args=args):
+                    result = subprocess.run(
+                        [sys.executable, str(script), *args],
+                        capture_output=True,
+                        text=True,
+                        timeout=10,
+                        env={**os.environ, "NO_PROXY": "127.0.0.1"},
+                        check=False,
+                    )
+                    payload = json.loads(result.stderr)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn("error", payload)
+                    self.assertNotIn("Traceback", result.stderr)
+
     def test_parse_pairs_accepts_json_and_plain_text(self):
         parsed = self.cli._parse_pairs(['labels=["one","two"]', "customfield_1=plain"])
         self.assertEqual(parsed["labels"], ["one", "two"])
@@ -126,6 +173,27 @@ class JiraCliTest(unittest.TestCase):
                 result = self.runner.invoke(self.cli.app, args)
                 self.assertNotEqual(result.exit_code, 0)
                 self.assertIn("--yes", Text.from_ansi(result.output).plain)
+
+    def test_epic_membership_preflights_all_targets_before_writing(self):
+        class FakeClient:
+            def __init__(self):
+                self.edits: list[str] = []
+
+            def get_issue(self, key, *, fields):
+                if key == "BAD-1":
+                    raise self_cli.JiraApiError("not found", status_code=404)
+                return {"key": key}
+
+            def edit_issue(self, key, fields):
+                self.edits.append(key)
+
+        self_cli = self.cli
+        client = FakeClient()
+        with self.assertRaises(self.cli.JiraApiError):
+            self.cli._update_epic_membership(
+                client, ["SATOS-1", "BAD-1"], "customfield_1", "SATOS-100"
+            )
+        self.assertEqual(client.edits, [])
 
 
 if __name__ == "__main__":

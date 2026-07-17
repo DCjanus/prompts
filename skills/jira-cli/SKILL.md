@@ -23,7 +23,7 @@ cd skills/jira-cli
 
 ```bash
 ./scripts/jira_cli.py config set --default-project SATOS
-./scripts/jira_cli.py config set --server https://jira.example --token '...'
+./scripts/jira_cli.py config set --server https://jira.example --prompt-token
 ```
 
 环境变量和全局选项可以临时覆盖配置，但不会反写 TOML：
@@ -34,8 +34,12 @@ cd skills/jira-cli
 - `JIRA_AUTH_TYPE`
 - `JIRA_TIMEOUT`
 - `JIRA_VERIFY_SSL`
+- `JIRA_DANGEROUSLY_ALLOW_HTTP`
 
-默认校验 TLS。只有用户明确要求时才使用 `--dangerously-disable-tls-verification`。
+默认只允许 HTTPS 并校验 TLS。只有用户明确要求时才使用
+`--dangerously-allow-http` 或 `--dangerously-disable-tls-verification`；前者会让凭据明文传输。
+临时 token 只通过 `JIRA_API_TOKEN` 传入，不接受可能进入 shell history 和进程参数的
+`--token`。
 
 ## 调用约定
 

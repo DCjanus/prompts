@@ -106,6 +106,7 @@ class State:
                     auth_type=self.settings.auth_type,
                     timeout_seconds=self.settings.timeout_seconds,
                     verify_ssl=self.settings.verify_ssl,
+                    dangerously_allow_http=self.settings.dangerously_allow_http,
                 )
             )
         return self._client
@@ -133,9 +134,6 @@ def configure(
     server: Annotated[
         str | None, typer.Option(help="Temporary Jira server override.")
     ] = None,
-    token: Annotated[
-        str | None, typer.Option(help="Temporary Jira token override.", hide_input=True)
-    ] = None,
     username: Annotated[
         str | None, typer.Option(help="Temporary Basic Auth username override.")
     ] = None,
@@ -158,6 +156,13 @@ def configure(
             help="Temporarily disable TLS verification. This is unsafe.",
         ),
     ] = False,
+    dangerously_allow_http: Annotated[
+        bool,
+        typer.Option(
+            "--dangerously-allow-http",
+            help="Allow an HTTP Jira server. Credentials will be sent in cleartext.",
+        ),
+    ] = False,
 ) -> None:
     """Load persistent settings, then apply environment and CLI overrides."""
     global _json_errors
@@ -169,16 +174,17 @@ def configure(
             "server": _first(
                 server, os.getenv("JIRA_SERVER"), os.getenv("JIRA_BASE_URL")
             ),
-            "token": _first(
-                token, os.getenv("JIRA_API_TOKEN"), os.getenv("JIRA_TOKEN")
-            ),
+            "token": _first(os.getenv("JIRA_API_TOKEN"), os.getenv("JIRA_TOKEN")),
             "username": _first(username, os.getenv("JIRA_USERNAME")),
             "auth_type": _first(auth_type, os.getenv("JIRA_AUTH_TYPE")),
             "timeout_seconds": _first(timeout, os.getenv("JIRA_TIMEOUT")),
             "verify_ssl": _env_bool("JIRA_VERIFY_SSL"),
+            "dangerously_allow_http": _env_bool("JIRA_DANGEROUSLY_ALLOW_HTTP"),
         }
         if dangerously_disable_tls_verification:
             updates["verify_ssl"] = False
+        if dangerously_allow_http:
+            updates["dangerously_allow_http"] = True
         settings = persisted_settings.model_copy(
             update={key: value for key, value in updates.items() if value is not None}
         )
@@ -356,7 +362,13 @@ def config_import_smc(
 def config_set(
     ctx: typer.Context,
     server: Annotated[str | None, typer.Option()] = None,
-    token: Annotated[str | None, typer.Option(hide_input=True)] = None,
+    prompt_token: Annotated[
+        bool,
+        typer.Option(
+            "--prompt-token",
+            help="Read and confirm the Jira token through a hidden prompt.",
+        ),
+    ] = False,
     username: Annotated[str | None, typer.Option()] = None,
     auth_type: Annotated[str | None, typer.Option()] = None,
     timeout_seconds: Annotated[float | None, typer.Option(min=0.1)] = None,
@@ -368,6 +380,13 @@ def config_set(
         typer.Option(
             "--dangerously-disable-tls-verification",
             help="Persistently disable TLS verification. This is unsafe.",
+        ),
+    ] = False,
+    dangerously_allow_http: Annotated[
+        bool,
+        typer.Option(
+            "--dangerously-allow-http",
+            help="Persistently allow HTTP. Credentials will be sent in cleartext.",
         ),
     ] = False,
     default_project: Annotated[str | None, typer.Option()] = None,
@@ -385,6 +404,11 @@ def config_set(
     verify_ssl_update = (
         True if verify_ssl else False if dangerously_disable_tls_verification else None
     )
+    token = (
+        typer.prompt("Jira token", hide_input=True, confirmation_prompt=True)
+        if prompt_token
+        else None
+    )
     updates = {
         "server": server,
         "token": token,
@@ -392,6 +416,7 @@ def config_set(
         "auth_type": auth_type,
         "timeout_seconds": timeout_seconds,
         "verify_ssl": verify_ssl_update,
+        "dangerously_allow_http": True if dangerously_allow_http else None,
         "default_project": default_project,
         "default_board": default_board,
         "epic_name_field": epic_name_field,
@@ -739,6 +764,34 @@ def epic_list(
     )
 
 
+def _update_epic_membership(
+    client: JiraApiClient,
+    issue_keys: list[str],
+    field: str,
+    value: str | None,
+) -> list[str]:
+    for key in issue_keys:
+        client.get_issue(key, fields=[field])
+
+    completed: list[str] = []
+    for index, key in enumerate(issue_keys):
+        try:
+            client.edit_issue(key, {field: value})
+        except JiraApiError as exc:
+            raise JiraApiError(
+                "Epic membership update partially failed",
+                status_code=exc.status_code,
+                payload={
+                    "completed": completed,
+                    "failed": key,
+                    "remaining": issue_keys[index + 1 :],
+                    "jira": exc.payload,
+                },
+            ) from None
+        completed.append(key)
+    return completed
+
+
 @epic_app.command("add")
 def epic_add(ctx: typer.Context, epic_key: str, issue_key: list[str]) -> None:
     """Assign one or more issues to an Epic."""
@@ -746,10 +799,10 @@ def epic_add(ctx: typer.Context, epic_key: str, issue_key: list[str]) -> None:
     field = state.settings.epic_link_field
     if not field:
         raise typer.BadParameter("Configure epic_link_field before editing membership")
-    for key in issue_key:
-        state.client().get_issue(key, fields=[field])
-        state.client().edit_issue(key, {field: epic_key})
-    _print_result(ctx, {"epic": epic_key, "added": issue_key})
+    client = state.client()
+    client.get_issue(epic_key, fields=["issuetype"])
+    added = _update_epic_membership(client, issue_key, field, epic_key)
+    _print_result(ctx, {"epic": epic_key, "added": added})
 
 
 @epic_app.command("remove")
@@ -759,10 +812,8 @@ def epic_remove(ctx: typer.Context, issue_key: list[str]) -> None:
     field = state.settings.epic_link_field
     if not field:
         raise typer.BadParameter("Configure epic_link_field before editing membership")
-    for key in issue_key:
-        state.client().get_issue(key, fields=[field])
-        state.client().edit_issue(key, {field: None})
-    _print_result(ctx, {"removed": issue_key})
+    removed = _update_epic_membership(state.client(), issue_key, field, None)
+    _print_result(ctx, {"removed": removed})
 
 
 @comment_app.command("list")
@@ -1110,8 +1161,10 @@ def api_get(
 
 
 def main() -> None:
+    global _json_errors
+    _json_errors = "--json" in sys.argv[1:]
     try:
-        app()
+        app(standalone_mode=False)
     except JiraApiError as exc:
         payload = {
             "error": str(exc),
@@ -1131,6 +1184,12 @@ def main() -> None:
         else:
             err_console.print(f"[bold red]Error:[/] {exc}")
         raise SystemExit(2) from None
+    except typer.core._click.ClickException as exc:
+        if _json_errors:
+            _print_json({"error": exc.format_message()}, error=True)
+        else:
+            exc.show()
+        raise SystemExit(exc.exit_code) from None
 
 
 if __name__ == "__main__":
