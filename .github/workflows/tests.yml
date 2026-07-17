@@ -41,5 +41,14 @@ jobs:
           --with typer
           --with zstandard
           python -m unittest scripts/tests/test_install_codex_cli.py
+      - name: Run Jira CLI tests
+        run: >
+          uv run
+          --with httpx2
+          --with pydantic
+          --with rich
+          --with tomli-w
+          --with typer
+          python -m unittest discover -s skills/jira-cli/scripts/tests
       - name: Run upstream skill checker tests
         run: uv run --python 3.11 python -m unittest scripts/tests/test_upstream_skills.py
