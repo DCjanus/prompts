@@ -401,6 +401,8 @@ def config_set(
         raise typer.BadParameter(
             "Choose either --verify-ssl or --dangerously-disable-tls-verification"
         )
+    if prompt_token and state.json_output:
+        raise typer.BadParameter("--prompt-token cannot be used with --json")
     verify_ssl_update = (
         True if verify_ssl else False if dangerously_disable_tls_verification else None
     )
@@ -709,9 +711,18 @@ def issue_transitions(ctx: typer.Context, issue_key: str) -> None:
 
 
 @issue_app.command("move")
-def issue_move(ctx: typer.Context, issue_key: str, transition: str) -> None:
+def issue_move(
+    ctx: typer.Context,
+    issue_key: str,
+    transition: str,
+    field: Annotated[list[str] | None, typer.Option("--field")] = None,
+) -> None:
     """Move an issue by exact transition name or ID."""
-    selected = _state(ctx).client().transition_issue(issue_key, transition)
+    selected = (
+        _state(ctx)
+        .client()
+        .transition_issue(issue_key, transition, fields=_parse_pairs(field))
+    )
     _print_result(ctx, {"key": issue_key, "transition": selected})
 
 
@@ -967,7 +978,6 @@ def remote_link_add(
     issue_key: str,
     url: Annotated[str, typer.Option()],
     title: Annotated[str, typer.Option()],
-    global_id: Annotated[str | None, typer.Option()] = None,
     summary: Annotated[str | None, typer.Option()] = None,
 ) -> None:
     """Add an external link to an issue."""
@@ -976,6 +986,29 @@ def remote_link_add(
         _state(ctx)
         .client()
         .add_remote_link(
+            issue_key,
+            url=url,
+            title=title,
+            summary=summary,
+        ),
+    )
+
+
+@remote_link_app.command("upsert")
+def remote_link_upsert(
+    ctx: typer.Context,
+    issue_key: str,
+    url: Annotated[str, typer.Option()],
+    title: Annotated[str, typer.Option()],
+    global_id: Annotated[str, typer.Option()],
+    summary: Annotated[str | None, typer.Option()] = None,
+) -> None:
+    """Create or update an external link identified by globalId."""
+    _print_result(
+        ctx,
+        _state(ctx)
+        .client()
+        .upsert_remote_link(
             issue_key,
             url=url,
             title=title,
@@ -1184,6 +1217,18 @@ def main() -> None:
         else:
             err_console.print(f"[bold red]Error:[/] {exc}")
         raise SystemExit(2) from None
+    except OSError as exc:
+        if _json_errors:
+            _print_json({"error": str(exc)}, error=True)
+        else:
+            err_console.print(f"[bold red]I/O error:[/] {exc}")
+        raise SystemExit(2) from None
+    except typer.Abort:
+        if _json_errors:
+            _print_json({"error": "Aborted"}, error=True)
+        else:
+            err_console.print("[bold red]Aborted[/]")
+        raise SystemExit(1) from None
     except typer.core._click.ClickException as exc:
         if _json_errors:
             _print_json({"error": exc.format_message()}, error=True)

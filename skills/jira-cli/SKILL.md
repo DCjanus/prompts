@@ -75,7 +75,8 @@ cd skills/jira-cli
 
 ```bash
 ./scripts/jira_cli.py issue transitions SATOS-261728
-./scripts/jira_cli.py issue move SATOS-261728 'Mark as Done'
+./scripts/jira_cli.py issue move SATOS-261728 'Mark as Done' \
+  --field 'resolution={"name":"Done"}'
 ```
 
 未封装的查询可使用只读逃生口；路径必须以 `rest/` 开头，不支持任意写请求：
@@ -137,6 +138,8 @@ Issue link 和外部链接分别使用 `link`、`remote-link`：
 ./scripts/jira_cli.py link types
 ./scripts/jira_cli.py link add SATOS-1 SATOS-2 --type Relates
 ./scripts/jira_cli.py remote-link add SATOS-1 --title 'MR !38' --url https://git.example/mr/38
+./scripts/jira_cli.py remote-link upsert SATOS-1 --global-id mr-38 \
+  --title 'MR !38' --url https://git.example/mr/38
 ```
 
 ## 附件、Watcher、Vote 与 Worklog

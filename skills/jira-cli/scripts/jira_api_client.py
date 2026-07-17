@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import re
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -105,13 +106,7 @@ class JiraApiClient:
 
     @staticmethod
     def _segment(value: str, name: str) -> str:
-        if (
-            not value
-            or value in {".", ".."}
-            or "/" in value
-            or "\\" in value
-            or any(ord(character) < 32 or ord(character) == 127 for character in value)
-        ):
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", value):
             raise ValueError(f"{name} is not a valid URL path segment")
         return value
 
@@ -266,7 +261,13 @@ class JiraApiClient:
             params={"expand": "transitions.fields"},
         )
 
-    def transition_issue(self, issue_key: str, transition: str) -> dict[str, Any]:
+    def transition_issue(
+        self,
+        issue_key: str,
+        transition: str,
+        *,
+        fields: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         issue_key = self._segment(issue_key, "issue_key")
         transitions = self.list_transitions(issue_key).get("transitions", [])
         matching = [
@@ -284,10 +285,24 @@ class JiraApiClient:
                 f"Transition {transition!r} {reason}. Available: {available or 'none'}"
             )
         selected = matching[0]
+        provided_fields = fields or {}
+        required_fields = {
+            key
+            for key, metadata in (selected.get("fields") or {}).items()
+            if metadata.get("required")
+        }
+        missing_fields = sorted(required_fields - provided_fields.keys())
+        if missing_fields:
+            raise JiraApiError(
+                "Transition requires fields: " + ", ".join(missing_fields)
+            )
+        payload: dict[str, Any] = {"transition": {"id": str(selected["id"])}}
+        if provided_fields:
+            payload["fields"] = provided_fields
         self.request(
             "POST",
             f"rest/api/2/issue/{issue_key}/transitions",
-            json_data={"transition": {"id": str(selected["id"])}},
+            json_data=payload,
         )
         return selected
 
@@ -375,7 +390,7 @@ class JiraApiClient:
         issue_key = self._segment(issue_key, "issue_key")
         return self.request("GET", f"rest/api/2/issue/{issue_key}/remotelink")
 
-    def add_remote_link(
+    def _write_remote_link(
         self,
         issue_key: str,
         *,
@@ -393,6 +408,33 @@ class JiraApiClient:
             payload["globalId"] = global_id
         return self.request(
             "POST", f"rest/api/2/issue/{issue_key}/remotelink", json_data=payload
+        )
+
+    def add_remote_link(
+        self,
+        issue_key: str,
+        *,
+        url: str,
+        title: str,
+        summary: str | None = None,
+    ) -> dict[str, Any]:
+        return self._write_remote_link(issue_key, url=url, title=title, summary=summary)
+
+    def upsert_remote_link(
+        self,
+        issue_key: str,
+        *,
+        url: str,
+        title: str,
+        global_id: str,
+        summary: str | None = None,
+    ) -> dict[str, Any]:
+        return self._write_remote_link(
+            issue_key,
+            url=url,
+            title=title,
+            global_id=global_id,
+            summary=summary,
         )
 
     def delete_remote_link(self, issue_key: str, link_id: str) -> None:

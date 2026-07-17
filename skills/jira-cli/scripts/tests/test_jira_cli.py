@@ -108,6 +108,28 @@ class JiraCliTest(unittest.TestCase):
         self.assertNotIn("top-secret-token", result.output)
         self.assertIn("top-secret-token", contents)
 
+    def test_cancelled_token_prompt_has_no_traceback(self):
+        script = Path(self.cli.__file__)
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(script),
+                "--config",
+                "/dev/null",
+                "config",
+                "set",
+                "--prompt-token",
+            ],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Aborted", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+
     def test_json_mode_serializes_usage_and_network_errors(self):
         script = Path(self.cli.__file__)
         with tempfile.TemporaryDirectory() as directory:
@@ -121,6 +143,23 @@ class JiraCliTest(unittest.TestCase):
             cases = (
                 ["--config", str(config), "--json", "issue", "delete", "SATOS-1"],
                 ["--config", str(config), "--json", "server-info"],
+                [
+                    "--config",
+                    "/dev/null/jira.toml",
+                    "--json",
+                    "config",
+                    "set",
+                    "--default-project",
+                    "SATOS",
+                ],
+                [
+                    "--config",
+                    str(config),
+                    "--json",
+                    "config",
+                    "set",
+                    "--prompt-token",
+                ],
             )
             for args in cases:
                 with self.subTest(args=args):
@@ -136,6 +175,18 @@ class JiraCliTest(unittest.TestCase):
                     self.assertNotEqual(result.returncode, 0)
                     self.assertIn("error", payload)
                     self.assertNotIn("Traceback", result.stderr)
+
+    def test_transition_fields_and_remote_link_upsert_are_explicit(self):
+        move_help = self.runner.invoke(self.cli.app, ["issue", "move", "--help"])
+        add_help = self.runner.invoke(self.cli.app, ["remote-link", "add", "--help"])
+        upsert_help = self.runner.invoke(
+            self.cli.app, ["remote-link", "upsert", "--help"]
+        )
+        self.assertEqual(move_help.exit_code, 0, move_help.output)
+        self.assertIn("--field", Text.from_ansi(move_help.output).plain)
+        self.assertNotIn("--global-id", Text.from_ansi(add_help.output).plain)
+        self.assertEqual(upsert_help.exit_code, 0, upsert_help.output)
+        self.assertIn("--global-id", Text.from_ansi(upsert_help.output).plain)
 
     def test_parse_pairs_accepts_json_and_plain_text(self):
         parsed = self.cli._parse_pairs(['labels=["one","two"]', "customfield_1=plain"])
@@ -194,6 +245,33 @@ class JiraCliTest(unittest.TestCase):
                 client, ["SATOS-1", "BAD-1"], "customfield_1", "SATOS-100"
             )
         self.assertEqual(client.edits, [])
+
+    def test_epic_membership_reports_partial_write_progress(self):
+        class FakeClient:
+            def get_issue(self, key, *, fields):
+                return {"key": key}
+
+            def edit_issue(self, key, fields):
+                if key == "SATOS-2":
+                    raise self_cli.JiraApiError("write failed", status_code=500)
+
+        self_cli = self.cli
+        with self.assertRaises(self.cli.JiraApiError) as raised:
+            self.cli._update_epic_membership(
+                FakeClient(),
+                ["SATOS-1", "SATOS-2", "SATOS-3"],
+                "customfield_1",
+                "SATOS-100",
+            )
+        self.assertEqual(
+            raised.exception.payload,
+            {
+                "completed": ["SATOS-1"],
+                "failed": "SATOS-2",
+                "remaining": ["SATOS-3"],
+                "jira": None,
+            },
+        )
 
 
 if __name__ == "__main__":

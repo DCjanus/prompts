@@ -89,6 +89,42 @@ class JiraApiClientTest(unittest.TestCase):
         self.assertEqual(selected["id"], "31")
         self.assertEqual([item.method for item in requests], ["GET", "POST"])
 
+    def test_transition_accepts_fields_and_rejects_missing_required_values(self):
+        requests: list[httpx2.Request] = []
+
+        def handler(request: httpx2.Request) -> httpx2.Response:
+            requests.append(request)
+            if request.method == "GET":
+                return httpx2.Response(
+                    200,
+                    json={
+                        "transitions": [
+                            {
+                                "id": "31",
+                                "name": "Resolve",
+                                "fields": {"resolution": {"required": True}},
+                            }
+                        ]
+                    },
+                )
+            self.assertEqual(
+                json.loads(request.content),
+                {
+                    "transition": {"id": "31"},
+                    "fields": {"resolution": {"name": "Done"}},
+                },
+            )
+            return httpx2.Response(204)
+
+        client = self.make_client(handler)
+        with self.assertRaisesRegex(JiraApiError, "resolution"):
+            client.transition_issue("SATOS-1", "Resolve")
+        selected = client.transition_issue(
+            "SATOS-1", "Resolve", fields={"resolution": {"name": "Done"}}
+        )
+        self.assertEqual(selected["id"], "31")
+        self.assertEqual([item.method for item in requests], ["GET", "GET", "POST"])
+
     def test_unknown_transition_lists_available_values(self):
         def handler(request: httpx2.Request) -> httpx2.Response:
             return httpx2.Response(
@@ -114,7 +150,14 @@ class JiraApiClientTest(unittest.TestCase):
             return httpx2.Response(204)
 
         client = self.make_client(handler)
-        for attachment_id in ("../issue/SATOS-1", "1/../../issue/SATOS-1", "1\\x"):
+        for attachment_id in (
+            "../issue/SATOS-1",
+            "1/../../issue/SATOS-1",
+            "1\\x",
+            "123#ignored",
+            "123?other=456",
+            "%2e%2e%2fissue%2fSATOS-1",
+        ):
             with (
                 self.subTest(attachment_id=attachment_id),
                 self.assertRaises(ValueError),
