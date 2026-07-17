@@ -195,6 +195,20 @@ class JiraApiClientTest(unittest.TestCase):
         )
         self.assertTrue(config.dangerously_allow_http)
 
+    def test_server_url_rejects_missing_host_credentials_query_and_fragment(self):
+        for server in (
+            "https://",
+            "https://user:password@jira.example",
+            "https://jira.example/path?x=1",
+            "https://jira.example/path#fragment",
+        ):
+            with self.subTest(server=server), self.assertRaises(ValueError):
+                JiraConfig(server=server, token="secret")
+        self.assertEqual(
+            JiraConfig(server="https://jira.example/jira", token="secret").server,
+            "https://jira.example/jira",
+        )
+
     def test_transport_errors_are_converted_to_jira_api_errors(self):
         def handler(request: httpx2.Request) -> httpx2.Response:
             raise httpx2.ConnectError("connection refused", request=request)

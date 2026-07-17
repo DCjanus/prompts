@@ -211,7 +211,10 @@ def _state(ctx: typer.Context) -> State:
 
 def _print_json(value: Any, *, error: bool = False) -> None:
     target = err_console if error else console
-    target.print_json(json.dumps(value, ensure_ascii=False, default=str))
+    target.file.write(
+        json.dumps(value, ensure_ascii=False, default=str, indent=2) + "\n"
+    )
+    target.file.flush()
 
 
 def _print_result(ctx: typer.Context, value: Any) -> None:

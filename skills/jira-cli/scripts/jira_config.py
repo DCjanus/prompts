@@ -43,9 +43,16 @@ class JiraCliSettings(BaseModel):
 
     @model_validator(mode="after")
     def validate_server_transport(self) -> JiraCliSettings:
-        scheme = urlsplit(self.server).scheme.lower()
+        parsed = urlsplit(self.server)
+        scheme = parsed.scheme.lower()
         if scheme not in {"http", "https"}:
             raise ValueError("server must use http or https")
+        if not parsed.hostname:
+            raise ValueError("server must include a hostname")
+        if parsed.username is not None or parsed.password is not None:
+            raise ValueError("server must not include userinfo")
+        if parsed.query or parsed.fragment:
+            raise ValueError("server must not include a query or fragment")
         if scheme == "http" and not self.dangerously_allow_http:
             raise ValueError(
                 "HTTP requires dangerously_allow_http=true because credentials "

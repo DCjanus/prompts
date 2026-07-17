@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 import os
 import subprocess
@@ -9,6 +10,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from rich.console import Console
 from rich.text import Text
 from typer.testing import CliRunner
 
@@ -359,6 +361,27 @@ class JiraCliTest(unittest.TestCase):
         parsed = self.cli._parse_pairs(['labels=["one","two"]', "customfield_1=plain"])
         self.assertEqual(parsed["labels"], ["one", "two"])
         self.assertEqual(parsed["customfield_1"], "plain")
+
+    def test_json_output_never_contains_terminal_ansi_sequences(self):
+        output = io.StringIO()
+        errors = io.StringIO()
+        original_console = self.cli.console
+        original_err_console = self.cli.err_console
+        self.cli.console = Console(
+            file=output, force_terminal=True, color_system="truecolor"
+        )
+        self.cli.err_console = Console(
+            file=errors, force_terminal=True, color_system="truecolor"
+        )
+        try:
+            self.cli._print_json({"ok": True})
+            self.cli._print_json({"error": "failed"}, error=True)
+        finally:
+            self.cli.console = original_console
+            self.cli.err_console = original_err_console
+        self.assertEqual(json.loads(output.getvalue()), {"ok": True})
+        self.assertEqual(json.loads(errors.getvalue()), {"error": "failed"})
+        self.assertNotIn("\x1b", output.getvalue() + errors.getvalue())
 
     def test_clone_omits_empty_optional_fields_rejected_by_create_screen(self):
         fields = self.cli._clone_fields(

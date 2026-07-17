@@ -94,6 +94,20 @@ class JiraConfigTest(unittest.TestCase):
         )
         self.assertTrue(settings.dangerously_allow_http)
 
+    def test_server_url_rejects_missing_host_credentials_query_and_fragment(self):
+        for server in (
+            "https://",
+            "https://user:password@jira.example",
+            "https://jira.example/path?x=1",
+            "https://jira.example/path#fragment",
+        ):
+            with self.subTest(server=server), self.assertRaises(ValueError):
+                JiraCliSettings(server=server)
+        self.assertEqual(
+            JiraCliSettings(server="https://jira.example/jira").server,
+            "https://jira.example/jira",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
