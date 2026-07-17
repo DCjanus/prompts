@@ -319,6 +319,27 @@ class JiraCliTest(unittest.TestCase):
             json.loads(restored.output)["dangerously_disable_tls_verification"]
         )
 
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "config.toml"
+            enabled = self.runner.invoke(
+                self.cli.app,
+                [
+                    "--config",
+                    str(target),
+                    "config",
+                    "set",
+                    "--dangerously-allow-http",
+                ],
+            )
+            restored = self.runner.invoke(
+                self.cli.app,
+                ["--config", str(target), "config", "set", "--require-https"],
+            )
+            settings = self.cli.load_settings(target)
+        self.assertEqual(enabled.exit_code, 0, enabled.output)
+        self.assertEqual(restored.exit_code, 0, restored.output)
+        self.assertFalse(settings.dangerously_allow_http)
+
     def test_transition_fields_and_remote_link_upsert_are_explicit(self):
         move_help = self.runner.invoke(self.cli.app, ["issue", "move", "--help"])
         add_help = self.runner.invoke(self.cli.app, ["remote-link", "add", "--help"])
@@ -402,6 +423,17 @@ class JiraCliTest(unittest.TestCase):
                 summary=None,
                 allowed_fields={"summary", "parent"},
             )
+
+    def test_clone_defaults_to_source_project_not_config_default(self):
+        source_fields = {"project": {"key": "SOURCE"}}
+        self.assertEqual(
+            self.cli._clone_target_project(source_fields, explicit_project=None),
+            "SOURCE",
+        )
+        self.assertEqual(
+            self.cli._clone_target_project(source_fields, explicit_project="OTHER"),
+            "OTHER",
+        )
 
     def test_comment_and_issue_deletion_require_yes(self):
         for args in (

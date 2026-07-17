@@ -352,6 +352,17 @@ def _clone_fields(
     return fields
 
 
+def _clone_target_project(
+    source_fields: dict[str, Any], explicit_project: str | None
+) -> str:
+    if explicit_project:
+        return explicit_project
+    source_project = (source_fields.get("project") or {}).get("key")
+    if not source_project:
+        raise typer.BadParameter("Source issue does not include a project key")
+    return source_project
+
+
 def _create_field_ids(metadata: dict[str, Any]) -> set[str]:
     return {
         field_id
@@ -441,6 +452,13 @@ def config_set(
             help="Persistently allow HTTP. Credentials will be sent in cleartext.",
         ),
     ] = False,
+    require_https: Annotated[
+        bool,
+        typer.Option(
+            "--require-https",
+            help="Remove a persisted HTTP opt-in and require HTTPS.",
+        ),
+    ] = False,
     default_project: Annotated[str | None, typer.Option()] = None,
     default_board: Annotated[str | None, typer.Option()] = None,
     epic_name_field: Annotated[str | None, typer.Option()] = None,
@@ -453,10 +471,17 @@ def config_set(
         raise typer.BadParameter(
             "Choose either --verify-ssl or --dangerously-disable-tls-verification"
         )
+    if require_https and dangerously_allow_http:
+        raise typer.BadParameter(
+            "Choose either --require-https or --dangerously-allow-http"
+        )
     if prompt_token and state.json_output:
         raise typer.BadParameter("--prompt-token cannot be used with --json")
     disable_tls_verification_update = (
         False if verify_ssl else True if dangerously_disable_tls_verification else None
+    )
+    allow_http_update = (
+        False if require_https else True if dangerously_allow_http else None
     )
     token = (
         typer.prompt("Jira token", hide_input=True, confirmation_prompt=True)
@@ -470,7 +495,7 @@ def config_set(
         "auth_type": auth_type,
         "timeout_seconds": timeout_seconds,
         "dangerously_disable_tls_verification": disable_tls_verification_update,
-        "dangerously_allow_http": True if dangerously_allow_http else None,
+        "dangerously_allow_http": allow_http_update,
         "default_project": default_project,
         "default_board": default_board,
         "epic_name_field": epic_name_field,
@@ -722,7 +747,7 @@ def issue_clone(
     state = _state(ctx)
     source = state.client().get_issue(issue_key)
     source_fields = source.get("fields", {})
-    project_key = _require_project(state, project)
+    project_key = _clone_target_project(source_fields, project)
     issue_type_name = (source_fields.get("issuetype") or {}).get("name")
     metadata = state.client().create_meta(
         project_keys=[project_key], issue_type_names=[issue_type_name]
