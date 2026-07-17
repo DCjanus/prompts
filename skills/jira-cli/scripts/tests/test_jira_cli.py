@@ -176,6 +176,95 @@ class JiraCliTest(unittest.TestCase):
                     self.assertIn("error", payload)
                     self.assertNotIn("Traceback", result.stderr)
 
+    def test_validation_errors_do_not_expose_token(self):
+        script = Path(self.cli.__file__)
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / "config.toml"
+            config.write_text(
+                'server = "http://jira.example"\ntoken = "sentinel-secret-token"\n',
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    "--config",
+                    str(config),
+                    "--json",
+                    "config",
+                    "show",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            )
+        payload = json.loads(result.stderr)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("error", payload)
+        self.assertNotIn("sentinel-secret-token", result.stderr)
+
+    def test_tls_disable_requires_dangerously_named_controls(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "config.toml"
+            source = Path(directory) / "smc.json"
+            source.write_text(
+                json.dumps(
+                    {
+                        "server": "https://jira.example",
+                        "api_token": "secret",
+                        "insecure": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            old_verify = os.environ.get("JIRA_VERIFY_SSL")
+            os.environ["JIRA_VERIFY_SSL"] = "false"
+            try:
+                show = self.runner.invoke(
+                    self.cli.app,
+                    ["--config", str(target), "--json", "config", "show"],
+                )
+            finally:
+                if old_verify is None:
+                    os.environ.pop("JIRA_VERIFY_SSL", None)
+                else:
+                    os.environ["JIRA_VERIFY_SSL"] = old_verify
+            rejected = self.runner.invoke(
+                self.cli.app,
+                [
+                    "--config",
+                    str(target),
+                    "config",
+                    "import-smc",
+                    "--source",
+                    str(source),
+                ],
+            )
+            allowed = self.runner.invoke(
+                self.cli.app,
+                [
+                    "--config",
+                    str(target),
+                    "config",
+                    "import-smc",
+                    "--source",
+                    str(source),
+                    "--dangerously-disable-tls-verification",
+                ],
+            )
+
+        self.assertEqual(show.exit_code, 0, show.output)
+        self.assertFalse(
+            json.loads(show.output)["dangerously_disable_tls_verification"]
+        )
+        self.assertNotEqual(rejected.exit_code, 0)
+        self.assertIn(
+            "dangerously-disable-tls-verification",
+            Text.from_ansi(rejected.output).plain,
+        )
+        self.assertEqual(allowed.exit_code, 0, allowed.output)
+
     def test_transition_fields_and_remote_link_upsert_are_explicit(self):
         move_help = self.runner.invoke(self.cli.app, ["issue", "move", "--help"])
         add_help = self.runner.invoke(self.cli.app, ["remote-link", "add", "--help"])

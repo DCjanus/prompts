@@ -33,8 +33,8 @@ cd skills/jira-cli
 - `JIRA_USERNAME`
 - `JIRA_AUTH_TYPE`
 - `JIRA_TIMEOUT`
-- `JIRA_VERIFY_SSL`
 - `JIRA_DANGEROUSLY_ALLOW_HTTP`
+- `JIRA_DANGEROUSLY_DISABLE_TLS_VERIFICATION`
 
 默认只允许 HTTPS 并校验 TLS。只有用户明确要求时才使用
 `--dangerously-allow-http` 或 `--dangerously-disable-tls-verification`；前者会让凭据明文传输。

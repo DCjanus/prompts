@@ -25,7 +25,7 @@ class JiraCliSettings(BaseModel):
     username: str | None = None
     auth_type: str = "auto"
     timeout_seconds: float = Field(default=30.0, gt=0)
-    verify_ssl: bool = True
+    dangerously_disable_tls_verification: bool = False
     dangerously_allow_http: bool = False
     default_project: str | None = None
     default_board: str | None = None
@@ -91,7 +91,11 @@ def save_settings(
         temporary_path.unlink(missing_ok=True)
 
 
-def import_smc_settings(path: Path = DEFAULT_SMC_CONFIG_PATH) -> JiraCliSettings:
+def import_smc_settings(
+    path: Path = DEFAULT_SMC_CONFIG_PATH,
+    *,
+    dangerously_disable_tls_verification: bool = False,
+) -> JiraCliSettings:
     try:
         raw: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -99,12 +103,19 @@ def import_smc_settings(path: Path = DEFAULT_SMC_CONFIG_PATH) -> JiraCliSettings
 
     project = raw.get("project") if isinstance(raw.get("project"), dict) else {}
     epic = raw.get("epic") if isinstance(raw.get("epic"), dict) else {}
+    insecure = bool(raw.get("insecure", False))
+    if insecure and not dangerously_disable_tls_verification:
+        raise ValueError(
+            "SMC config has insecure=true; pass "
+            "--dangerously-disable-tls-verification "
+            "(dangerously_disable_tls_verification=True) to preserve it"
+        )
     return JiraCliSettings(
         server=raw.get("server") or "https://jira.shopee.io",
         token=raw.get("api_token"),
         username=raw.get("login"),
         auth_type=raw.get("auth_type") or "auto",
-        verify_ssl=not bool(raw.get("insecure", False)),
+        dangerously_disable_tls_verification=insecure,
         default_project=project.get("key"),
         default_board=str(raw["board"]) if raw.get("board") else None,
         epic_name_field=epic.get("name"),

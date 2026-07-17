@@ -43,12 +43,18 @@ class JiraConfigTest(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            settings = import_smc_settings(source)
+            with self.assertRaisesRegex(
+                ValueError, "dangerously_disable_tls_verification"
+            ):
+                import_smc_settings(source)
+            settings = import_smc_settings(
+                source, dangerously_disable_tls_verification=True
+            )
 
         self.assertEqual(settings.default_project, "SATOS")
         self.assertEqual(settings.epic_name_field, "customfield_10003")
         self.assertEqual(settings.epic_link_field, "customfield_10001")
-        self.assertFalse(settings.verify_ssl)
+        self.assertTrue(settings.dangerously_disable_tls_verification)
 
     def test_save_is_toml_atomic_private_and_round_trips(self):
         settings = JiraCliSettings(

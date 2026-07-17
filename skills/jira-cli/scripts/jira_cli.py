@@ -105,7 +105,7 @@ class State:
                     username=self.settings.username,
                     auth_type=self.settings.auth_type,
                     timeout_seconds=self.settings.timeout_seconds,
-                    verify_ssl=self.settings.verify_ssl,
+                    verify_ssl=not self.settings.dangerously_disable_tls_verification,
                     dangerously_allow_http=self.settings.dangerously_allow_http,
                 )
             )
@@ -126,6 +126,17 @@ def _env_bool(name: str) -> bool | None:
 
 def _first(*values: Any) -> Any:
     return next((value for value in values if value is not None), None)
+
+
+def _safe_error_message(exc: ValueError | ValidationError) -> str:
+    if isinstance(exc, ValidationError):
+        messages = []
+        for error in exc.errors(include_input=False, include_url=False):
+            location = ".".join(str(part) for part in error["loc"])
+            prefix = f"{location}: " if location else ""
+            messages.append(prefix + error["msg"])
+        return "; ".join(messages)
+    return str(exc)
 
 
 @app.callback()
@@ -178,11 +189,13 @@ def configure(
             "username": _first(username, os.getenv("JIRA_USERNAME")),
             "auth_type": _first(auth_type, os.getenv("JIRA_AUTH_TYPE")),
             "timeout_seconds": _first(timeout, os.getenv("JIRA_TIMEOUT")),
-            "verify_ssl": _env_bool("JIRA_VERIFY_SSL"),
             "dangerously_allow_http": _env_bool("JIRA_DANGEROUSLY_ALLOW_HTTP"),
+            "dangerously_disable_tls_verification": None,
         }
         if dangerously_disable_tls_verification:
-            updates["verify_ssl"] = False
+            updates["dangerously_disable_tls_verification"] = True
+        if _env_bool("JIRA_DANGEROUSLY_DISABLE_TLS_VERIFICATION"):
+            updates["dangerously_disable_tls_verification"] = True
         if dangerously_allow_http:
             updates["dangerously_allow_http"] = True
         settings = persisted_settings.model_copy(
@@ -190,7 +203,7 @@ def configure(
         )
         settings = JiraCliSettings.model_validate(settings.model_dump())
     except (ValueError, ValidationError) as exc:
-        raise typer.BadParameter(str(exc)) from exc
+        raise typer.BadParameter(_safe_error_message(exc)) from exc
     ctx.obj = State(persisted_settings, settings, config_path, json_output)
 
 
@@ -340,14 +353,24 @@ def config_import_smc(
     force: Annotated[
         bool, typer.Option("--force", help="Overwrite existing TOML config.")
     ] = False,
+    dangerously_disable_tls_verification: Annotated[
+        bool,
+        typer.Option(
+            "--dangerously-disable-tls-verification",
+            help="Preserve insecure=true from SMC config. This is unsafe.",
+        ),
+    ] = False,
 ) -> None:
     """Import the existing smc jira JSON configuration into TOML."""
     state = _state(ctx)
     try:
-        imported = import_smc_settings(source.expanduser())
+        imported = import_smc_settings(
+            source.expanduser(),
+            dangerously_disable_tls_verification=dangerously_disable_tls_verification,
+        )
         save_settings(imported, state.config_path, overwrite=force)
     except (ValueError, FileExistsError, ValidationError) as exc:
-        raise typer.BadParameter(str(exc)) from exc
+        raise typer.BadParameter(_safe_error_message(exc)) from exc
     _print_result(
         ctx,
         {
@@ -403,8 +426,8 @@ def config_set(
         )
     if prompt_token and state.json_output:
         raise typer.BadParameter("--prompt-token cannot be used with --json")
-    verify_ssl_update = (
-        True if verify_ssl else False if dangerously_disable_tls_verification else None
+    disable_tls_verification_update = (
+        False if verify_ssl else True if dangerously_disable_tls_verification else None
     )
     token = (
         typer.prompt("Jira token", hide_input=True, confirmation_prompt=True)
@@ -417,7 +440,7 @@ def config_set(
         "username": username,
         "auth_type": auth_type,
         "timeout_seconds": timeout_seconds,
-        "verify_ssl": verify_ssl_update,
+        "dangerously_disable_tls_verification": disable_tls_verification_update,
         "dangerously_allow_http": True if dangerously_allow_http else None,
         "default_project": default_project,
         "default_board": default_board,
@@ -434,7 +457,7 @@ def config_set(
         )
         save_settings(settings, state.config_path, overwrite=True)
     except (ValueError, ValidationError) as exc:
-        raise typer.BadParameter(str(exc)) from exc
+        raise typer.BadParameter(_safe_error_message(exc)) from exc
     _print_result(ctx, masked_settings(settings))
 
 
