@@ -328,6 +328,8 @@ class JiraCliTest(unittest.TestCase):
                     str(target),
                     "config",
                     "set",
+                    "--server",
+                    "http://jira.example",
                     "--dangerously-allow-http",
                 ],
             )
@@ -339,6 +341,7 @@ class JiraCliTest(unittest.TestCase):
         self.assertEqual(enabled.exit_code, 0, enabled.output)
         self.assertEqual(restored.exit_code, 0, restored.output)
         self.assertFalse(settings.dangerously_allow_http)
+        self.assertEqual(settings.server, "https://jira.example")
 
     def test_transition_fields_and_remote_link_upsert_are_explicit(self):
         move_help = self.runner.invoke(self.cli.app, ["issue", "move", "--help"])
@@ -423,6 +426,23 @@ class JiraCliTest(unittest.TestCase):
                 summary=None,
                 allowed_fields={"summary", "parent"},
             )
+
+    def test_cross_project_clone_drops_project_scoped_values(self):
+        source = {
+            "project": {"key": "SOURCE"},
+            "issuetype": {"name": "Task"},
+            "summary": "Source",
+            "components": [{"id": "1", "name": "Component"}],
+            "fixVersions": [{"id": "2", "name": "1.0"}],
+        }
+        fields = self.cli._clone_fields(
+            source,
+            project="TARGET",
+            summary=None,
+            allowed_fields={"summary", "components", "fixVersions"},
+        )
+        self.assertNotIn("components", fields)
+        self.assertNotIn("fixVersions", fields)
 
     def test_clone_defaults_to_source_project_not_config_default(self):
         source_fields = {"project": {"key": "SOURCE"}}

@@ -148,6 +148,10 @@ class JiraApiClient:
             "://" in normalized
             or not normalized.startswith("rest/")
             or ".." in normalized.split("/")
+            or any(character in normalized for character in "%?#\\")
+            or any(
+                ord(character) < 32 or ord(character) == 127 for character in normalized
+            )
         ):
             raise ValueError("api get path must be a relative path starting with rest/")
         return self.request("GET", normalized, params=params)
@@ -194,9 +198,9 @@ class JiraApiClient:
     ) -> dict[str, Any]:
         params: dict[str, Any] = {"expand": "projects.issuetypes.fields"}
         if project_keys:
-            params["projectKeys"] = ",".join(project_keys)
+            params["projectKeys"] = project_keys
         if issue_type_names:
-            params["issuetypeNames"] = ",".join(issue_type_names)
+            params["issuetypeNames"] = issue_type_names
         return self.request("GET", "rest/api/2/issue/createmeta", params=params)
 
     def search_issues(

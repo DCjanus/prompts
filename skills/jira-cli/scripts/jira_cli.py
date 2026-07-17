@@ -332,7 +332,11 @@ def _clone_fields(
         "issuetype": {"name": (source_fields.get("issuetype") or {}).get("name")},
         "summary": summary or f"Clone of {source_fields.get('summary', 'issue')}",
     }
+    source_project = (source_fields.get("project") or {}).get("key")
+    cross_project = bool(source_project and source_project != project)
     for name in ("description", "labels", "components", "fixVersions", "priority"):
+        if cross_project and name in {"components", "fixVersions"}:
+            continue
         value = source_fields.get(name)
         if value not in (None, [], {}) and (
             allowed_fields is None or name in allowed_fields
@@ -340,7 +344,6 @@ def _clone_fields(
             fields[name] = value
     source_parent = (source_fields.get("parent") or {}).get("key")
     if source_parent:
-        source_project = (source_fields.get("project") or {}).get("key")
         selected_parent = (
             parent or source_parent if project == source_project else parent
         )
@@ -488,8 +491,17 @@ def config_set(
         if prompt_token
         else None
     )
+    server_update = server
+    if (
+        require_https
+        and server_update is None
+        and state.persisted_settings.server.startswith("http://")
+    ):
+        server_update = "https://" + state.persisted_settings.server.removeprefix(
+            "http://"
+        )
     updates = {
-        "server": server,
+        "server": server_update,
         "token": token,
         "username": username,
         "auth_type": auth_type,

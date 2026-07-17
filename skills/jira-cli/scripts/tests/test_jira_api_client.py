@@ -53,6 +53,20 @@ class JiraApiClientTest(unittest.TestCase):
         )
         self.assertEqual(result["total"], 0)
 
+    def test_create_metadata_uses_repeated_multi_value_parameters(self):
+        def handler(request: httpx2.Request) -> httpx2.Response:
+            self.assertEqual(
+                request.url.params.get_list("projectKeys"), ["SATOS", "OTHER"]
+            )
+            self.assertEqual(
+                request.url.params.get_list("issuetypeNames"), ["Task", "Bug"]
+            )
+            return httpx2.Response(200, json={"projects": []})
+
+        self.make_client(handler).create_meta(
+            project_keys=["SATOS", "OTHER"], issue_type_names=["Task", "Bug"]
+        )
+
     def test_comment_body_is_sent_as_exact_jira_markup(self):
         expected = (
             "相关实现：[Midgard MR !38|https://git.example/midgard/merge_requests/38]"
@@ -208,6 +222,10 @@ class JiraApiClientTest(unittest.TestCase):
             "https://evil.example/rest/api/2/myself",
             "plugins/servlet/x",
             "rest/api/2/../admin",
+            "rest/%2e%2e/plugins/servlet/x",
+            "rest/api/2/foo%2f..%2fadmin",
+            "rest/api/2/search?jql=all",
+            "rest/api/2/search#fragment",
         ):
             with self.subTest(path=path), self.assertRaises(ValueError):
                 client.raw_get(path)
