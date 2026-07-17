@@ -389,21 +389,30 @@ class JiraCliTest(unittest.TestCase):
         self.assertEqual(rendered.plain, value)
         self.assertEqual(rendered.spans, [])
 
+    def test_terminal_control_sequences_are_rendered_visibly(self):
+        value = "safe\x1b[2J\x1b]52;c;Y2xpcGJvYXJk\x1b\\done\x07"
+        rendered = self.cli._plain_text(value)
+        self.assertNotIn("\x1b", rendered.plain)
+        self.assertNotIn("\x07", rendered.plain)
+        self.assertIn(r"\x1b[2J", rendered.plain)
+        self.assertIn(r"\x07", rendered.plain)
+
     def test_error_messages_are_rendered_as_plain_text(self):
         output = io.StringIO()
         original_err_console = self.cli.err_console
         self.cli.err_console = Console(
-            file=output, force_terminal=True, color_system="truecolor"
+            file=output, force_terminal=False, color_system="truecolor"
         )
         try:
             self.cli._print_error(
                 "Jira API error",
-                "[link=https://evil.example]trusted.example[/link]",
+                "[link=https://evil.example]trusted.example[/link]\x1b]52;c;YQ==\x07",
             )
         finally:
             self.cli.err_console = original_err_console
         self.assertIn("[link=https://evil.example]", output.getvalue())
         self.assertNotIn("\x1b]8;", output.getvalue())
+        self.assertNotIn("\x1b]52;", output.getvalue())
 
     def test_issue_edit_does_not_offer_assignee_shortcut(self):
         help_result = self.runner.invoke(self.cli.app, ["issue", "edit", "--help"])
@@ -417,11 +426,25 @@ class JiraCliTest(unittest.TestCase):
         self.assertIn("--set-component", help_text)
         self.assertIn("--set-fix-version", help_text)
 
-    def test_attachment_filename_must_match_before_delete(self):
-        metadata = {"id": "123", "filename": "expected.txt"}
-        self.cli._verify_attachment_target(metadata, "expected.txt")
+    def test_attachment_issue_and_filename_must_match_before_delete(self):
+        attachments = [{"id": "123", "filename": "expected.txt"}]
+        metadata = self.cli._verify_attachment_target(
+            attachments, "123", "expected.txt"
+        )
+        self.assertEqual(metadata["id"], "123")
         with self.assertRaisesRegex(self.cli.typer.BadParameter, "expected.txt"):
-            self.cli._verify_attachment_target(metadata, "wrong.txt")
+            self.cli._verify_attachment_target(attachments, "123", "wrong.txt")
+        with self.assertRaisesRegex(self.cli.typer.BadParameter, "not attached"):
+            self.cli._verify_attachment_target(attachments, "999", "expected.txt")
+
+    def test_issue_link_sides_must_match_before_delete(self):
+        link = {
+            "inwardIssue": {"key": "SATOS-1"},
+            "outwardIssue": {"key": "SATOS-2"},
+        }
+        self.cli._verify_issue_link_target(link, "satos-1", "SATOS-2")
+        with self.assertRaisesRegex(self.cli.typer.BadParameter, "mismatch"):
+            self.cli._verify_issue_link_target(link, "SATOS-9", "SATOS-2")
 
     def test_clone_omits_empty_optional_fields_rejected_by_create_screen(self):
         fields = self.cli._clone_fields(
@@ -571,7 +594,16 @@ class JiraCliTest(unittest.TestCase):
         for args in (
             ["comment", "delete", "SATOS-1", "123"],
             ["issue", "delete", "SATOS-1"],
-            ["attachment", "delete", "123", "--filename", "a.txt"],
+            ["attachment", "delete", "SATOS-1", "123", "--filename", "a.txt"],
+            [
+                "link",
+                "delete",
+                "123",
+                "--inward-issue",
+                "SATOS-1",
+                "--outward-issue",
+                "SATOS-2",
+            ],
             ["worklog", "delete", "SATOS-1", "123"],
         ):
             with self.subTest(args=args):

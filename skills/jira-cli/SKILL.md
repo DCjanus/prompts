@@ -144,6 +144,8 @@ Issue link 和外部链接分别使用 `link`、`remote-link`：
 ```bash
 ./scripts/jira_cli.py link types
 ./scripts/jira_cli.py link add SATOS-1 SATOS-2 --type Relates
+./scripts/jira_cli.py link delete 123 --inward-issue SATOS-1 \
+  --outward-issue SATOS-2 --yes
 ./scripts/jira_cli.py remote-link add SATOS-1 --title 'MR !38' --url https://git.example/mr/38
 ./scripts/jira_cli.py remote-link upsert SATOS-1 --global-id mr-38 \
   --title 'MR !38' --url https://git.example/mr/38
@@ -153,6 +155,7 @@ Issue link 和外部链接分别使用 `link`、`remote-link`：
 
 ```bash
 ./scripts/jira_cli.py attachment add SATOS-1 /tmp/evidence.txt
+./scripts/jira_cli.py attachment delete SATOS-1 123 --filename evidence.txt --yes
 ./scripts/jira_cli.py watcher list SATOS-1
 ./scripts/jira_cli.py watcher add SATOS-1 'user@example.com'
 ./scripts/jira_cli.py vote get SATOS-1

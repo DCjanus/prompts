@@ -226,22 +226,67 @@ def _print_result(ctx: typer.Context, value: Any) -> None:
 
 
 def _plain_text(value: Any) -> Text:
-    return Text(str(value))
+    return Text(_terminal_safe_text(value))
+
+
+def _terminal_safe_text(value: Any) -> str:
+    result: list[str] = []
+    for character in str(value):
+        codepoint = ord(character)
+        if codepoint < 32 or 127 <= codepoint <= 159:
+            if codepoint <= 255:
+                result.append(f"\\x{codepoint:02x}")
+            else:
+                result.append(f"\\u{codepoint:04x}")
+        else:
+            result.append(character)
+    return "".join(result)
 
 
 def _print_error(label: str, message: Any) -> None:
     output = Text()
-    output.append(f"{label}: ", style="bold red")
-    output.append(str(message))
+    output.append(f"{_terminal_safe_text(label)}: ", style="bold red")
+    output.append(_terminal_safe_text(message))
     err_console.print(output)
 
 
-def _verify_attachment_target(metadata: dict[str, Any], expected_filename: str) -> None:
+def _verify_attachment_target(
+    attachments: list[dict[str, Any]],
+    attachment_id: str,
+    expected_filename: str,
+) -> dict[str, Any]:
+    matches = [
+        attachment
+        for attachment in attachments
+        if str(attachment.get("id")) == attachment_id
+    ]
+    if len(matches) != 1:
+        raise typer.BadParameter(
+            f"Attachment {attachment_id!r} is not attached to the expected issue"
+        )
+    metadata = matches[0]
     actual_filename = str(metadata.get("filename", ""))
     if actual_filename != expected_filename:
         raise typer.BadParameter(
             f"Attachment filename mismatch: expected {expected_filename!r}, "
             f"got {actual_filename!r}"
+        )
+    return metadata
+
+
+def _verify_issue_link_target(
+    link: dict[str, Any], expected_inward: str, expected_outward: str
+) -> None:
+    actual_inward = str((link.get("inwardIssue") or {}).get("key", ""))
+    actual_outward = str((link.get("outwardIssue") or {}).get("key", ""))
+    if (
+        actual_inward.upper() != expected_inward.upper()
+        or actual_outward.upper() != expected_outward.upper()
+    ):
+        raise typer.BadParameter(
+            "Issue link target mismatch: "
+            f"expected {expected_inward} -> {expected_outward}, "
+            f"got {actual_inward} -> {actual_outward}"
         )
 
 
@@ -1061,6 +1106,7 @@ def attachment_add(ctx: typer.Context, issue_key: str, file: Path) -> None:
 @attachment_app.command("delete")
 def attachment_delete(
     ctx: typer.Context,
+    issue_key: str,
     attachment_id: str,
     filename: Annotated[str, typer.Option(help="Expected attachment filename.")],
     yes: Annotated[bool, typer.Option("--yes")] = False,
@@ -1069,10 +1115,17 @@ def attachment_delete(
     if not yes:
         raise typer.BadParameter("Pass --yes to confirm permanent deletion")
     client = _state(ctx).client()
-    metadata = client.get_attachment(attachment_id)
-    _verify_attachment_target(metadata, filename)
+    attachments = client.list_attachments(issue_key)
+    _verify_attachment_target(attachments, attachment_id, filename)
     client.delete_attachment(attachment_id)
-    _print_result(ctx, {"deleted_attachment": attachment_id, "filename": filename})
+    _print_result(
+        ctx,
+        {
+            "issue_key": issue_key,
+            "deleted_attachment": attachment_id,
+            "filename": filename,
+        },
+    )
 
 
 @link_app.command("types")
@@ -1114,15 +1167,25 @@ def link_add(
 def link_delete(
     ctx: typer.Context,
     link_id: str,
+    inward_issue: Annotated[str, typer.Option("--inward-issue")],
+    outward_issue: Annotated[str, typer.Option("--outward-issue")],
     yes: Annotated[bool, typer.Option("--yes")] = False,
 ) -> None:
     """Permanently delete an issue link by ID."""
     if not yes:
         raise typer.BadParameter("Pass --yes to confirm permanent deletion")
     client = _state(ctx).client()
-    client.get_issue_link(link_id)
+    link = client.get_issue_link(link_id)
+    _verify_issue_link_target(link, inward_issue, outward_issue)
     client.delete_issue_link(link_id)
-    _print_result(ctx, {"deleted_link": link_id})
+    _print_result(
+        ctx,
+        {
+            "deleted_link": link_id,
+            "inward_issue": inward_issue,
+            "outward_issue": outward_issue,
+        },
+    )
 
 
 @remote_link_app.command("list")
