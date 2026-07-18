@@ -49,12 +49,16 @@ cd skills/jira-cli
 - 普通模式提供 Rich 摘要或表格。
 - 复杂正文优先写入临时文件，再用 `--description-file` 或 `--body-file` 传递。
 - 额外字段使用重复的 `--field KEY=JSON_OR_TEXT`。
+- 涉及“我”、当前用户、负责人、报告人等身份语义时，先执行
+  `./scripts/jira_cli.py --json user me` 获取当前 Jira 认证身份。不得根据会话称呼、
+  记忆中的邮箱、本机用户名或其它系统身份猜测 Jira 账号；除非任务确有必要，
+  回复和持久化内容中只使用完成操作所需的最少身份信息。
 
 ## 常用查询
 
 ```bash
 ./scripts/jira_cli.py server-info
-./scripts/jira_cli.py user search jun.fan
+./scripts/jira_cli.py user search user@example.com
 ./scripts/jira_cli.py project list
 ./scripts/jira_cli.py project versions SATOS
 ./scripts/jira_cli.py metadata fields
@@ -169,6 +173,9 @@ Worklog 默认使用 `--adjust-estimate leave`，不会隐式修改 Remaining Es
 ## 删除与写操作安全
 
 - 创建 Issue 前先搜索是否已有重复任务；除非用户明确要求，不自行创建 Jira 任务。
+- 用户要求分配给自己或以自己身份填写字段时，必须通过 `user me` 解析当前 Jira
+  认证身份后再写入，不得从其它上下文推断；用户明确指定其他 Jira 用户时，使用
+  `user search` 核实目标账号。
 - 修改、流转或删除前先回读目标，确认 Issue key 和当前状态。
 - Issue、评论、附件、关联和 Worklog 的删除均要求显式 `--yes`。
 - 删除存在 Sub-task 的 Issue 默认失败；只有明确接受级联时才加 `--delete-subtasks`。
