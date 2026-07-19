@@ -64,7 +64,7 @@ notification_method = "bel"
 | [`dcjanus-preferences`](skills/dcjanus-preferences/SKILL.md) | 记录 DCjanus 在不同语言中偏好的第三方库与使用场景，供 AI 在选型、引入依赖或替换库时优先参考。适用于 Python/Rust/Go 的库选择、技术方案对比、或需要遵循 DCjanus 个人偏好进行开发的场景。 |
 | [`domain-modeling`](skills/domain-modeling/SKILL.md) | 构建并持续校准领域模型，明确领域术语与边界，并在必要时记录重要架构决策。 |
 | [`fetch-url`](skills/fetch-url/SKILL.md) | 获取并提取链接正文（默认 Markdown）；内置 X/Twitter URL 处理，提升受限页面的抓取成功率。 |
-| [`change-request-writing`](skills/change-request-writing/SKILL.md) | 编写或更新 GitHub/GitLab Issue、PR、MR 的标题与正文；聚焦 final net diff、Breaking Change、避免低价值验证噪声与本地路径泄露。 |
+| [`change-request-writing`](skills/change-request-writing/SKILL.md) | 编写或更新 GitHub/GitLab Issue、PR、MR 与 inline review reply；聚焦 final net diff、设计取舍、Breaking Change，并避免低价值验证噪声与本地路径泄露。 |
 | [`review-fix-loop`](skills/review-fix-loop/SKILL.md) | 用三个相互隔离的干净 subagent 并行做代码审查，由主 agent 判断审查意见价值、修复有效问题并提交推送，直到同一批三个 reviewer 都没有有价值审查意见。 |
 | [`git-workflow`](skills/git-workflow/SKILL.md) | 处理 git 提交、推送、分支命名与提交信息规范；当任务涉及 commit、push、起分支或整理 commit message 时使用。 |
 | [`github-cli`](skills/github-cli/SKILL.md) | GitHub CLI 使用指引，面向 GitHub 资源交互（如 repo、issue、PR、comment、release、workflow） |

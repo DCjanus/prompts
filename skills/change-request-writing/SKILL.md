@@ -1,11 +1,11 @@
 ---
 name: change-request-writing
-description: 编写或更新 GitHub/GitLab Issue、PR、MR 的标题与正文；适用于创建、修改、重写 reviewer-facing 描述、Risks、Breaking Change、避免低价值验证噪声与本地路径泄露等场景。PR/MR 正文默认禁止 Validation；只有 CI/diff 看不到的高信噪比行为证据才允许写。
+description: 编写或更新 GitHub/GitLab Issue、PR、MR 与 inline review reply 的 reviewer-facing 文案；适用于创建、修改、重写标题、正文、设计取舍回复、Risks、Breaking Change，以及避免低价值验证噪声与本地路径泄露等场景。PR/MR 正文默认禁止 Validation；只有 CI/diff 看不到的高信噪比行为证据才允许写。
 ---
 
 # Change Request Writing Skill
 
-适用于 GitHub Issue/PR、GitLab Issue/MR 等提交给 reviewer/maintainer 的标题与正文。平台命令交给 [SKILL.md](../github-cli/SKILL.md) / [SKILL.md](../gitlab-cli/SKILL.md)；本 skill 只管文案内容。
+适用于 GitHub Issue/PR、GitLab Issue/MR 与 inline review reply 等提交给 reviewer/maintainer 的文案。平台命令交给 [SKILL.md](../github-cli/SKILL.md) / [SKILL.md](../gitlab-cli/SKILL.md)；本 skill 只管文案内容。
 
 ## 创建前检查
 
@@ -23,7 +23,7 @@ description: 编写或更新 GitHub/GitLab Issue、PR、MR 的标题与正文；
 - 先确认 base/head 或 target/source，再用 final net diff 作为正文依据：`git fetch` 后查看 `git diff --stat <base-or-target>...HEAD` 与 `git diff --name-status <base-or-target>...HEAD`；必要时再看关键文件 diff 或平台 diff。
 - 正文不要包含：中间提交顺序、调试过程、失败尝试、临时方案、merge/rebase/冲突解决过程、曾经实现过但最终 diff 已不存在的行为。
 - 正文不要包含本机绝对路径、home 目录、agent 工作区路径、临时正文文件路径或其它会暴露个人/机器环境的信息；如需引用仓库内文件，使用相对路径或 Markdown 链接。
-- GitHub Issue/PR 正文引用同仓库 commit 时，直接写裸的完整 40 位 SHA；GitHub 会原生自动链接并缩短显示。不要包反引号，也不要手写 Markdown URL。引用其它仓库 commit 时使用 `owner/repo@完整 SHA`；需要自行指定链接文本时再使用 Markdown 链接。此规则不覆盖 inline review reply，后者遵循平台交互 skill 的专门格式。
+- GitHub reviewer-facing 文案引用同仓库 commit 时，一律写裸的完整 40 位 SHA；GitHub 会原生自动链接并缩短显示。不要包反引号，也不要手写 Markdown URL。引用其它仓库 commit 时使用 `owner/repo@完整 SHA`。
 - GitLab MR/Issue 正文里的关联资源一律使用完整 Markdown URL，不要依赖短引用自动链接。
 - 更新已有 PR/MR 正文时，不要在旧正文上做局部补丁；先回读当前正文，再基于 final net diff 重写完整正文并替换过时内容。
 - 如果正文经历过实验性修改，最终更新前重新审视完整 PR/MR body，确保它只描述最终 diff；不要写 `rerun`、`after removing`、`now`、`previously` 这类暴露过程的措辞，除非过程本身是 reviewer 需要审查的证据。
@@ -75,3 +75,15 @@ description: 编写或更新 GitHub/GitLab Issue、PR、MR 的标题与正文；
    - `## What`：1-3 条说明主要变更，聚焦功能或行为层面的变化，不罗列琐碎实现细节。
 5. 默认正文只包含 `## Why` 和 `## What`；存在 breaking change 时必须再增加 `## BREAKING CHANGE`。不要添加 `## Validation`；只有通过上面的 Validation Gate 时才允许添加，否则省略。
 6. 可选正文块：仅在确有必要时添加 `## Risks` 或 `## Notes`。
+
+## Inline review reply
+
+1. 直接回应当前 thread 的具体意见，不要重复引用 reviewer 原文。Inline thread 已保留上下文，但回复本身仍需明确说明做了什么或为何不修改，不能只泛泛描述代码。
+2. 已通过提交完成改动时，第一行使用与结果匹配的简短句式，例如 `Applied in <full SHA>.`、`Fixed in <full SHA>.` 或 `Changed in <full SHA>.`。使用 `in`，不要使用 `at`；SHA 使用裸的完整 40 位，不加反引号或手写链接。改动足够直观时，只保留这一行。
+3. 需要解释设计取舍时，依次说明：采用的方案、替代方案受哪个不明显的约束阻止、当前方案的代价，以及结合实际规模或发生概率为何可以接受。保持因果链完整；不要只写“需要维护 stale entries”之类的结论而不解释它们如何产生和为何造成问题。
+4. 按 reviewer 对仓库的熟悉程度压缩背景。只指出理解本次决定所需的关键事实，不重复介绍维护者已经熟悉的架构、基础流程或设计动机。
+5. 使用简单、准确、专业的英文短句和常见词。避免口语、复杂修辞与过度母语化的习惯表达，也不要故意制造语法错误。
+6. 按平台实际渲染控制段落：commit reference 后空一行，后续通常使用一到两个紧凑段落；仅在观点明显切换时分段，不要把每个句子拆成独立段落。
+7. 如果只是顺带记录一种可能性，使用 `Another possibility would be ...` 等开放表达。不要写成确定的 follow-up plan，不要直接要求 reviewer 表态，也不要暗示承诺实现；必要时说明暂不纳入当前 PR，以保持 scope 集中并降低 review 负担。
+8. 只是修正文案或排版时编辑现有回复；只有出现新的独立信息时才追加回复。不要在同一 thread 中留下多版重复说明。
+9. 对含有设计判断的回复，先用中文对齐含义和推理，再转换成英文；发送前按平台渲染效果复核段落。平台写入与 resolve 权限仍遵循对应交互 skill，未经用户明确授权不要发送或 resolve。
