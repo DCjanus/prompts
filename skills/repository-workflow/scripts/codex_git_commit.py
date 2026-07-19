@@ -63,8 +63,8 @@ def resolve_model_name(thread_id: str) -> str:
 
     config = CodexConfig(
         codex_bin=resolve_codex_bin(),
-        client_name="codex-git-workflow",
-        client_title="Codex Git Workflow",
+        client_name="codex-repository-workflow",
+        client_title="Codex Repository Workflow",
         experimental_api=False,
     )
     try:
