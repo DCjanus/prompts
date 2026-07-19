@@ -1,0 +1,4 @@
+interface:
+  display_name: "Repository Workflow"
+  short_description: "管理从语义化提交到 Issue、PR/MR 与 review reply 的完整仓库流程"
+  default_prompt: "Use $repository-workflow to prepare, commit, and publish a repository change."

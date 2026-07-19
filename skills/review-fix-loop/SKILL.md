@@ -13,7 +13,7 @@ description: 用三个相互隔离的干净 subagent 并行做代码审查、由
 
 - 明确审查对象：当前工作树、当前分支相对默认分支、某个 PR/MR，或用户指定的 diff。
 - 先确认本地状态和目标分支：用 `git status --short --branch`、`git branch --show-current`、平台 CLI 或 `git merge-base` 等低风险命令建立上下文。
-- 如果任务涉及 GitHub/GitLab、commit、push 或 PR/MR 文案，同时使用对应平台 skill 与 `git-workflow` skill；本 skill 只定义循环控制。
+- 如果任务涉及 GitHub/GitLab、commit、push 或 PR/MR 文案，同时使用对应平台 skill 与 `repository-workflow` skill；本 skill 只定义循环控制。
 - 如果工作树已有用户未提交改动，先识别范围。不要回滚或覆盖无关改动；必要时只 stage 本次修复相关文件。
 
 ## 循环规则

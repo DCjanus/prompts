@@ -35,7 +35,7 @@ fork 预审 PR 使用两个互不混杂的区域：
 - **命名**：预审分支名、标题和 commit message 不包含上游 `#123`、`owner/repo#123`、完整 GitHub URL 或 closing keyword。“GitHub Draft PR”只表示平台状态，不用作预审流程名称。
 - **正文**：不写预审状态、内部讨论、失败尝试、临时 CI 生命周期和待办；正文始终仿佛会直接交给上游 reviewer。
 - **提交默认值**：预审阶段的后续修改默认提交并推送到预审分支；正式上游 PR 阶段默认只改本地，除非用户明确要求推送或正在执行正式 PR 重放。
-- **工具**：提交和推送使用 `git-workflow`；GitHub PR、comment、checks 和 workflow 操作使用 `github-cli`；正文先写入 `/tmp/*.md`，再通过 `--body-file` 创建或更新。
+- **工具**：提交、推送和 reviewer-facing 文案使用 `repository-workflow`；GitHub PR、comment、checks 和 workflow 操作使用 `github-cli`；正文先写入 `/tmp/*.md`，再通过 `--body-file` 创建或更新。
 
 ## Fork 预审流程
 

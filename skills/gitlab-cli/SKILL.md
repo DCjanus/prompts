@@ -3,6 +3,8 @@ name: gitlab-cli
 description: 使用 GitLab CLI（glab）与 GitLab 资源交互；适用于 project、issue、MR、comment、wiki 等查看、更新或创建场景，含自建实例。
 ---
 
+本 skill 只负责 GitLab 资源读取与平台操作，不定义标题、正文或 inline review reply 的文案。
+
 ## 使用约定
 
 说明：以下脚本调用均以当前 `SKILL.md` 所在文件夹为 workdir。
@@ -43,35 +45,32 @@ python skills/gitlab-cli/scripts/gitlab_cli.py --help
 ## 创建前检查
 在创建 Issue 或 MR 前，先检查对应的 GitLab 模板、表单和当前资源状态。
 1. 优先检查 issue / MR 模板，以及 `.gitlab/issue_templates/`、`.gitlab/merge_request_templates/`、`.gitlab-ci.yml`、项目说明文档等 GitLab 专用配置。
-2. Issue/MR 标题与正文编写统一遵循 [SKILL.md](../change-request-writing/SKILL.md)。
-3. 在正式创建前检查当前代码、分支与提交状态是否和准备提交到平台上的内容一致，避免创建出与现状不符的 Issue 或 MR。
+2. 在正式创建前检查当前代码、分支与提交状态是否和准备提交到平台上的内容一致，避免创建出与现状不符的 Issue 或 MR。
 
 ## 创建 Issue（非交互）
 以下规范建立在“创建前检查”已完成的前提上。
-1. 标题与正文先按 [SKILL.md](../change-request-writing/SKILL.md) 准备。
-2. Issue 正文默认先写到本地 Markdown 文件；草稿优先放 `/tmp/*.md`，标题通常较短，可直接用 `--title` 传入。
-3. 创建与修改时优先使用 `--description-file`，例如：`./scripts/gitlab_cli.py issue create --cwd /path/to/repo --title "..." --description-file /tmp/issue-body.md`，或 `./scripts/gitlab_cli.py issue update --cwd /path/to/repo 123 --title "..." --description-file /tmp/issue-body.md`。
-4. 创建成功后，输出完整 Issue URL。
+1. Issue 正文默认先写到本地 Markdown 文件；草稿优先放 `/tmp/*.md`，标题通常较短，可直接用 `--title` 传入。
+2. 创建与修改时优先使用 `--description-file`，例如：`./scripts/gitlab_cli.py issue create --cwd /path/to/repo --title "..." --description-file /tmp/issue-body.md`，或 `./scripts/gitlab_cli.py issue update --cwd /path/to/repo 123 --title "..." --description-file /tmp/issue-body.md`。
+3. 创建成功后，输出完整 Issue URL。
 
 ## 创建 MR
 以下规范建立在“创建前检查”已完成的前提上。
 1. 先完成“创建前检查”。
 2. 只有在确认仓库要求与本地代码/提交状态都满足后，才创建 MR；若发现不满足，应先修正，再创建。
 3. `git status` 必须干净，且当前分支已推送到远端。
-4. 标题与正文先按 [SKILL.md](../change-request-writing/SKILL.md) 准备。
-5. MR 正文默认先写到本地 Markdown 文件；草稿优先放 `/tmp/*.md`，不要在 shell 里拼多行字符串，也不要依赖交互式编辑。标题通常较短，可直接用 `--title` 传入。
-6. 创建 MR 时优先使用 `--description-file`，例如：
+4. MR 正文默认先写到本地 Markdown 文件；草稿优先放 `/tmp/*.md`，不要在 shell 里拼多行字符串，也不要依赖交互式编辑。标题通常较短，可直接用 `--title` 传入。
+5. 创建 MR 时优先使用 `--description-file`，例如：
 ```
 ./scripts/gitlab_cli.py mr create \
   --cwd /path/to/repo \
-  --title "feat(scope): short summary" \
+  --title "..." \
   --description-file /tmp/mr-body.md \
   --target-branch main \
   --squash true \
   --remove-source-branch true
 ```
-7. 修改 MR 时也复用本地文件，避免手工编辑，例如：`./scripts/gitlab_cli.py mr update --cwd /path/to/repo 123 --title "..." --description-file /tmp/mr-body.md`。
-8. 创建成功后，输出完整 MR URL。
+6. 修改 MR 时也复用本地文件，避免手工编辑，例如：`./scripts/gitlab_cli.py mr update --cwd /path/to/repo 123 --title "..." --description-file /tmp/mr-body.md`。
+7. 创建成功后，输出完整 MR URL。
 
 ## 什么时候直接用 glab
 
@@ -137,7 +136,7 @@ glab ci trace test --pipeline-id 123456 --branch main
 ```bash
 ./scripts/gitlab_cli.py mr create \
   --cwd /path/to/repo \
-  --title "feat(scope): short summary" \
+  --title "..." \
   --target-branch main \
   --description-file /tmp/mr-body.md \
   --squash true \
@@ -158,7 +157,7 @@ glab ci trace test --pipeline-id 123456 --branch main
 ```bash
 ./scripts/gitlab_cli.py issue create \
   --cwd /path/to/repo \
-  --title "short summary" \
+  --title "..." \
   --description-file /tmp/issue-body.md
 ```
 
@@ -168,7 +167,7 @@ glab ci trace test --pipeline-id 123456 --branch main
 ./scripts/gitlab_cli.py issue update \
   --cwd /path/to/repo \
   456 \
-  --title "updated title" \
+  --title "..." \
   --description-file /tmp/issue-body.md
 ```
 
@@ -177,5 +176,4 @@ glab ci trace test --pipeline-id 123456 --branch main
 - 更新 Issue 或 MR 标题/正文前，先读取当前内容，再修改。
 - 正文只允许通过 `--description-file` 传入；脚本不再支持 `--description`，避免 shell 转义和多行文本处理问题。
 - 创建 MR 前，先检查模板、目标分支、当前分支与工作区状态是否符合仓库要求；除非仓库或用户明确要求保留多 commit 或保留源分支，否则创建 MR 时显式传 `--squash true` 与 `--remove-source-branch true`。
-- 创建或更新 Issue/MR 标题正文时，文案按 [SKILL.md](../change-request-writing/SKILL.md) 重新生成。
 - 创建 Issue 前，先检查模板、标签、复现信息与现状是否一致。
