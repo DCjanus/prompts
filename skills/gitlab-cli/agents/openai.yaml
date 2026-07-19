@@ -1,0 +1,4 @@
+interface:
+  display_name: "GitLab CLI"
+  short_description: "通过内置 CLI 管理 GitLab 与自建实例资源"
+  default_prompt: "Use $gitlab-cli to inspect and manage GitLab resources, including self-hosted instances."
