@@ -54,6 +54,31 @@ cd skills/jira-cli
   记忆中的邮箱、本机用户名或其它系统身份猜测 Jira 账号；除非任务确有必要，
   回复和持久化内容中只使用完成操作所需的最少身份信息。
 
+## Jira 正文格式
+
+Issue Description、Comment 和 Worklog Comment 均按 Jira wiki markup 原样发送；CLI
+不做正文格式转换。标题、列表、链接和代码块都直接使用 Jira wiki markup。
+
+常用语法：
+
+```text
+h3. 调查结论
+
+* 第一项
+* 第二项
+
+# 第一步
+# 第二步
+
+[RCA-SRE-22950|https://dems.example/task-centre/tasks/RCA-SRE-22950]
+
+{code:python}
+print("hello")
+{code}
+```
+
+链接使用 `[显示文本|URL]`。
+
 ## 常用查询
 
 ```bash
@@ -128,7 +153,7 @@ Epic 使用配置中的 `epic_name_field` 和 `epic_link_field`：
 
 ## 评论与链接
 
-评论正文按 Jira wiki markup 原样发送，不做 Markdown 转换或转义。需要简洁且可点击的链接时使用：
+评论正文遵循上面的 Jira wiki markup 规则。需要简洁且可点击的链接时使用：
 
 ```text
 [Midgard MR !38|https://git.garena.com/example/-/merge_requests/38]
