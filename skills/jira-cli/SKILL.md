@@ -54,6 +54,54 @@ cd skills/jira-cli
   记忆中的邮箱、本机用户名或其它系统身份猜测 Jira 账号；除非任务确有必要，
   回复和持久化内容中只使用完成操作所需的最少身份信息。
 
+## Jira 正文格式
+
+Issue Description、Comment 和 Worklog Comment 均按 Jira wiki markup 原样发送；CLI
+不做正文格式转换。不要使用 Markdown 的 `## 标题`、`[文本](URL)` 或反引号代码块。
+
+优先使用下面这组高频语法：
+
+```text
+h3. 调查结论
+
+*重要结论*、_需要强调_、{{inline_code}}
+
+* 第一项
+** 嵌套项
+
+# 第一步
+## 子步骤
+
+||字段||值||
+|状态|完成|
+
+bq. 单段引用
+
+{quote}
+多段引用
+{quote}
+
+[RCA-SRE-22950|https://dems.example/task-centre/tasks/RCA-SRE-22950]
+[^report.txt]
+[~username]
+
+{noformat}
+保留原始格式，不解析 *强调* 等语法
+{noformat}
+
+{code:python}
+print("hello")
+{code}
+```
+
+链接使用 `[显示文本|URL]`。空行开始新段落，`\\` 强制换行，`----` 插入水平线；
+使用反斜杠转义后续特殊字符。必要时可使用 `{panel:title=标题}...{panel}` 和
+`!image.png|thumbnail!`，但不要使用 `file://` 链接或 HTML 宏。
+
+Jira 管理员可以按字段配置 renderer，插件也可能增减宏。不要假设 Confluence 的所有宏
+都能在 Jira 中运行；需要完整或实例特定语法时，读取当前 Jira 的
+`/secure/WikiRendererHelpAction.jspa?section=all`。
+
 ## 常用查询
 
 ```bash
@@ -128,11 +176,7 @@ Epic 使用配置中的 `epic_name_field` 和 `epic_link_field`：
 
 ## 评论与链接
 
-评论正文按 Jira wiki markup 原样发送，不做 Markdown 转换或转义。需要简洁且可点击的链接时使用：
-
-```text
-[Midgard MR !38|https://git.garena.com/example/-/merge_requests/38]
-```
+评论正文遵循上面的 Jira wiki markup 规则；外部资源使用带简洁显示文本的链接。
 
 ```bash
 ./scripts/jira_cli.py comment add SATOS-261728 --body-file /tmp/comment.txt
