@@ -57,9 +57,7 @@ cd skills/jira-cli
 ## Jira 正文格式
 
 Issue Description、Comment 和 Worklog Comment 均按 Jira wiki markup 原样发送；CLI
-不做正文格式转换。不要使用 Markdown 的 `## 标题`、`[文本](URL)` 或反引号代码块。
-
-优先使用下面这组高频语法：
+不做正文格式转换。使用下面这组高频 Jira wiki markup：
 
 ```text
 h3. 调查结论
@@ -96,10 +94,10 @@ print("hello")
 
 链接使用 `[显示文本|URL]`。空行开始新段落，`\\` 强制换行，`----` 插入水平线；
 使用反斜杠转义后续特殊字符。必要时可使用 `{panel:title=标题}...{panel}` 和
-`!image.png|thumbnail!`，但不要使用 `file://` 链接或 HTML 宏。
+`!image.png|thumbnail!`。
 
-Jira 管理员可以按字段配置 renderer，插件也可能增减宏。不要假设 Confluence 的所有宏
-都能在 Jira 中运行；需要完整或实例特定语法时，读取当前 Jira 的
+Jira 管理员可以按字段配置 renderer，插件也可能增减宏。需要完整或实例特定语法时，
+读取当前 Jira 的
 `/secure/WikiRendererHelpAction.jspa?section=all`。
 
 ## 常用查询
