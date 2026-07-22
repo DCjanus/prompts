@@ -2,6 +2,7 @@
 # /// script
 # requires-python = ">=3.14"
 # dependencies = [
+#     "parfive>=2.3.1",
 #     "pydantic>=2.13.4",
 #     "rich>=15.0.0",
 #     "typer>=0.27.0",
@@ -29,14 +30,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
+from parfive import Downloader
 from pydantic import BaseModel, Field, ValidationError, field_validator
 from rich.console import Console
-from rich.progress import BarColumn
-from rich.progress import DownloadColumn
-from rich.progress import Progress
-from rich.progress import TextColumn
-from rich.progress import TimeRemainingColumn
-from rich.progress import TransferSpeedColumn
 from rich.table import Table
 import typer
 import zstandard
@@ -46,6 +42,7 @@ API_BASE = "https://api.github.com"
 OWNER = "openai"
 REPO = "codex"
 API_VERSION = "2026-03-10"
+DOWNLOAD_SPLITS = 4
 
 console = Console()
 app = typer.Typer(add_completion=False, no_args_is_help=False)
@@ -237,12 +234,9 @@ def github_token() -> AuthToken:
     return AuthToken(None, "anonymous")
 
 
-def request_headers(token: AuthToken, *, octet_stream: bool = False) -> dict[str, str]:
-    accept = (
-        "application/octet-stream" if octet_stream else "application/vnd.github+json"
-    )
+def request_headers(token: AuthToken) -> dict[str, str]:
     headers = {
-        "Accept": accept,
+        "Accept": "application/vnd.github+json",
         "User-Agent": "prompts-install-codex-cli",
         "X-GitHub-Api-Version": API_VERSION,
     }
@@ -263,35 +257,37 @@ def urlopen_json(url: str, token: AuthToken) -> dict[str, Any]:
         raise RuntimeError(f"GitHub API 请求失败: {exc}") from exc
 
 
-def urlopen_bytes(url: str, token: AuthToken, *, description: str) -> bytes:
-    request = urllib.request.Request(
-        url, headers=request_headers(token, octet_stream=True)
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=300) as response:
-            total = response.length
-            chunks: list[bytes] = []
-            with Progress(
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(),
-                DownloadColumn(),
-                TransferSpeedColumn(),
-                TimeRemainingColumn(),
-                console=console,
-            ) as progress:
-                task = progress.add_task(description, total=total)
-                while True:
-                    chunk = response.read(1024 * 1024)
-                    if not chunk:
-                        break
-                    chunks.append(chunk)
-                    progress.update(task, advance=len(chunk))
-            return b"".join(chunks)
-    except urllib.error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"下载 release asset 失败: HTTP {exc.code}: {body}") from exc
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f"下载 release asset 失败: {exc}") from exc
+def download_asset(asset: ReleaseAsset) -> bytes:
+    """通过多个 HTTP Range 请求并行下载 release asset。"""
+    with tempfile.TemporaryDirectory(prefix="install-codex-cli-") as temp_dir:
+        destination_dir = Path(temp_dir)
+        downloader = Downloader(
+            max_conn=1,
+            max_splits=DOWNLOAD_SPLITS,
+            progress=console.is_terminal,
+            overwrite=True,
+        )
+        downloader.enqueue_file(
+            asset.browser_download_url,
+            path=destination_dir,
+            filename=asset.name,
+            overwrite=True,
+        )
+        results = downloader.download()
+        if results.errors:
+            details = "; ".join(
+                str(error).replace("\n", " ") for error in results.errors
+            )
+            raise RuntimeError(f"下载 release asset 失败: {details}")
+        if len(results) != 1:
+            raise RuntimeError(
+                f"下载 release asset 失败: 预期得到 1 个文件，实际得到 {len(results)} 个"
+            )
+
+        try:
+            return Path(results[0]).read_bytes()
+        except OSError as exc:
+            raise RuntimeError(f"读取下载的 release asset 失败: {exc}") from exc
 
 
 def step(message: str) -> None:
@@ -851,11 +847,7 @@ def run_install(spec: InstallSpec) -> InstallResult:
         )
 
     step(f"开始下载 {selected.asset.name}，文件体积 {format_size(selected.asset.size)}")
-    payload = urlopen_bytes(
-        selected.asset.url,
-        token,
-        description=f"下载 {selected.asset.name}",
-    )
+    payload = download_asset(selected.asset)
     verify_asset_digest(payload, selected.asset.digest, selected.asset.name)
     step("解压 release asset")
     executable = extract_executable(payload, selected, target.executable_name)

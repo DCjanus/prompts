@@ -36,6 +36,7 @@ jobs:
       - name: Run install Codex CLI tests
         run: >
           uv run
+          --with parfive
           --with pydantic
           --with rich
           --with typer

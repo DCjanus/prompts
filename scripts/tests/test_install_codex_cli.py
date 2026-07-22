@@ -100,7 +100,7 @@ class InstallCodexCliTest(unittest.TestCase):
             "xdg_bin_dir": lambda: Path(tempfile.gettempdir()) / "codex-test-bin",
             "state_status": lambda target_path, release, selected: "missing",
             "installed_version_matches": lambda target_path, release: False,
-            "urlopen_bytes": lambda *args, **kwargs: payload,
+            "download_asset": lambda *args, **kwargs: payload,
             "extract_executable": fail_if_called,
         }
         originals = {name: getattr(self.mod, name) for name in patches}
@@ -113,6 +113,48 @@ class InstallCodexCliTest(unittest.TestCase):
         finally:
             for name, original in originals.items():
                 setattr(self.mod, name, original)
+
+    def test_download_asset_uses_parallel_splits_and_browser_url(self):
+        payload = b"downloaded asset"
+        asset = self.mod.ReleaseAsset(
+            name="codex-aarch64-apple-darwin.zst",
+            url="https://api.github.example/assets/1",
+            browser_download_url="https://github.example/download",
+            size=len(payload),
+        )
+        calls = {}
+
+        class FakeResults(list):
+            errors = []
+
+        class FakeDownloader:
+            def __init__(self, **kwargs):
+                calls["init"] = kwargs
+
+            def enqueue_file(self, url, **kwargs):
+                calls["url"] = url
+                calls["enqueue"] = kwargs
+
+            def download(self):
+                destination = calls["enqueue"]["path"] / calls["enqueue"]["filename"]
+                destination.write_bytes(payload)
+                return FakeResults([destination])
+
+        original_downloader = getattr(self.mod, "Downloader", None)
+        self.mod.Downloader = FakeDownloader
+        try:
+            actual = self.mod.download_asset(asset)
+        finally:
+            if original_downloader is None:
+                del self.mod.Downloader
+            else:
+                self.mod.Downloader = original_downloader
+
+        self.assertEqual(actual, payload)
+        self.assertEqual(calls["init"]["max_conn"], 1)
+        self.assertEqual(calls["init"]["max_splits"], 4)
+        self.assertEqual(calls["url"], asset.browser_download_url)
+        self.assertEqual(calls["enqueue"]["filename"], asset.name)
 
     def test_completion_target_for_fish_uses_xdg_config_home(self):
         with tempfile.TemporaryDirectory() as temp_dir:
