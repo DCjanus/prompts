@@ -2,7 +2,7 @@
 # /// script
 # requires-python = ">=3.12"
 # dependencies = [
-#     "httpx2>=2.7.0",
+#     "httpx2>=2.9.1",
 #     "pydantic>=2.13.4",
 #     "pyyaml>=6.0.3",
 #     "rich>=15.0.0",
