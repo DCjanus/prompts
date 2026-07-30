@@ -1,6 +1,6 @@
 ---
 name: jira-cli
-description: 通过内置 Python CLI 直接调用 Jira Server/Data Center REST API v2，查询、创建、编辑、流转和删除 Issue、Epic、Sub-task、评论、附件、关联、Watcher、Vote 与 Worklog，并查询项目、字段、Board 和 Sprint。适用于需要可控地操作 Jira、保留 Jira wiki markup 并精确管理请求与输出的场景。
+description: 通过内置 Python CLI 直接调用 Jira Server/Data Center REST API v2，查询、创建、编辑、流转和删除 Issue、Epic、Sub-task、评论、附件、关联、Watcher、Vote 与 Worklog，并查询 Saved Filter、项目、字段、Board 和 Sprint。适用于需要可控地操作 Jira、保留 Jira wiki markup 并精确管理请求与输出的场景。
 ---
 
 # Jira CLI
@@ -110,6 +110,8 @@ Jira 管理员可以按字段配置 renderer，插件也可能增减宏。需要
 ./scripts/jira_cli.py metadata fields
 ./scripts/jira_cli.py metadata issue-types
 ./scripts/jira_cli.py metadata create --project SATOS --type Task
+./scripts/jira_cli.py filter favourites
+./scripts/jira_cli.py filter get 157700
 ./scripts/jira_cli.py issue list --jql 'assignee = currentUser() ORDER BY updated DESC'
 ./scripts/jira_cli.py board list --project SATOS
 ./scripts/jira_cli.py sprint list 12345
@@ -129,6 +131,25 @@ Jira 管理员可以按字段配置 renderer，插件也可能增减宏。需要
 ./scripts/jira_cli.py api get rest/api/2/priority
 ./scripts/jira_cli.py api get rest/api/2/search --param 'jql=project = SATOS'
 ```
+
+## Saved Filter
+
+`filter favourites` 使用 Jira Server 8.20 的公开
+`GET /rest/api/2/filter/favourite` 接口，只返回当前认证用户收藏且有权查看的 Filter；
+结果不等于当前用户拥有的全部 Filter。当前版本没有列出 owned Filter 的公开 REST
+接口；不得把 Favorite 结果按 owner 过滤后宣称为完整 owned 列表，也不要改用 Jira
+内部接口或 HTML 抓取。
+
+```bash
+./scripts/jira_cli.py filter favourites
+./scripts/jira_cli.py --json filter favourites --expand owner --expand sharePermissions
+./scripts/jira_cli.py --json filter get 157700
+./scripts/jira_cli.py issue list --jql 'filter = 157700'
+```
+
+`filter get` 返回当前用户有权查看的指定 Filter，包括其 JQL。要检索 Filter 对应的
+Issue，继续使用 `issue list --jql 'filter = FILTER_ID'`，不在 CLI 中引入额外作用域
+或层级展开语义。
 
 ## Issue 与 Epic
 

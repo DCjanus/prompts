@@ -282,6 +282,21 @@ class JiraCliTest(unittest.TestCase):
         self.assertEqual(upsert_help.exit_code, 0, upsert_help.output)
         self.assertIn("--global-id", Text.from_ansi(upsert_help.output).plain)
 
+    def test_filter_commands_expose_favourites_and_filter_details(self):
+        favourites_help = self.runner.invoke(
+            self.cli.app, ["filter", "favourites", "--help"]
+        )
+        old_list = self.runner.invoke(self.cli.app, ["filter", "list"])
+        get_help = self.runner.invoke(self.cli.app, ["filter", "get", "--help"])
+
+        self.assertEqual(favourites_help.exit_code, 0, favourites_help.output)
+        self.assertIn(
+            "favourite filters", Text.from_ansi(favourites_help.output).plain.lower()
+        )
+        self.assertNotEqual(old_list.exit_code, 0, old_list.output)
+        self.assertEqual(get_help.exit_code, 0, get_help.output)
+        self.assertIn("filter_id", Text.from_ansi(get_help.output).plain.lower())
+
     def test_parse_pairs_accepts_json_and_plain_text(self):
         parsed = self.cli._parse_pairs(['labels=["one","two"]', "customfield_1=plain"])
         self.assertEqual(parsed["labels"], ["one", "two"])

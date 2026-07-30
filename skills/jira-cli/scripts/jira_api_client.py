@@ -197,6 +197,19 @@ class JiraApiClient:
     def list_issue_types(self) -> list[dict[str, Any]]:
         return self.request("GET", "rest/api/2/issuetype")
 
+    def list_favourite_filters(
+        self, *, expand: list[str] | None = None
+    ) -> list[dict[str, Any]]:
+        params = {"expand": ",".join(expand)} if expand else None
+        return self.request("GET", "rest/api/2/filter/favourite", params=params)
+
+    def get_filter(
+        self, filter_id: str, *, expand: list[str] | None = None
+    ) -> dict[str, Any]:
+        filter_id = self._segment(filter_id, "filter_id")
+        params = {"expand": ",".join(expand)} if expand else None
+        return self.request("GET", f"rest/api/2/filter/{filter_id}", params=params)
+
     def create_meta(
         self,
         *,
