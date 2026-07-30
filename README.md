@@ -65,11 +65,12 @@ notification_method = "bel"
 | [`dcjanus-preferences`](skills/dcjanus-preferences/SKILL.md) | 记录 DCjanus 在不同语言中偏好的第三方库与使用场景，供 AI 在选型、引入依赖或替换库时优先参考。适用于 Python/Rust/Go 的库选择、技术方案对比、或需要遵循 DCjanus 个人偏好进行开发的场景。 |
 | [`domain-modeling`](skills/domain-modeling/SKILL.md) | 构建并持续校准领域模型，明确领域术语与边界，并在必要时记录重要架构决策。 |
 | [`fetch-url`](skills/fetch-url/SKILL.md) | 获取并提取链接正文（默认 Markdown）；内置 X/Twitter URL 处理，提升受限页面的抓取成功率。 |
-| [`review-fix-loop`](skills/review-fix-loop/SKILL.md) | 用三个相互隔离的干净 subagent 并行做代码审查，由主 agent 判断审查意见价值、修复有效问题并提交推送，直到同一批三个 reviewer 都没有有价值审查意见。 |
+| [`review-fix-loop`](skills/review-fix-loop/SKILL.md) | 用三个相互隔离的干净 subagent 并行做代码审查，由主 agent 判断审查意见价值、修复有效问题并提交推送，直到同一批三个 reviewer 都没有有价值审查意见；仅在显式调用时启用。 |
 | [`repository-workflow`](skills/repository-workflow/SKILL.md) | 处理从本地 Git 变更到 GitHub/GitLab 协作发布的完整流程，包括语义化提交、Issue/PR/MR 文案与 inline review reply。 |
 | [`github-cli`](skills/github-cli/SKILL.md) | GitHub CLI 使用指引，面向 GitHub 资源交互（如 repo、issue、PR、comment、release、workflow） |
 | [`gitlab-cli`](skills/gitlab-cli/SKILL.md) | GitLab CLI（glab）使用指引，面向 GitLab 资源交互（如 project、issue、MR、comment、wiki） |
-| [`grilling`](skills/grilling/SKILL.md) | 针对计划、决策或想法逐项深入追问，每次聚焦一个问题，对用户的思路做压力测试。 |
+| [`grill-me`](skills/grill-me/SKILL.md) | 针对计划、决策或想法逐项深入追问，每次聚焦一个问题，对用户的思路做压力测试；仅在显式调用时启用。 |
+| [`teach-me`](skills/teach-me/SKILL.md) | 以学习者控制的节奏自顶向下逐层讲解复杂主题，每轮只展开一个概念并等待追问；仅在显式调用时启用。 |
 | [`golang-lo`](skills/golang-lo/SKILL.md) | Go >= 1.18 项目中希望用 samber/lo（Lodash 风格泛型库）简化集合/映射/字符串、错误处理、重试/节流/防抖、通道并发或指针空值场景时使用。 |
 | [`upstream-pr-staging`](skills/upstream-pr-staging/SKILL.md) | 为 GitHub 上游 PR 先创建 fork 内部 draft、低干扰收敛方案与 CI；必要时构造 red/green 回归测试证据链。 |
 | [`ticktick-cli`](skills/ticktick-cli/SKILL.md) | 使用 Python CLI 与 Dida365 Open API 交互以管理滴答清单任务/项目，适用于需要通过脚本或命令行调用滴答清单接口的场景（如项目/任务的查询、创建、更新、完成、删除）。 |
@@ -77,9 +78,9 @@ notification_method = "bel"
 
 ## 第三方来源与许可
 
-### grilling
+### grill-me
 
-本仓库中的 [`grilling`](skills/grilling/SKILL.md) 翻译自 Matt Pocock 的[原始 skill](https://github.com/mattpocock/skills/blob/697d4ce9742da558fd1ba6697c8e9775e2e302dd/skills/productivity/grilling/SKILL.md)，基于上游 commit [`697d4ce9742da558fd1ba6697c8e9775e2e302dd`](https://github.com/mattpocock/skills/commit/697d4ce9742da558fd1ba6697c8e9775e2e302dd)，按 [MIT License](licenses/grilling/LICENSE) 使用和修改。
+本仓库中的 [`grill-me`](skills/grill-me/SKILL.md) 改编自 Matt Pocock 的原始 [`grilling`](https://github.com/mattpocock/skills/blob/697d4ce9742da558fd1ba6697c8e9775e2e302dd/skills/productivity/grilling/SKILL.md)，基于上游 commit [`697d4ce9742da558fd1ba6697c8e9775e2e302dd`](https://github.com/mattpocock/skills/commit/697d4ce9742da558fd1ba6697c8e9775e2e302dd)，按 [MIT License](licenses/grill-me/LICENSE) 使用和修改。
 
 ### domain-modeling
 

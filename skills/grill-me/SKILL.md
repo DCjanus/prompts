@@ -1,5 +1,5 @@
 ---
-name: grilling
+name: grill-me
 description: 针对用户的计划、决策或想法持续深入追问。适用于用户希望对自己的思路做压力测试，或使用“grill”“拷问”“盘问”等触发词的场景。
 ---
 
