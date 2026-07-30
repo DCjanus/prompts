@@ -43,6 +43,7 @@ from jira_config import (  # noqa: E402
 app = typer.Typer(help="Manage Jira Server/Data Center through REST API v2.")
 config_app = typer.Typer(help="Manage jira-cli TOML configuration.")
 user_app = typer.Typer(help="Inspect Jira users.")
+filter_app = typer.Typer(help="Inspect Jira saved filters.")
 project_app = typer.Typer(help="Inspect projects, versions, and components.")
 metadata_app = typer.Typer(help="Inspect fields and issue creation metadata.")
 issue_app = typer.Typer(help="Read and update Jira issues.")
@@ -60,6 +61,7 @@ api_app = typer.Typer(help="Access unwrapped read-only REST endpoints.")
 for name, group in {
     "config": config_app,
     "user": user_app,
+    "filter": filter_app,
     "project": project_app,
     "metadata": metadata_app,
     "issue": issue_app,
@@ -608,6 +610,41 @@ def user_search(
     _print_result(
         ctx, _state(ctx).client().search_users(query, max_results=max_results)
     )
+
+
+@filter_app.command("favourites")
+def filter_favourites(
+    ctx: typer.Context,
+    expand: Annotated[list[str] | None, typer.Option("--expand")] = None,
+) -> None:
+    """List the authenticated user's favourite filters."""
+    state = _state(ctx)
+    result = state.client().list_favourite_filters(expand=expand)
+    if state.json_output:
+        _print_json(result)
+        return
+    table = Table("ID", "Name", "Owner", "JQL")
+    for saved_filter in result:
+        owner = saved_filter.get("owner") or {}
+        table.add_row(
+            _plain_text(saved_filter.get("id", "")),
+            _plain_text(saved_filter.get("name", "")),
+            _plain_text(
+                owner.get("displayName") or owner.get("name") or owner.get("key") or ""
+            ),
+            _plain_text(saved_filter.get("jql", "")),
+        )
+    console.print(table)
+
+
+@filter_app.command("get")
+def filter_get(
+    ctx: typer.Context,
+    filter_id: str,
+    expand: Annotated[list[str] | None, typer.Option("--expand")] = None,
+) -> None:
+    """Get one visible saved filter by ID."""
+    _print_result(ctx, _state(ctx).client().get_filter(filter_id, expand=expand))
 
 
 @project_app.command("list")

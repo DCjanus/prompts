@@ -53,6 +53,32 @@ class JiraApiClientTest(unittest.TestCase):
         )
         self.assertEqual(result["total"], 0)
 
+    def test_filter_reads_use_jira_server_public_endpoints(self):
+        responses = {
+            "/rest/api/2/filter/favourite": [
+                {"id": "157700", "name": "Team epics", "favourite": True}
+            ],
+            "/rest/api/2/filter/157700": {
+                "id": "157700",
+                "name": "Team epics",
+                "jql": "type = Epic",
+            },
+        }
+
+        def handler(request: httpx2.Request) -> httpx2.Response:
+            self.assertEqual(request.method, "GET")
+            self.assertEqual(request.url.params["expand"], "owner,sharePermissions")
+            return httpx2.Response(200, json=responses[request.url.path])
+
+        client = self.make_client(handler)
+        favourites = client.list_favourite_filters(expand=["owner", "sharePermissions"])
+        filter_details = client.get_filter(
+            "157700", expand=["owner", "sharePermissions"]
+        )
+
+        self.assertEqual(favourites[0]["id"], "157700")
+        self.assertEqual(filter_details["jql"], "type = Epic")
+
     def test_create_metadata_uses_repeated_multi_value_parameters(self):
         def handler(request: httpx2.Request) -> httpx2.Response:
             self.assertEqual(
