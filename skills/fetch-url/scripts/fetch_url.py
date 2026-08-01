@@ -3,9 +3,9 @@
 # /// script
 # requires-python = ">=3.14"
 # dependencies = [
-#     "playwright>=1.61.0",
+#     "playwright>=1.62.0",
 #     "rich>=15.0.0",
-#     "trafilatura>=2.1.0",
+#     "trafilatura>=2.2.0",
 #     "typer>=0.27.0",
 # ]
 # ///
