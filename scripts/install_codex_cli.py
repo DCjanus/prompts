@@ -17,7 +17,6 @@ import io
 import json
 import os
 import platform
-import re
 import shutil
 import stat
 import subprocess
@@ -30,12 +29,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
+import typer
+import zstandard
 from parfive import Downloader
 from pydantic import BaseModel, Field, ValidationError, field_validator
 from rich.console import Console
 from rich.table import Table
-import typer
-import zstandard
 
 GITHUB_HOST = "github.com"
 API_BASE = "https://api.github.com"
@@ -51,11 +50,6 @@ ArchiveKind = Literal["zst", "tar.zst", "tar.gz", "zip", "direct"]
 CompletionShell = Literal["bash", "elvish", "fish", "powershell", "zsh"]
 CompletionStatus = Literal["installed", "updated", "unchanged", "skipped"]
 StateStatus = Literal["match", "missing", "stale"]
-VERSION_PATTERN = re.compile(
-    r"(?<![0-9A-Za-z])"
-    r"v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)"
-    r"(?![0-9A-Za-z])"
-)
 
 
 class ReleaseAsset(BaseModel):
@@ -118,11 +112,13 @@ class InstallResult:
     selected: SelectedAsset
     install_dir: Path
     target_path: Path
+    code_mode_host_path: Path
     auth_source: str
     path_warning: str | None
     status: Literal["installed", "updated", "unchanged"]
+    code_mode_host_status: Literal["installed", "updated", "unchanged"]
     downloaded: bool
-    completion: "CompletionInstallResult"
+    completion: CompletionInstallResult
 
 
 @dataclass(frozen=True)
@@ -151,6 +147,10 @@ class InstallState(BaseModel):
     asset_name: str
     asset_digest: str | None = None
     executable_sha256: str
+    code_mode_host_path: str
+    code_mode_host_asset_name: str
+    code_mode_host_asset_digest: str | None = None
+    code_mode_host_sha256: str
 
 
 def xdg_bin_dir() -> Path:
@@ -307,7 +307,7 @@ def fetch_latest_release(token: AuthToken) -> ReleaseSelection:
     """读取 openai/codex 最新 release，包含 prerelease。"""
     raw = urlopen_json(f"{API_BASE}/repos/{OWNER}/{REPO}/releases?per_page=1", token)
     if not isinstance(raw, list):
-        raise RuntimeError("GitHub releases 响应结构不符合预期")
+        raise RuntimeError("GitHub releases 响应结构不符合预期")  # noqa: TRY004
 
     try:
         releases = [Release.model_validate(item) for item in raw]
@@ -325,15 +325,28 @@ def fetch_latest_release(token: AuthToken) -> ReleaseSelection:
 
 def select_codex_asset(release: Release, target: PlatformTarget) -> SelectedAsset:
     """选择当前平台对应的 Codex CLI 预编译产物。"""
+    return select_binary_asset(release, target, "codex")
+
+
+def select_code_mode_host_asset(
+    release: Release, target: PlatformTarget
+) -> SelectedAsset:
+    """选择当前平台对应的 Code Mode host 预编译产物。"""
+    return select_binary_asset(release, target, "codex-code-mode-host")
+
+
+def select_binary_asset(
+    release: Release, target: PlatformTarget, binary_name: str
+) -> SelectedAsset:
+    """选择 release 中指定 binary 的当前平台产物。"""
+    executable_suffix = ".exe" if target.executable_name.endswith(".exe") else ""
+    asset_stem = f"{binary_name}-{target.triple}{executable_suffix}"
     preferred: list[tuple[str, ArchiveKind]] = [
-        (f"codex-{target.triple}.zst", "zst"),
-        (f"codex-{target.triple}.tar.zst", "tar.zst"),
-        (f"codex-{target.triple}.tar.gz", "tar.gz"),
-        (f"codex-{target.triple}.exe.zst", "zst"),
-        (f"codex-{target.triple}.exe.tar.zst", "tar.zst"),
-        (f"codex-{target.triple}.zip", "zip"),
-        (f"codex-{target.triple}.exe.zip", "zip"),
-        (f"codex-{target.triple}.exe", "direct"),
+        (f"{asset_stem}.zst", "zst"),
+        (f"{asset_stem}.tar.zst", "tar.zst"),
+        (f"{asset_stem}.tar.gz", "tar.gz"),
+        (f"{asset_stem}.zip", "zip"),
+        (asset_stem, "direct"),
     ]
     assets = {asset.name: asset for asset in release.assets}
     for name, kind in preferred:
@@ -343,10 +356,11 @@ def select_codex_asset(release: Release, target: PlatformTarget) -> SelectedAsse
     available = "\n".join(
         f"  - {asset.name}"
         for asset in release.assets
-        if asset.name.startswith("codex-")
+        if asset.name.startswith(f"{binary_name}-")
     )
     raise RuntimeError(
-        f"未找到当前平台对应的 Codex CLI asset: {target.triple}\n可用 codex asset:\n{available}"
+        f"未找到当前平台对应的 {binary_name} asset: {target.triple}\n"
+        f"可用 {binary_name} asset:\n{available}"
     )
 
 
@@ -678,9 +692,12 @@ def save_state(state: InstallState) -> None:
 
 def make_state(
     target_path: Path,
+    code_mode_host_path: Path,
     release: Release,
     selected: SelectedAsset,
+    code_mode_host_selected: SelectedAsset,
     executable_sha256: str,
+    code_mode_host_sha256: str,
 ) -> InstallState:
     return InstallState(
         target_path=target_key(target_path),
@@ -688,16 +705,24 @@ def make_state(
         asset_name=selected.asset.name,
         asset_digest=selected.asset.digest,
         executable_sha256=executable_sha256,
+        code_mode_host_path=target_key(code_mode_host_path),
+        code_mode_host_asset_name=code_mode_host_selected.asset.name,
+        code_mode_host_asset_digest=code_mode_host_selected.asset.digest,
+        code_mode_host_sha256=code_mode_host_sha256,
     )
 
 
 def state_status(
-    target_path: Path, release: Release, selected: SelectedAsset
+    target_path: Path,
+    code_mode_host_path: Path,
+    release: Release,
+    selected: SelectedAsset,
+    code_mode_host_selected: SelectedAsset,
 ) -> StateStatus:
     state = load_state().get(target_key(target_path))
     if state is None:
         return "missing"
-    if not target_path.exists():
+    if not target_path.exists() or not code_mode_host_path.exists():
         return "stale"
 
     if state.release_tag != release.tag_name:
@@ -706,40 +731,17 @@ def state_status(
         return "stale"
     if state.asset_digest != selected.asset.digest:
         return "stale"
+    if state.code_mode_host_path != target_key(code_mode_host_path):
+        return "stale"
+    if state.code_mode_host_asset_name != code_mode_host_selected.asset.name:
+        return "stale"
+    if state.code_mode_host_asset_digest != code_mode_host_selected.asset.digest:
+        return "stale"
     if sha256_file(target_path) != state.executable_sha256:
         return "stale"
+    if sha256_file(code_mode_host_path) != state.code_mode_host_sha256:
+        return "stale"
     return "match"
-
-
-def release_version(tag_name: str) -> str | None:
-    match = VERSION_PATTERN.search(tag_name)
-    if match is None:
-        return None
-    return match.group(1)
-
-
-def parse_version_token(output: str) -> str | None:
-    match = VERSION_PATTERN.search(output)
-    if match is None:
-        return None
-    return match.group(1)
-
-
-def installed_version_matches(target_path: Path, release: Release) -> bool:
-    version = release_version(release.tag_name)
-    if version is None or not target_path.exists():
-        return False
-    try:
-        result = subprocess.run(
-            [str(target_path), "--version"],
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        return False
-    return parse_version_token(result.stdout.strip()) == version
 
 
 def path_entries() -> list[Path]:
@@ -778,8 +780,10 @@ def install_result(
     selected: SelectedAsset,
     install_dir: Path,
     target_path: Path,
+    code_mode_host_path: Path,
     auth_source: str,
     status: Literal["installed", "updated", "unchanged"],
+    code_mode_host_status: Literal["installed", "updated", "unchanged"],
     downloaded: bool,
     completion_shell: CompletionShell | None,
 ) -> InstallResult:
@@ -789,9 +793,11 @@ def install_result(
         selected=selected,
         install_dir=install_dir,
         target_path=target_path,
+        code_mode_host_path=code_mode_host_path,
         auth_source=auth_source,
         path_warning=path_warning(install_dir, target_path),
         status=status,
+        code_mode_host_status=code_mode_host_status,
         downloaded=downloaded,
         completion=completion,
     )
@@ -809,14 +815,32 @@ def run_install(spec: InstallSpec) -> InstallResult:
     target = current_platform_target()
     step(f"当前平台匹配 target: {target.triple}")
     selected = select_codex_asset(release, target)
+    code_mode_host_selected = select_code_mode_host_asset(release, target)
     install_dir = spec.install_dir or xdg_bin_dir()
     target_path = install_dir / target.executable_name
+    code_mode_host_name = (
+        "codex-code-mode-host.exe"
+        if target.executable_name.endswith(".exe")
+        else "codex-code-mode-host"
+    )
+    code_mode_host_path = install_dir / code_mode_host_name
     step(
         f"选定下载文件: {selected.asset.name} "
         f"({format_size(selected.asset.size)}, {selected.kind})"
     )
+    step(
+        f"选定 Code Mode host: {code_mode_host_selected.asset.name} "
+        f"({format_size(code_mode_host_selected.asset.size)}, "
+        f"{code_mode_host_selected.kind})"
+    )
 
-    current_state = state_status(target_path, release, selected)
+    current_state = state_status(
+        target_path,
+        code_mode_host_path,
+        release,
+        selected,
+        code_mode_host_selected,
+    )
     if current_state == "match":
         step("本地状态记录命中，跳过下载")
         return install_result(
@@ -824,44 +848,62 @@ def run_install(spec: InstallSpec) -> InstallResult:
             selected=selected,
             install_dir=install_dir,
             target_path=target_path,
+            code_mode_host_path=code_mode_host_path,
             auth_source=token.source,
             status="unchanged",
+            code_mode_host_status="unchanged",
             downloaded=False,
             completion_shell=spec.completion_shell,
         )
 
     if current_state == "stale":
         step("本地状态记录已过期或目标文件被替换，继续下载更新")
-    elif installed_version_matches(target_path, release):
-        step("目标文件版本已是最新，跳过下载")
-        save_state(make_state(target_path, release, selected, sha256_file(target_path)))
-        return install_result(
-            release=release,
-            selected=selected,
-            install_dir=install_dir,
-            target_path=target_path,
-            auth_source=token.source,
-            status="unchanged",
-            downloaded=False,
-            completion_shell=spec.completion_shell,
-        )
 
     step(f"开始下载 {selected.asset.name}，文件体积 {format_size(selected.asset.size)}")
     payload = download_asset(selected.asset)
     verify_asset_digest(payload, selected.asset.digest, selected.asset.name)
-    step("解压 release asset")
+    step(
+        f"开始下载 {code_mode_host_selected.asset.name}，"
+        f"文件体积 {format_size(code_mode_host_selected.asset.size)}"
+    )
+    code_mode_host_payload = download_asset(code_mode_host_selected.asset)
+    verify_asset_digest(
+        code_mode_host_payload,
+        code_mode_host_selected.asset.digest,
+        code_mode_host_selected.asset.name,
+    )
+    step("解压 release assets")
     executable = extract_executable(payload, selected, target.executable_name)
-    step(f"安装到 {target_path}")
+    code_mode_host = extract_executable(
+        code_mode_host_payload,
+        code_mode_host_selected,
+        code_mode_host_name,
+    )
+    step(f"安装 Code Mode host 到 {code_mode_host_path}")
+    code_mode_host_status = install_executable(code_mode_host, code_mode_host_path)
+    step(f"安装 Codex CLI 到 {target_path}")
     status = install_executable(executable, target_path)
-    save_state(make_state(target_path, release, selected, sha256_bytes(executable)))
+    save_state(
+        make_state(
+            target_path,
+            code_mode_host_path,
+            release,
+            selected,
+            code_mode_host_selected,
+            sha256_bytes(executable),
+            sha256_bytes(code_mode_host),
+        )
+    )
 
     return install_result(
         release=release,
         selected=selected,
         install_dir=install_dir,
         target_path=target_path,
+        code_mode_host_path=code_mode_host_path,
         auth_source=token.source,
         status=status,
+        code_mode_host_status=code_mode_host_status,
         downloaded=True,
         completion_shell=spec.completion_shell,
     )
@@ -875,8 +917,10 @@ def print_result(result: InstallResult) -> None:
     table.add_row("Asset", result.selected.asset.name)
     table.add_row("Install dir", str(result.install_dir))
     table.add_row("Target", str(result.target_path))
+    table.add_row("Code Mode host", str(result.code_mode_host_path))
     table.add_row("Auth", result.auth_source)
     table.add_row("Status", result.status)
+    table.add_row("Code Mode host status", result.code_mode_host_status)
     table.add_row("Downloaded", "yes" if result.downloaded else "no")
     if result.completion.shell:
         table.add_row("Completion shell", result.completion.shell)

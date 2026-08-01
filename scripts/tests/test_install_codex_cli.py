@@ -4,8 +4,9 @@ import os
 import subprocess
 import sys
 import tempfile
-from pathlib import Path
 import unittest
+from pathlib import Path
+from typing import ClassVar
 
 
 def load_install_module():
@@ -24,51 +25,56 @@ class InstallCodexCliTest(unittest.TestCase):
     def setUpClass(cls):
         cls.mod = load_install_module()
 
-    def test_installed_version_requires_exact_semver_match(self):
+    def test_state_is_stale_when_code_mode_host_is_missing(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            target_path = Path(temp_dir) / "codex"
-            target_path.write_text("#!/bin/sh\n", encoding="utf-8")
-            release = self.mod.Release(tag_name="rust-v0.136.0", assets=[])
+            install_dir = Path(temp_dir)
+            target_path = install_dir / "codex"
+            host_path = install_dir / "codex-code-mode-host"
+            target_path.write_bytes(b"codex")
+            release = self.mod.Release(tag_name="rust-v0.147.0", assets=[])
+            selected = self.mod.SelectedAsset(
+                asset=self.mod.ReleaseAsset(
+                    name="codex-aarch64-apple-darwin.zst",
+                    url="https://api.github.example/assets/1",
+                    browser_download_url="https://github.example/codex",
+                ),
+                kind="zst",
+            )
+            host_selected = self.mod.SelectedAsset(
+                asset=self.mod.ReleaseAsset(
+                    name="codex-code-mode-host-aarch64-apple-darwin.zst",
+                    url="https://api.github.example/assets/2",
+                    browser_download_url="https://github.example/code-mode-host",
+                ),
+                kind="zst",
+            )
+            state = self.mod.InstallState(
+                target_path=str(target_path.resolve()),
+                release_tag=release.tag_name,
+                asset_name=selected.asset.name,
+                asset_digest=selected.asset.digest,
+                executable_sha256=hashlib.sha256(b"codex").hexdigest(),
+                code_mode_host_path=str(host_path.resolve()),
+                code_mode_host_asset_name=host_selected.asset.name,
+                code_mode_host_asset_digest=host_selected.asset.digest,
+                code_mode_host_sha256=hashlib.sha256(b"host").hexdigest(),
+            )
 
-            def fake_run(*args, **kwargs):
-                return subprocess.CompletedProcess(
-                    args=args[0],
-                    returncode=0,
-                    stdout="codex-cli 0.136.0-alpha.1\n",
-                    stderr="",
-                )
-
-            original_run = self.mod.subprocess.run
-            self.mod.subprocess.run = fake_run
+            original_load_state = self.mod.load_state
+            self.mod.load_state = lambda: {str(target_path.resolve()): state}
             try:
-                self.assertFalse(
-                    self.mod.installed_version_matches(target_path, release)
+                self.assertEqual(
+                    self.mod.state_status(
+                        target_path,
+                        host_path,
+                        release,
+                        selected,
+                        host_selected,
+                    ),
+                    "stale",
                 )
             finally:
-                self.mod.subprocess.run = original_run
-
-    def test_installed_version_accepts_exact_semver_match(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            target_path = Path(temp_dir) / "codex"
-            target_path.write_text("#!/bin/sh\n", encoding="utf-8")
-            release = self.mod.Release(tag_name="rust-v0.136.0", assets=[])
-
-            def fake_run(*args, **kwargs):
-                return subprocess.CompletedProcess(
-                    args=args[0],
-                    returncode=0,
-                    stdout="codex-cli 0.136.0\n",
-                    stderr="",
-                )
-
-            original_run = self.mod.subprocess.run
-            self.mod.subprocess.run = fake_run
-            try:
-                self.assertTrue(
-                    self.mod.installed_version_matches(target_path, release)
-                )
-            finally:
-                self.mod.subprocess.run = original_run
+                self.mod.load_state = original_load_state
 
     def test_run_install_rejects_mismatched_asset_digest_before_extraction(self):
         payload = b"wrong compressed bytes"
@@ -79,8 +85,14 @@ class InstallCodexCliTest(unittest.TestCase):
             browser_download_url="https://github.example/download",
             digest=expected_digest,
         )
+        host_asset = self.mod.ReleaseAsset(
+            name="codex-code-mode-host-aarch64-apple-darwin.zst",
+            url="https://api.github.example/assets/2",
+            browser_download_url="https://github.example/code-mode-host",
+        )
         release = self.mod.Release(tag_name="rust-v0.136.0", assets=[asset])
         selected = self.mod.SelectedAsset(asset=asset, kind="zst")
+        host_selected = self.mod.SelectedAsset(asset=host_asset, kind="zst")
 
         calls = {"extract": 0}
 
@@ -97,9 +109,9 @@ class InstallCodexCliTest(unittest.TestCase):
                 "aarch64-apple-darwin", "codex"
             ),
             "select_codex_asset": lambda release, target: selected,
+            "select_code_mode_host_asset": lambda release, target: host_selected,
             "xdg_bin_dir": lambda: Path(tempfile.gettempdir()) / "codex-test-bin",
-            "state_status": lambda target_path, release, selected: "missing",
-            "installed_version_matches": lambda target_path, release: False,
+            "state_status": lambda *args: "missing",
             "download_asset": lambda *args, **kwargs: payload,
             "extract_executable": fail_if_called,
         }
@@ -125,7 +137,7 @@ class InstallCodexCliTest(unittest.TestCase):
         calls = {}
 
         class FakeResults(list):
-            errors = []
+            errors: ClassVar[list] = []
 
         class FakeDownloader:
             def __init__(self, **kwargs):
