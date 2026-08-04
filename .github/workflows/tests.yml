@@ -42,6 +42,14 @@ jobs:
           --with typer
           --with zstandard
           python -m unittest scripts/tests/test_install_codex_cli.py
+      - name: Run repository workflow tests
+        run: >
+          uv run
+          --with openai-codex
+          --with pydantic
+          --with typer
+          --prerelease allow
+          python -m unittest skills/repository-workflow/scripts/tests/test_codex_git_commit.py
       - name: Run Jira CLI tests
         run: >
           uv run
