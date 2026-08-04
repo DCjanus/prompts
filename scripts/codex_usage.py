@@ -5,7 +5,7 @@
 # dependencies = [
 #     "pydantic>=2.13.4",
 #     "rich>=15.0.0",
-#     "typer>=0.27.0",
+#     "typer>=0.27.1",
 # ]
 # ///
 

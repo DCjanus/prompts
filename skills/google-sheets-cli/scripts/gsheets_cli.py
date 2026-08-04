@@ -6,7 +6,7 @@
 #     "google-auth-httplib2>=0.4.0",
 #     "google-auth-oauthlib>=1.4.0",
 #     "rich>=15.0.0",
-#     "typer>=0.27.0",
+#     "typer>=0.27.1",
 # ]
 # ///
 """Google Sheets CLI for Codex skills."""
