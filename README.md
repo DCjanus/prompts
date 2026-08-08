@@ -66,7 +66,7 @@ notification_method = "bel"
 | [`repository-workflow`](skills/repository-workflow/SKILL.md) | 处理从本地 Git 变更到 GitHub/GitLab 协作发布的完整流程，包括语义化提交、Issue/PR/MR 文案与 inline review reply。 |
 | [`github-cli`](skills/github-cli/SKILL.md) | GitHub CLI 使用指引，面向 GitHub 资源交互（如 repo、issue、PR、comment、release、workflow） |
 | [`gitlab-cli`](skills/gitlab-cli/SKILL.md) | GitLab CLI（glab）使用指引，面向 GitLab 资源交互（如 project、issue、MR、comment、wiki） |
-| [`grill-me`](skills/grill-me/SKILL.md) | 针对计划、决策或想法逐项深入追问，每次聚焦一个问题，对用户的思路做压力测试；仅在显式调用时启用。 |
+| [`grill-me`](skills/grill-me/SKILL.md) | 针对计划、决策或想法按决策树前沿分轮追问，对用户的思路做压力测试；仅在显式调用时启用。 |
 | [`teach-me`](skills/teach-me/SKILL.md) | 以学习者控制的节奏自顶向下逐层讲解复杂主题，每轮只展开一个概念并等待追问；仅在显式调用时启用。 |
 | [`golang-lo`](skills/golang-lo/SKILL.md) | Go >= 1.18 项目中希望用 samber/lo（Lodash 风格泛型库）简化集合/映射/字符串、错误处理、重试/节流/防抖、通道并发或指针空值场景时使用。 |
 | [`upstream-pr-staging`](skills/upstream-pr-staging/SKILL.md) | 为 GitHub 上游 PR 先创建 fork 内部 draft、低干扰收敛方案与 CI；必要时构造 red/green 回归测试证据链。 |
@@ -77,7 +77,7 @@ notification_method = "bel"
 
 ### grill-me
 
-本仓库中的 [`grill-me`](skills/grill-me/SKILL.md) 改编自 Matt Pocock 的原始 [`grilling`](https://github.com/mattpocock/skills/blob/697d4ce9742da558fd1ba6697c8e9775e2e302dd/skills/productivity/grilling/SKILL.md)，基于上游 commit [`697d4ce9742da558fd1ba6697c8e9775e2e302dd`](https://github.com/mattpocock/skills/commit/697d4ce9742da558fd1ba6697c8e9775e2e302dd)，按 [MIT License](licenses/grill-me/LICENSE) 使用和修改。
+本仓库中的 [`grill-me`](skills/grill-me/SKILL.md) 改编自 Matt Pocock 的原始 [`grilling`](https://github.com/mattpocock/skills/blob/bfdaef8e989a5c81160e74bc5043bd434da49cac/skills/productivity/grilling/SKILL.md)，基于上游 commit [`bfdaef8e989a5c81160e74bc5043bd434da49cac`](https://github.com/mattpocock/skills/commit/bfdaef8e989a5c81160e74bc5043bd434da49cac)，按 [MIT License](licenses/grill-me/LICENSE) 使用和修改。
 
 ### domain-modeling
 
