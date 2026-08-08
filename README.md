@@ -58,7 +58,7 @@ notification_method = "bel"
 | [`codex-thread-namer`](skills/codex-thread-namer/SKILL.md) | 为当前 Codex thread 设置名称；默认根据上下文直接重命名，仅在用户明确要求时提供候选名。 |
 | [`confluence-cli`](skills/confluence-cli/SKILL.md) | 查询、检索与阅读 Confluence 文档/页面。 |
 | [`jira-cli`](skills/jira-cli/SKILL.md) | 通过内置 Python CLI 查询和管理 Jira Issue、Saved Filter、流转与评论。 |
-| [`uv-cli-creator`](skills/uv-cli-creator/SKILL.md) | 为本仓库创建或修改 uv --script 风格的 Python CLI；当需要把重复命令封装成 `./scripts/...` 直接执行的工具时使用。 |
+| [`uv-cli-creator`](skills/uv-cli-creator/SKILL.md) | 创建或修改基于 PEP 723、由 `uv run --script` 管理的单文件 Python CLI，并在环境支持时提供直接执行入口。 |
 | [`dcjanus-preferences`](skills/dcjanus-preferences/SKILL.md) | 记录 DCjanus 在不同语言中偏好的第三方库与使用场景，供 AI 在选型、引入依赖或替换库时优先参考。适用于 Python/Rust/Go 的库选择、技术方案对比、或需要遵循 DCjanus 个人偏好进行开发的场景。 |
 | [`domain-modeling`](skills/domain-modeling/SKILL.md) | 构建并持续校准领域模型，明确领域术语与边界，并在必要时记录重要架构决策。 |
 | [`fetch-url`](skills/fetch-url/SKILL.md) | 获取并提取链接正文（默认 Markdown）；内置 X/Twitter URL 处理，提升受限页面的抓取成功率。 |
@@ -66,7 +66,7 @@ notification_method = "bel"
 | [`repository-workflow`](skills/repository-workflow/SKILL.md) | 处理从本地 Git 变更到 GitHub/GitLab 协作发布的完整流程，包括语义化提交、Issue/PR/MR 文案与 inline review reply。 |
 | [`github-cli`](skills/github-cli/SKILL.md) | GitHub CLI 使用指引，面向 GitHub 资源交互（如 repo、issue、PR、comment、release、workflow） |
 | [`gitlab-cli`](skills/gitlab-cli/SKILL.md) | GitLab CLI（glab）使用指引，面向 GitLab 资源交互（如 project、issue、MR、comment、wiki） |
-| [`grill-me`](skills/grill-me/SKILL.md) | 针对计划、决策或想法逐项深入追问，每次聚焦一个问题，对用户的思路做压力测试；仅在显式调用时启用。 |
+| [`grill-me`](skills/grill-me/SKILL.md) | 针对计划、决策或想法按决策树前沿分轮追问，对用户的思路做压力测试；仅在显式调用时启用。 |
 | [`teach-me`](skills/teach-me/SKILL.md) | 以学习者控制的节奏自顶向下逐层讲解复杂主题，每轮只展开一个概念并等待追问；仅在显式调用时启用。 |
 | [`golang-lo`](skills/golang-lo/SKILL.md) | Go >= 1.18 项目中希望用 samber/lo（Lodash 风格泛型库）简化集合/映射/字符串、错误处理、重试/节流/防抖、通道并发或指针空值场景时使用。 |
 | [`upstream-pr-staging`](skills/upstream-pr-staging/SKILL.md) | 为 GitHub 上游 PR 先创建 fork 内部 draft、低干扰收敛方案与 CI；必要时构造 red/green 回归测试证据链。 |
@@ -77,7 +77,7 @@ notification_method = "bel"
 
 ### grill-me
 
-本仓库中的 [`grill-me`](skills/grill-me/SKILL.md) 改编自 Matt Pocock 的原始 [`grilling`](https://github.com/mattpocock/skills/blob/697d4ce9742da558fd1ba6697c8e9775e2e302dd/skills/productivity/grilling/SKILL.md)，基于上游 commit [`697d4ce9742da558fd1ba6697c8e9775e2e302dd`](https://github.com/mattpocock/skills/commit/697d4ce9742da558fd1ba6697c8e9775e2e302dd)，按 [MIT License](licenses/grill-me/LICENSE) 使用和修改。
+本仓库中的 [`grill-me`](skills/grill-me/SKILL.md) 改编自 Matt Pocock 的原始 [`grilling`](https://github.com/mattpocock/skills/blob/bfdaef8e989a5c81160e74bc5043bd434da49cac/skills/productivity/grilling/SKILL.md)，基于上游 commit [`bfdaef8e989a5c81160e74bc5043bd434da49cac`](https://github.com/mattpocock/skills/commit/bfdaef8e989a5c81160e74bc5043bd434da49cac)，按 [MIT License](licenses/grill-me/LICENSE) 使用和修改。
 
 ### domain-modeling
 

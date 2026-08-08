@@ -1,6 +1,6 @@
 ---
 name: uv-cli-creator
-description: 创建或修改 uv --script 风格的 Python CLI；当需要把重复命令封装成 `./scripts/...` 直接执行的工具，或需要统一这类脚本约定时使用。
+description: 创建或修改基于 PEP 723、由 `uv run --script` 管理的单文件 Python CLI；当需要把重复命令封装成 `scripts/` 工具、让脚本在支持 `env -S` 的 Unix 环境中直接执行，或统一这类脚本约定时使用。
 ---
 
 ## 设计目标
@@ -8,9 +8,9 @@ description: 创建或修改 uv --script 风格的 Python CLI；当需要把重�
 目标很简单：
 
 - 不手动安装依赖，也不依赖宿主机已经准备好的 Python 环境
-- 默认只依赖一个 `uv`
+- 默认只依赖 `uv`；直接执行还要求 Unix 环境支持 `env -S`
 - 方便修改和版本控制
-- 脚本可以像可执行文件一样直接执行：`./scripts/foo.py`
+- 始终可以通过 `uv run --script` 执行；环境支持时也可以像可执行文件一样直接执行
 
 ## 怎么实现
 
@@ -19,9 +19,25 @@ description: 创建或修改 uv --script 风格的 Python CLI；当需要把重�
 ```bash
 uv init --script scripts/foo.py
 uv add --script scripts/foo.py <package>
+```
+
+`uv init --script` 不会生成 shebang。需要直接执行时，在 PEP 723 metadata 前添加：
+
+```python
+#!/usr/bin/env -S uv run --script
+#
+# /// script
+```
+
+然后设置执行权限并验证两种入口：
+
+```bash
 chmod +x scripts/foo.py
 ./scripts/foo.py --help
+uv run --script scripts/foo.py --help
 ```
+
+`env -S` 不是 POSIX 标准；不支持它的 Unix 环境以及 Windows 应使用 `uv run --script scripts/foo.py`。
 
 依赖管理规则：
 
@@ -32,7 +48,8 @@ chmod +x scripts/foo.py
 调用规则：
 
 - 入口脚本放在对应 skill 的 `scripts/` 目录下
-- 入口脚本默认应能直接执行：`./scripts/foo.py`
+- 支持 `env -S` 的 Unix 环境优先直接执行：`./scripts/foo.py`
+- 其它环境使用：`uv run --script scripts/foo.py`
 - 不要在 skill 文档里把入口脚本写成 `python ...` 或 `uv run python ...`
 
 ## 给其他 skill 用时
@@ -42,10 +59,16 @@ chmod +x scripts/foo.py
 ````markdown
 说明：以下脚本调用均以当前 `SKILL.md` 所在文件夹为 workdir。
 
-脚本调用方式（必须直接当作可执行命令运行，不要用 `uv run python` 或 `python`）：
+脚本调用方式（支持 `env -S` 时直接执行；不要用 `uv run python` 或 `python`）：
 
 ```bash
 cd skills/<skill-name> && ./scripts/<tool>.py --help
+```
+
+不支持 `env -S` 时使用：
+
+```bash
+cd skills/<skill-name> && uv run --script scripts/<tool>.py --help
 ```
 
 错误示例：
@@ -74,5 +97,6 @@ python skills/<skill-name>/scripts/<tool>.py --help
 ## 验证
 
 - `./scripts/foo.py --help`
-- `uv run ruff check <path>`
-- `uv run ruff format --check <path>`
+- `uv run --script scripts/foo.py --help`
+- `uvx ruff check <path>`
+- `uvx ruff format --check <path>`
