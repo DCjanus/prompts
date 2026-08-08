@@ -46,7 +46,6 @@ notification_method = "bel"
 - [`AGENTS.md`](AGENTS.md)：Codex 中所有代理共享的基础约束与工作流
 - [`skills/`](skills)：按功能分类的技能库，详情见下方技能列表
 - [`scripts/`](scripts)：放置 uv script 模式的工具脚本（规范见 [SKILL.md（uv-cli-creator）](skills/uv-cli-creator/SKILL.md)）
-  - [`install_codex_cli.py`](scripts/install_codex_cli.py)：从 [openai/codex](https://github.com/openai/codex/releases) 最新 release 并行分片下载当前平台的 Codex CLI 与配套 Code Mode host，安装到用户级 XDG binary 目录，并为当前 shell 同步安装 Codex completion；可用 `--completion-shell fish` 显式指定目标 shell，可跳过下载时复用本地状态
   - [`script_deps.py`](scripts/script_deps.py)：检查或升级仓库内 PEP 723 / uv script 依赖声明，对比 PyPI 最新版本，并在 GitHub Actions 中报告依赖下限落后或声明不一致
   - [`upstream_skills.py`](scripts/upstream_skills.py)：根据 [`upstream-skills.toml`](upstream-skills.toml) 检查第三方 skill 的上游目录是否出现新 commit；发现变更或查询失败时返回非 0，并写入 GitHub Actions summary
 

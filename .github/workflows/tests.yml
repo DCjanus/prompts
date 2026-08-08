@@ -33,15 +33,6 @@ jobs:
           uv run
           --with markdown-it-py
           python -m unittest skills/confluence-cli/scripts/tests/test_markdown_to_storage.py
-      - name: Run install Codex CLI tests
-        run: >
-          uv run
-          --with parfive
-          --with pydantic
-          --with rich
-          --with typer
-          --with zstandard
-          python -m unittest scripts/tests/test_install_codex_cli.py
       - name: Run repository workflow tests
         run: >
           uv run
