@@ -18,6 +18,24 @@ alias codex_tmp='env EDITOR="zed --wait --new" command codex -C /tmp'
 - `EDITOR="zed --wait --new"`：让 Codex 在需要打开编辑器时统一使用 zed，并等待编辑器关闭后再继续，便于我直接用鼠标做复制粘贴和局部修改。
 - `codex_tmp` 额外带上 `-C /tmp`：需要临时开新会话、做一次性实验或避免把工作目录绑在当前仓库时，我会直接切到 `/tmp` 启动。
 
+日常开发中经常需要复制文件或目录的绝对路径，因此我还在 fish 中定义了一个 `pcp` 函数：
+
+```fish
+function pcp --description 'Copy absolute path to clipboard without trailing newline'
+    printf %s (realpath -- $argv) | pbcopy
+end
+```
+
+例如，在仓库根目录执行：
+
+```fish
+pcp README.md
+pcp skills/
+pcp .
+```
+
+`pcp` 会先通过 `realpath` 将传入的单个文件或目录转换成规范化的绝对路径，再用 `pbcopy` 将结果写入系统剪贴板；`printf %s` 可以避免复制结果末尾带上换行。路径包含空格时，需要使用引号或 fish 的转义语法。由于该函数依赖 macOS 自带的 `pbcopy`，因此仅适用于 macOS。
+
 我当前在 `~/.codex/config.toml` 里还会额外配置 TUI 主题和通知：
 
 ```toml
