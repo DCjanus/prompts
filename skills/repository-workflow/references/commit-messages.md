@@ -12,21 +12,22 @@
 
 ## Breaking change
 
-最终改动确实会破坏既有用法时，默认在标题的冒号前添加 `!`：
+最终净变化确实会导致既有用法、接口或行为失效时，同时在标题和 footer 中显式标记：
 
 ```text
 type(scope)!: concise summary
+
+BREAKING CHANGE: Describe the affected usage and how to migrate.
 ```
 
-- 标题放不下的影响与迁移方式写入普通 body，不必重复添加 `BREAKING CHANGE` footer。
-- Conventional Commits 允许用 `BREAKING CHANGE: description` footer 代替标题中的 `!`。只有项目工具明确要求该形式时才使用，并通过独立的 `-m "BREAKING CHANGE: ..."` message paragraph 写入。
-- 禁止使用 `--trailer "BREAKING CHANGE: ..."`。Git 不会把带空格的 `BREAKING CHANGE` 当作普通 trailer key，可能生成尾部多余冒号并破坏后续 trailer 的解析。
-- 不要根据中间实现或旧提交机械继承 breaking 标记。
+- footer 必须同时说明影响范围和迁移方式，不能只写“存在 breaking change”。
+- 使用独立的 `-m "BREAKING CHANGE: ..."` message paragraph 写入 footer；禁止将它传给 `--trailer`。
+- 不要根据中间实现或旧提交机械继承 breaking 标记，以最终净变化为准。
 
 ## Trailers
 
 - 使用 `git commit --trailer "Key: Value"` 添加 `Assisted-by`、`Co-authored-by`、`Reviewed-by` 等结构化 trailer。
-- `--trailer` 只用于能被 `git interpret-trailers --parse` 正确识别的普通 key；Conventional Commits 的 `BREAKING CHANGE` 是特殊 footer，不属于这里的普通 trailer。
+- `--trailer` 只用于能被 `git interpret-trailers --parse` 正确识别的普通 key；`BREAKING CHANGE` 使用上一节的独立 message paragraph。
 - 不要用多个 `-m` 手工拼接 trailer block。
 - shell 命令中的提交标题或正文不要包含未安全处理的反引号。
 

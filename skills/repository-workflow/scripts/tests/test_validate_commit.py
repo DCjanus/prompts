@@ -18,21 +18,35 @@ class ValidateMessageTest(unittest.TestCase):
             "Codex:gpt-test",
         )
 
-    def test_accepts_a_breaking_title_without_a_footer(self) -> None:
+    def test_accepts_a_breaking_commit_with_a_footer_and_assistant(self) -> None:
         validate_commit.validate_message(
             "feat(git)!: replace branch command\n\n"
-            "Use branches instead of trim.\n\n"
+            "BREAKING CHANGE: Replace trim with branches and recreate exclude rules.\n\n"
             "Assisted-by: Codex:gpt-test\n",
             "Codex:gpt-test",
         )
 
-    def test_accepts_a_breaking_footer_without_a_bang(self) -> None:
-        validate_commit.validate_message(
-            "feat(git): replace branch command\n\n"
-            "BREAKING CHANGE: Replace trim with branches.\n\n"
-            "Assisted-by: Codex:gpt-test\n",
-            "Codex:gpt-test",
-        )
+    def test_rejects_a_breaking_title_without_a_footer(self) -> None:
+        with self.assertRaisesRegex(
+            validate_commit.ValidationError,
+            "must contain exactly one BREAKING CHANGE footer",
+        ):
+            validate_commit.validate_message(
+                "feat(git)!: replace branch command\n\nAssisted-by: Codex:gpt-test\n",
+                "Codex:gpt-test",
+            )
+
+    def test_rejects_a_breaking_footer_without_a_bang(self) -> None:
+        with self.assertRaisesRegex(
+            validate_commit.ValidationError,
+            "requires ! in the title",
+        ):
+            validate_commit.validate_message(
+                "feat(git): replace branch command\n\n"
+                "BREAKING CHANGE: Replace trim with branches.\n\n"
+                "Assisted-by: Codex:gpt-test\n",
+                "Codex:gpt-test",
+            )
 
     def test_rejects_breaking_change_misused_as_a_git_trailer(self) -> None:
         with self.assertRaisesRegex(

@@ -9,8 +9,10 @@
 from __future__ import annotations
 
 import argparse
+import re
 import subprocess
 
+BREAKING_TITLE = re.compile(r"^[a-z][a-z0-9-]*(?:\([^\r\n)]+\))?!: .+")
 BREAKING_PREFIX = "BREAKING CHANGE:"
 
 
@@ -35,17 +37,20 @@ def parsed_trailers(message: str) -> list[str]:
 
 
 def validate_message(message: str, assisted_by: str) -> None:
-    """验证 breaking footer 与预期的 Assisted-by trailer。"""
+    """验证 breaking 标记与预期的 Assisted-by trailer。"""
 
     lines = message.rstrip("\n").splitlines()
     if not lines:
         raise ValidationError("commit message is empty")
 
+    title_is_breaking = BREAKING_TITLE.fullmatch(lines[0]) is not None
     breaking_footers = [line for line in lines[1:] if line.startswith(BREAKING_PREFIX)]
-    if len(breaking_footers) > 1:
+    if title_is_breaking and len(breaking_footers) != 1:
         raise ValidationError(
-            "commit message contains multiple BREAKING CHANGE footers"
+            "a breaking title must contain exactly one BREAKING CHANGE footer"
         )
+    if not title_is_breaking and breaking_footers:
+        raise ValidationError("a BREAKING CHANGE footer requires ! in the title")
     if breaking_footers:
         footer_value = breaking_footers[0].removeprefix(BREAKING_PREFIX).strip()
         if not footer_value or footer_value.endswith(":"):
