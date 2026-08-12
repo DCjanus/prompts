@@ -12,19 +12,22 @@
 
 ## Breaking change
 
-最终改动确实会破坏既有用法时，同时在标题和 footer 标识：
+最终净变化确实会导致既有用法、接口或行为失效时，同时在标题和 footer 中显式标记：
 
 ```text
 type(scope)!: concise summary
 
-BREAKING CHANGE: describe the affected usage and required migration.
+BREAKING CHANGE: Describe the affected usage and how to migrate.
 ```
 
-不要根据中间实现或旧提交机械继承 breaking 标记。
+- footer 必须同时说明影响范围和迁移方式，不能只写“存在 breaking change”。
+- 使用独立的 `-m "BREAKING CHANGE: ..."` message paragraph 写入 footer；禁止将它传给 `--trailer`。
+- 不要根据中间实现或旧提交机械继承 breaking 标记，以最终净变化为准。
 
 ## Trailers
 
 - 使用 `git commit --trailer "Key: Value"` 添加 `Assisted-by`、`Co-authored-by`、`Reviewed-by` 等结构化 trailer。
+- `--trailer` 只用于能被 `git interpret-trailers --parse` 正确识别的普通 key；`BREAKING CHANGE` 使用上一节的独立 message paragraph。
 - 不要用多个 `-m` 手工拼接 trailer block。
 - shell 命令中的提交标题或正文不要包含未安全处理的反引号。
 
