@@ -49,14 +49,29 @@ git commit --only \
   -- <paths-owned-by-current-task>
 ```
 
+Breaking change 默认在标题的冒号前使用 `!`；需要补充影响与迁移方式时，通过额外的 `-m` 写普通 body。不要为了重复标识而添加 `BREAKING CHANGE` footer：
+
+```bash
+git commit --only \
+  -m "type(scope)!: concise summary" \
+  -m "Describe the affected usage and required migration." \
+  --trailer "Assisted-by: <agent-name>:<model-name>" \
+  -- <paths-owned-by-current-task>
+```
+
+只有项目工具明确要求 `BREAKING CHANGE:` footer 时才使用它，并通过独立的 `-m "BREAKING CHANGE: ..."` 写入。禁止把它传给 `--trailer`。
+
 5. 新文件需要 stage 时，只 stage 当前任务负责的新文件，再用同样的路径范围提交。
-6. 提交后运行以下检查：
+6. 提交后运行以下检查，并把 helper 返回的同一组 `agent_name`、`model_name` 传给验证脚本：
 
 ```bash
 git show --name-status --oneline --no-renames HEAD
 git show -s --format=%B HEAD | git interpret-trailers --parse
+./scripts/validate_commit.py --assisted-by "<agent-name>:<model-name>"
 git status -sb
 ```
+
+只有 `validate_commit.py` 成功时才继续 push。它会拒绝无法由 Git 解析的 `Assisted-by`、重复或畸形的 `BREAKING CHANGE` footer，包括误用 `--trailer` 后产生的尾部多余冒号。验证失败时停止后续操作；默认不得自行 amend，按“分支、推送与历史”的授权规则处理。
 
 ## 分支、推送与历史
 
