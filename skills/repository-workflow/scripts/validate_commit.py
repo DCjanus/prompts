@@ -36,7 +36,7 @@ def parsed_trailers(message: str) -> list[str]:
     return result.stdout.splitlines()
 
 
-def validate_message(message: str, assisted_by: str) -> None:
+def validate_message(message: str, assisted_by: str | None) -> None:
     """验证 breaking 标记与预期的 Assisted-by trailer。"""
 
     lines = message.rstrip("\n").splitlines()
@@ -56,12 +56,21 @@ def validate_message(message: str, assisted_by: str) -> None:
         if not footer_value or footer_value.endswith(":"):
             raise ValidationError("malformed BREAKING CHANGE footer")
 
-    expected = f"Assisted-by: {assisted_by}"
-    occurrences = parsed_trailers(message).count(expected)
-    if occurrences != 1:
-        raise ValidationError(
-            f"expected exactly one parsed trailer {expected!r}, got {occurrences}"
-        )
+    assisted_by_trailers = [
+        trailer
+        for trailer in parsed_trailers(message)
+        if trailer.lower().startswith("assisted-by:")
+    ]
+    if assisted_by is None:
+        if assisted_by_trailers:
+            raise ValidationError("Assisted-by must be absent when validation skips it")
+    else:
+        expected = f"Assisted-by: {assisted_by}"
+        occurrences = assisted_by_trailers.count(expected)
+        if occurrences != 1 or len(assisted_by_trailers) != 1:
+            raise ValidationError(
+                f"expected exactly one parsed trailer {expected!r}, got {occurrences}"
+            )
 
 
 def read_commit_message(revision: str) -> str:

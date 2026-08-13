@@ -70,6 +70,19 @@ class ValidateMessageTest(unittest.TestCase):
                 "Codex:gpt-test",
             )
 
+    def test_accepts_an_explicitly_skipped_assistant(self) -> None:
+        validate_commit.validate_message("chore: manual commit\n", None)
+
+    def test_rejects_assistant_when_validation_skips_it(self) -> None:
+        with self.assertRaisesRegex(
+            validate_commit.ValidationError,
+            "must be absent",
+        ):
+            validate_commit.validate_message(
+                "chore: manual commit\n\nAssisted-by: Codex:gpt-test\n",
+                None,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
