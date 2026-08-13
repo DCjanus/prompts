@@ -98,4 +98,4 @@ notification_method = "bel"
 
 ### domain-modeling
 
-本仓库中的 [`domain-modeling`](skills/domain-modeling/SKILL.md) 翻译自 Matt Pocock 的[原始 skill](https://github.com/mattpocock/skills/blob/697d4ce9742da558fd1ba6697c8e9775e2e302dd/skills/engineering/domain-modeling/SKILL.md)，基于上游 commit [`697d4ce9742da558fd1ba6697c8e9775e2e302dd`](https://github.com/mattpocock/skills/commit/697d4ce9742da558fd1ba6697c8e9775e2e302dd)，按 [MIT License](licenses/domain-modeling/LICENSE) 使用和修改。
+本仓库中的 [`domain-modeling`](skills/domain-modeling/SKILL.md) 翻译自 Matt Pocock 的[原始 skill](https://github.com/mattpocock/skills/blob/54bc6b604075c18293d38e9e294a2c96f365f104/skills/engineering/domain-modeling/SKILL.md)，基于上游 commit [`54bc6b604075c18293d38e9e294a2c96f365f104`](https://github.com/mattpocock/skills/commit/54bc6b604075c18293d38e9e294a2c96f365f104)，按 [MIT License](licenses/domain-modeling/LICENSE) 使用和修改。
