@@ -36,11 +36,13 @@ jobs:
       - name: Run repository workflow tests
         run: >
           uv run
+          --python 3.14
           --with openai-codex
           --with pydantic
+          --with pyyaml
           --with typer
           --prerelease allow
-          python -m unittest skills/repository-workflow/scripts/tests/test_codex_git_commit.py
+          python -m unittest discover -s skills/repository-workflow/scripts/tests
       - name: Run Jira CLI tests
         run: >
           uv run

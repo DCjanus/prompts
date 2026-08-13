@@ -11,8 +11,9 @@ import argparse
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
-import tomllib
 from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -20,6 +21,8 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
+
+import tomllib
 
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 DEFAULT_MANIFEST = Path(__file__).resolve().parents[1] / "upstream-skills.toml"
@@ -37,6 +40,14 @@ class TrackedSkill:
     repository: str
     path: str
     commit: str
+
+
+@dataclass(frozen=True)
+class GitHubAuth:
+    """记录 GitHub API 凭据及其来源。"""
+
+    token: str | None
+    source: str
 
 
 @dataclass(frozen=True)
@@ -73,7 +84,7 @@ def load_manifest(path: Path) -> list[TrackedSkill]:
     names: set[str] = set()
     for index, item in enumerate(items):
         if not isinstance(item, dict):
-            raise ValueError(f"skills[{index}] must be a table")
+            raise TypeError(f"skills[{index}] must be a table")
         skill = TrackedSkill(
             name=_required_string(item, "name", index),
             repository=_required_string(item, "repository", index),
@@ -94,7 +105,57 @@ def load_manifest(path: Path) -> list[TrackedSkill]:
     return skills
 
 
-def fetch_latest_commit(skill: TrackedSkill, *, timeout: float) -> str:
+def resolve_github_auth() -> GitHubAuth:
+    """按 CI 环境变量与 gh 登录状态解析 GitHub API 凭据。"""
+    token = os.environ.get("GITHUB_TOKEN", "").strip()
+    if token:
+        return GitHubAuth(token=token, source="GITHUB_TOKEN")
+
+    gh = shutil.which("gh")
+    if not gh:
+        return GitHubAuth(token=None, source="anonymous")
+
+    gh_environment = os.environ.copy()
+    gh_environment.pop("GITHUB_TOKEN", None)
+    gh_environment.pop("GH_TOKEN", None)
+
+    try:
+        status = subprocess.run(
+            [gh, "auth", "status", "--hostname", "github.com"],
+            text=True,
+            capture_output=True,
+            check=False,
+            env=gh_environment,
+        )
+    except OSError:
+        return GitHubAuth(token=None, source="anonymous")
+    if status.returncode != 0:
+        return GitHubAuth(token=None, source="anonymous")
+
+    try:
+        result = subprocess.run(
+            [gh, "auth", "token", "--hostname", "github.com"],
+            text=True,
+            capture_output=True,
+            check=False,
+            env=gh_environment,
+        )
+    except OSError:
+        return GitHubAuth(token=None, source="anonymous")
+    if result.returncode != 0:
+        return GitHubAuth(token=None, source="anonymous")
+    token = result.stdout.strip()
+    if not token:
+        return GitHubAuth(token=None, source="anonymous")
+    return GitHubAuth(token=token, source="gh auth token")
+
+
+def fetch_latest_commit(
+    skill: TrackedSkill,
+    *,
+    timeout: float,
+    token: str | None = None,
+) -> str:
     """读取上游路径最近一次变更的 commit。"""
     encoded_path = quote(skill.path, safe="/")
     url = (
@@ -106,7 +167,6 @@ def fetch_latest_commit(skill: TrackedSkill, *, timeout: float) -> str:
         "User-Agent": "DCjanus-prompts-upstream-skill-check",
         "X-GitHub-Api-Version": "2022-11-28",
     }
-    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
     if token:
         headers["Authorization"] = f"Bearer {token}"
 
@@ -250,13 +310,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     try:
         skills = load_manifest(args.manifest.expanduser().resolve())
-    except (OSError, ValueError, tomllib.TOMLDecodeError) as exc:
+    except (OSError, TypeError, ValueError, tomllib.TOMLDecodeError) as exc:
         print(f"failed to load manifest: {exc}", file=sys.stderr)
         return 1
 
+    auth = resolve_github_auth()
+    print(f"GitHub API token source: {auth.source}", file=sys.stderr)
     reports = check_skills(
         skills,
-        lambda skill: fetch_latest_commit(skill, timeout=args.timeout),
+        lambda skill: fetch_latest_commit(
+            skill,
+            timeout=args.timeout,
+            token=auth.token,
+        ),
     )
     if args.json:
         print(json.dumps(report_payload(reports), ensure_ascii=False, indent=2))
