@@ -65,7 +65,7 @@ notification_method = "bel"
 - [`skills/`](skills)：按功能分类的技能库，详情见下方技能列表
 - [`scripts/`](scripts)：放置 uv script 模式的工具脚本（规范见 [SKILL.md（uv-cli-creator）](skills/uv-cli-creator/SKILL.md)）
   - [`script_deps.py`](scripts/script_deps.py)：检查或升级仓库内 PEP 723 / uv script 依赖声明，对比 PyPI 最新版本，并在 GitHub Actions 中报告依赖下限落后或声明不一致
-  - [`upstream_skills.py`](scripts/upstream_skills.py)：根据 [`upstream-skills.toml`](upstream-skills.toml) 检查第三方 skill 的上游目录是否出现新 commit；发现变更或查询失败时返回非 0，并写入 GitHub Actions summary
+  - [`upstream_skills.py`](scripts/upstream_skills.py)：根据 [`upstream-skills.toml`](upstream-skills.toml) 检查第三方 skill 的上游目录是否出现新 commit；优先使用 CI 的 `GITHUB_TOKEN`，本地回退到已登录的 `gh`，并在 stderr 输出凭据来源；发现变更或查询失败时返回非 0，并写入 GitHub Actions summary
 
 ### 技能列表
 
