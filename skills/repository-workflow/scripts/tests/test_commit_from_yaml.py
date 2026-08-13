@@ -206,5 +206,78 @@ paths:
         self.assertNotIn("\\n", committed)
 
 
+class ValidateMessageTest(unittest.TestCase):
+    def test_accepts_regular_message_with_expected_assistant(self) -> None:
+        commit_from_yaml.validate_message(
+            "fix(cli): handle empty input\n\nAssisted-by: Codex:gpt-test\n",
+            "Codex:gpt-test",
+        )
+
+    def test_accepts_breaking_message_with_footer(self) -> None:
+        commit_from_yaml.validate_message(
+            "feat(git)!: replace branch command\n\n"
+            "BREAKING CHANGE: 影响范围：旧命令失效。迁移方式：使用新命令。\n\n"
+            "Assisted-by: Codex:gpt-test\n",
+            "Codex:gpt-test",
+        )
+
+    def test_rejects_breaking_title_without_footer(self) -> None:
+        with self.assertRaisesRegex(
+            commit_from_yaml.CommitValidationError,
+            "must contain exactly one BREAKING CHANGE footer",
+        ):
+            commit_from_yaml.validate_message(
+                "feat(git)!: replace branch command\n\nAssisted-by: Codex:gpt-test\n",
+                "Codex:gpt-test",
+            )
+
+    def test_rejects_breaking_footer_without_bang(self) -> None:
+        with self.assertRaisesRegex(
+            commit_from_yaml.CommitValidationError,
+            "requires ! in the title",
+        ):
+            commit_from_yaml.validate_message(
+                "feat(git): replace branch command\n\n"
+                "BREAKING CHANGE: 影响范围：旧命令失效。迁移方式：使用新命令。\n\n"
+                "Assisted-by: Codex:gpt-test\n",
+                "Codex:gpt-test",
+            )
+
+    def test_rejects_malformed_breaking_footer(self) -> None:
+        with self.assertRaisesRegex(
+            commit_from_yaml.CommitValidationError,
+            "malformed BREAKING CHANGE footer",
+        ):
+            commit_from_yaml.validate_message(
+                "feat(git)!: replace branch command\n\n"
+                "BREAKING CHANGE: Invalid footer.:\n\n"
+                "Assisted-by: Codex:gpt-test\n",
+                "Codex:gpt-test",
+            )
+
+    def test_rejects_unparseable_assistant_trailer(self) -> None:
+        with self.assertRaisesRegex(
+            commit_from_yaml.CommitValidationError,
+            "expected exactly one parsed trailer",
+        ):
+            commit_from_yaml.validate_message(
+                "fix(cli): handle empty input\n\nAssisted-by: Codex:gpt-test:\n",
+                "Codex:gpt-test",
+            )
+
+    def test_accepts_explicitly_skipped_assistant(self) -> None:
+        commit_from_yaml.validate_message("chore: manual commit\n", None)
+
+    def test_rejects_assistant_when_skipped(self) -> None:
+        with self.assertRaisesRegex(
+            commit_from_yaml.CommitValidationError,
+            "must be absent",
+        ):
+            commit_from_yaml.validate_message(
+                "chore: manual commit\n\nAssisted-by: Codex:gpt-test\n",
+                None,
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

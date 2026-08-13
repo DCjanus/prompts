@@ -29,18 +29,77 @@ from openai_codex import CodexConfig
 from openai_codex.client import CodexClient
 from openai_codex.errors import CodexError
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
-from validate_commit import ValidationError as CommitValidationError
-from validate_commit import validate_message
 
 AGENT_NAME = "Codex"
 CONVENTIONAL_SUBJECT = re.compile(r"^[a-z][a-z0-9-]*(?:\([^\r\n)]+\))?!?: [^\r\n]+$")
 BREAKING_SUBJECT = re.compile(r"^[a-z][a-z0-9-]*(?:\([^\r\n)]+\))?!: .+$")
+BREAKING_PREFIX = "BREAKING CHANGE:"
 TRAILER_KEY = re.compile(r"^[A-Za-z][A-Za-z0-9-]*$")
 app = typer.Typer(add_completion=False, help=__doc__)
 
 
 class CommitError(RuntimeError):
     """提交规范或 Git 操作失败。"""
+
+
+class CommitValidationError(CommitError):
+    """渲染后的提交信息不符合约定。"""
+
+
+def parsed_trailers(message: str) -> list[str]:
+    """使用 Git 自身的解析器返回结构化 trailers。"""
+
+    try:
+        result = subprocess.run(
+            ["git", "interpret-trailers", "--parse"],
+            input=message,
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise CommitValidationError(f"failed to parse Git trailers: {exc}") from exc
+    return result.stdout.splitlines()
+
+
+def validate_message(message: str, assisted_by: str | None) -> None:
+    """验证 breaking 标记与可选的 Assisted-by trailer。"""
+
+    lines = message.rstrip("\n").splitlines()
+    if not lines:
+        raise CommitValidationError("commit message is empty")
+
+    title_is_breaking = BREAKING_SUBJECT.fullmatch(lines[0]) is not None
+    breaking_footers = [line for line in lines[1:] if line.startswith(BREAKING_PREFIX)]
+    if title_is_breaking and len(breaking_footers) != 1:
+        raise CommitValidationError(
+            "a breaking title must contain exactly one BREAKING CHANGE footer"
+        )
+    if not title_is_breaking and breaking_footers:
+        raise CommitValidationError("a BREAKING CHANGE footer requires ! in the title")
+    if breaking_footers:
+        footer_value = breaking_footers[0].removeprefix(BREAKING_PREFIX).strip()
+        if not footer_value or footer_value.endswith(":"):
+            raise CommitValidationError("malformed BREAKING CHANGE footer")
+
+    assisted_by_trailers = [
+        trailer
+        for trailer in parsed_trailers(message)
+        if trailer.lower().startswith("assisted-by:")
+    ]
+    if assisted_by is None:
+        if assisted_by_trailers:
+            raise CommitValidationError(
+                "Assisted-by must be absent when validation skips it"
+            )
+        return
+
+    expected = f"Assisted-by: {assisted_by}"
+    occurrences = assisted_by_trailers.count(expected)
+    if occurrences != 1 or len(assisted_by_trailers) != 1:
+        raise CommitValidationError(
+            f"expected exactly one parsed trailer {expected!r}, got {occurrences}"
+        )
 
 
 def reject_literal_newlines(value: Any, location: str = "root") -> None:
@@ -375,7 +434,6 @@ def main(
         OSError,
         yaml.YAMLError,
         ValidationError,
-        CommitValidationError,
         CommitError,
     ) as exc:
         typer.echo(str(exc), err=True)
