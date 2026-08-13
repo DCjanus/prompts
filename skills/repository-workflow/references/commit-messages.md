@@ -24,17 +24,17 @@ paths:
 
 ```yaml
 subject: "chore(toolchain): configure JDK 17 with mise"
-body:
-  - heading: 背景
-    paragraphs:
-      - 项目以 Java 17 为目标。
-  - heading: 处理
-    bullets:
-      - 新增仓库级 mise 配置。
-      - 允许团队成员复用相同工具链。
-  - heading: 验证
-    bullets:
-      - Maven 测试通过。
+body: |
+  背景：
+
+  项目以 Java 17 为目标。
+
+  处理：
+  - 新增仓库级 mise 配置。
+  - 允许团队成员复用相同工具链。
+
+  验证：
+  - Maven 测试通过。
 trailers:
   - key: Reviewed-by
     value: DCjanus <DCjanus@dcjanus.com>
@@ -43,10 +43,11 @@ paths:
 ```
 
 - `subject` 必填，必须符合 Conventional Commits。
-- `body`、`trailers`、`paths` 可选；正文段支持 `paragraphs` 和 `bullets`，至少填写一种。
+- `body`、`trailers`、`paths` 可选；`body` 是自由多行字符串，内部 Markdown 与换行完全由调用方控制。
 - `paths` 必须是仓库相对路径；非空时脚本使用 `git commit --only`，为空时提交当前 index。
+- `trailers` 是 `key` / `value` 结构化列表；key 仅支持字母、数字和连字符，value 必须是非空单行字符串。
 - `Assisted-by` 由脚本生成，禁止放入 `trailers`。
-- 所有字符串都禁止包含字面量 `\\n`；用 YAML 列表表达段落和项目符号。
+- 所有字符串都禁止包含字面量 `\\n`；多行正文使用 YAML 的 `|` block scalar 表达。
 
 ## Breaking change
 

@@ -20,17 +20,17 @@ SPEC.loader.exec_module(commit_from_yaml)
 
 
 class CommitFromYamlTest(unittest.TestCase):
-    def test_renders_structured_sections_with_real_newlines(self) -> None:
+    def test_preserves_freeform_multiline_body(self) -> None:
         spec = commit_from_yaml.load_spec(
             """
 subject: "chore(toolchain): configure JDK 17 with mise"
-body:
-  - heading: 背景
-    bullets:
-      - 项目以 Java 17 为目标。
-  - heading: 验证
-    paragraphs:
-      - Maven 测试通过。
+body: |
+  背景：
+
+  项目以 Java 17 为目标。
+
+  验证：
+  - Maven 测试通过。
 trailers:
   - key: Reviewed-by
     value: DCjanus <DCjanus@dcjanus.com>
@@ -44,10 +44,10 @@ paths:
         self.assertEqual(
             message,
             "chore(toolchain): configure JDK 17 with mise\n\n"
-            "背景：\n"
-            "- 项目以 Java 17 为目标。\n\n"
+            "背景：\n\n"
+            "项目以 Java 17 为目标。\n\n"
             "验证：\n"
-            "Maven 测试通过。\n\n"
+            "- Maven 测试通过。\n\n"
             "Reviewed-by: DCjanus <DCjanus@dcjanus.com>\n"
             "Assisted-by: Codex:gpt-test\n",
         )
@@ -58,16 +58,37 @@ paths:
             commit_from_yaml.load_spec(
                 """
 subject: "fix(commit): reject escaped newlines"
-body:
-  - heading: 背景
-    paragraphs:
-      - '第一行\\n第二行'
+body: '第一行\\n第二行'
 """
             )
 
     def test_requires_breaking_details_for_a_breaking_subject(self) -> None:
         with self.assertRaisesRegex(ValidationError, "breaking_change"):
             commit_from_yaml.load_spec('subject: "feat(api)!: replace the contract"\n')
+
+    def test_rejects_reserved_assisted_by_trailer(self) -> None:
+        with self.assertRaisesRegex(ValidationError, "reserved trailer key"):
+            commit_from_yaml.load_spec(
+                """
+subject: "chore(commit): reject reserved trailer"
+trailers:
+  - key: Assisted-by
+    value: Manual:model
+"""
+            )
+
+    def test_rejects_multiline_trailer_value(self) -> None:
+        with self.assertRaises(ValidationError):
+            commit_from_yaml.load_spec(
+                """
+subject: "chore(commit): reject multiline trailer"
+trailers:
+  - key: Reviewed-by
+    value: |
+      First reviewer
+      Second reviewer
+"""
+            )
 
     def test_renders_breaking_change_impact_and_migration(self) -> None:
         spec = commit_from_yaml.load_spec(
@@ -167,10 +188,9 @@ breaking_change:
             spec = commit_from_yaml.load_spec(
                 """
 subject: "test(commit): create from yaml"
-body:
-  - heading: 验证
-    bullets:
-      - 正文使用真实换行。
+body: |
+  验证：
+  - 正文使用真实换行。
 paths:
   - tracked.txt
 """

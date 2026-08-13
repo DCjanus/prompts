@@ -65,22 +65,6 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class BodySection(StrictModel):
-    """提交正文中的一个带标题段落。"""
-
-    heading: str = Field(min_length=1)
-    paragraphs: list[str] = Field(default_factory=list)
-    bullets: list[str] = Field(default_factory=list)
-
-    @model_validator(mode="after")
-    def require_content(self) -> Self:
-        """要求每个正文段至少有一项内容。"""
-
-        if not self.paragraphs and not self.bullets:
-            raise ValueError("a body section requires paragraphs or bullets")
-        return self
-
-
 class BreakingChange(StrictModel):
     """破坏性变更的影响和迁移方式。"""
 
@@ -92,7 +76,7 @@ class Trailer(StrictModel):
     """一个普通 Git trailer。"""
 
     key: str = Field(pattern=TRAILER_KEY.pattern)
-    value: str = Field(min_length=1)
+    value: str = Field(min_length=1, pattern=r"^[^\r\n]+$")
 
     @model_validator(mode="after")
     def reject_reserved_keys(self) -> Self:
@@ -107,7 +91,7 @@ class CommitSpec(StrictModel):
     """结构化提交描述。"""
 
     subject: str = Field(pattern=CONVENTIONAL_SUBJECT.pattern)
-    body: list[BodySection] = Field(default_factory=list)
+    body: str | None = Field(default=None, min_length=1)
     breaking_change: BreakingChange | None = None
     trailers: list[Trailer] = Field(default_factory=list)
     paths: list[str] = Field(default_factory=list)
@@ -175,11 +159,8 @@ def render_message(spec: CommitSpec, assisted_by: str | None) -> str:
     """将结构化描述渲染为带真实换行的提交信息。"""
 
     blocks = [spec.subject]
-    for section in spec.body:
-        lines = [f"{section.heading.rstrip('：:')}："]
-        lines.extend(section.paragraphs)
-        lines.extend(f"- {item}" for item in section.bullets)
-        blocks.append("\n".join(lines))
+    if spec.body is not None:
+        blocks.append(spec.body.rstrip("\n"))
 
     if spec.breaking_change is not None:
         impact = normalize_footer_text(spec.breaking_change.impact)
