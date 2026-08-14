@@ -5,7 +5,9 @@
 - jiff: 自己控制的新应用默认优先选择的日期与时间库，尤其适合 IANA 时区、DST、日历跨度、当地时间歧义处理，以及需要保留时区标识的序列化场景。若选用版本尚未达到 1.0，用于公共 library API 时需额外评估稳定性；性能敏感路径应按实际 workload 做 benchmark。
 - chrono: 不作为新项目的默认日期与时间库；当既有项目已稳定使用、上下游公共 API 依赖 Chrono，或实测性能更合适时继续使用，不因软弃用信号本身而进行无收益的紧急迁移。
 - time: 日期与时间处理库，标准库兼容且支持 `no_std` 场景。
-- clap: Rust 命令行参数解析库，适合构建 CLI 工具与子命令解析。
+- clap / clap_complete: Rust CLI 默认优先使用 clap 的 Derive API，通过 `#[derive(Parser)]`、`Args`、`Subcommand` 和 `ValueEnum` 将参数、可复用参数组、子命令和枚举值建模为强类型；除非命令结构必须在运行时动态生成，或 Derive API 无法清晰表达需求，否则不要以 Builder API 为主要实现方式。确有需要时可以通过 `CommandFactory`、`augment_args` 等官方互操作能力局部混用 Builder API。
+- clap 动态补全: 需要 shell 补全时，若项目能够接受尚未承诺稳定性的 API，默认优先启用 `clap_complete` 的 `unstable-dynamic` feature 并使用 `CompleteEnv`，让补全时运行当前程序并基于实时命令、路径或业务候选值生成结果；仅在发布环境不能执行目标程序、稳定性要求不允许使用 unstable feature，或必须分发独立脚本时，回退到 `clap_complete::aot` 静态补全。`CompleteEnv::complete` 应在普通参数解析及任何 stdout 输出之前执行。
+- clap 补全安装: 面向用户的 CLI 最好提供类似 `completion install --shell <auto|bash|elvish|fish|powershell|zsh>` 的子命令，默认允许 `auto` 根据 `SHELL` 等平台信息检测，也允许显式指定 shell。安装逻辑由项目实现，必须幂等、避免重复写入，并明确告知修改的配置文件及手工安装方式；动态补全优先写入一条在 shell 启动时重新执行并 source/eval `COMPLETE=<shell> <program>` 注册输出的钩子，不要长期缓存注册脚本，因为 `unstable-dynamic` 的二进制与 shell 侧协议没有稳定性保证。
 - serde: Rust 结构体序列化/反序列化框架，适合配置、网络传输、持久化等场景。
 - serde_json: Serde 生态的 JSON 处理库，适合 JSON 的解析、校验与序列化。
 - ratatui: Rust 的 TUI（终端用户界面）框架，适合构建终端交互应用与仪表盘。

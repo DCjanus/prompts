@@ -8,7 +8,14 @@
 - `type` 必须存在。仓库没有额外约定时，优先使用 `feat`、`fix`、`refactor`、`docs`、`test` 或 `chore`。
 - 只有 scope 能准确表达影响边界时才添加；不要为了格式完整而猜测。
 - summary 描述最终结果，不记录执行过程、工具操作或临时状态。
-- 只有标题不足以解释动机、约束或影响时才添加正文。
+- 默认只写 subject。大部分边界清晰的简单提交不需要正文。
+
+## 正文
+
+- 先判断 reviewer 是否仍需要从 commit message 获得无法由 subject 和 diff 自然推导的重要信息；没有则完全省略 `body`。
+- 仅在需要解释非显然的动机、决定性约束、重要行为影响、迁移要求或关键设计取舍时添加正文。
+- 不要用正文复述 subject、罗列修改文件或实现步骤、汇报普通测试与检查、描述工具操作，或补充“暂未引入依赖”等对理解提交没有实际帮助的信息。
+- 正文只保留理解和维护该提交所必需的内容，不套用固定的“背景 / 处理 / 验证”模板。
 
 ## 结构化 YAML
 
@@ -20,21 +27,12 @@ paths:
   - src/main/java/example/AuthService.java
 ```
 
-带中文正文的完整配置：
+确实需要解释关键约束时才添加 `body`：
 
 ```yaml
 subject: "chore(toolchain): configure JDK 17 with mise"
 body: |
-  背景：
-
-  项目以 Java 17 为目标。
-
-  处理：
-  - 新增仓库级 mise 配置。
-  - 允许团队成员复用相同工具链。
-
-  验证：
-  - Maven 测试通过。
+  生产构建环境固定使用 JDK 17；仓库级配置用于避免本地与 CI 选择不同工具链。
 trailers:
   - key: Reviewed-by
     value: DCjanus <DCjanus@dcjanus.com>
@@ -43,7 +41,7 @@ paths:
 ```
 
 - `subject` 必填，必须符合 Conventional Commits。
-- `body`、`trailers`、`paths` 可选；`body` 是自由多行字符串，内部 Markdown 与换行完全由调用方控制。
+- `body`、`trailers`、`paths` 可选；不满足上述正文条件时不要写 `body`。确需正文时，它是自由多行字符串，内部 Markdown 与换行完全由调用方控制。
 - `paths` 必须是仓库相对路径；非空时脚本使用 `git commit --only`，为空时提交当前 index。
 - `trailers` 是 `key` / `value` 结构化列表；key 仅支持字母、数字和连字符，value 必须是非空单行字符串。
 - `Assisted-by` 由脚本生成，禁止放入 `trailers`。
