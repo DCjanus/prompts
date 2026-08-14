@@ -1,6 +1,7 @@
 - fastapi: 现代、高性能的 Python API 框架，基于类型注解；适用于构建 REST/HTTP API、服务端应用、需要自动生成 OpenAPI 文档的场景。
 - pydantic: 基于类型注解的数据验证与序列化工具；适用于 API 入参/出参校验、配置加载、复杂数据模型的解析与校验。
-- blake3: 默认 hash 算法选择，在无严格性能约束或需要密码学安全时优先使用；支持任意长度输出与并行 hash；不适用于用户密码存储与校验等场景。Python 使用 `blake3`（PyPI 包名）。
+- blake3: 通用 hash 场景的默认算法选择，适用于数据校验、内容寻址、去重和缓存键等用途；支持任意长度输出与并行 hash；不适用于用户密码存储与校验等场景。Python 使用 `blake3`（PyPI 包名）。
+- argon2-cffi: 用户密码存储与校验的默认选择，使用 `argon2.PasswordHasher` 的 Argon2id 高层接口；保存完整 PHC 格式字符串，并在校验成功后通过 `check_needs_rehash` 判断是否需要升级参数。
 - uvicorn: FastAPI 常用的 ASGI 服务器实现，适合高性能异步 API 部署。
 - httpx2: 默认 HTTP 客户端选择；作为 `httpx` 的维护替代方向，保留相近 API，并更符合对稳定维护节奏的偏好。新脚本和 CLI 工具优先使用 `httpx2`，不再优先选择 `httpxyz`。
 - sqlmodel: 基于 Pydantic + SQLAlchemy 的 ORM/数据模型整合库，适合与 FastAPI 搭配。
