@@ -33,7 +33,7 @@ description: 处理从本地 Git 变更到 GitHub/GitLab 协作发布的完整�
 ## 创建 commit
 
 1. 完整读取 [commit-messages.md](references/commit-messages.md)，并根据最终待提交内容生成 message。
-2. 把结构化提交描述写入仓库外的临时 YAML 文件；不要在 shell 参数中拼接多行正文。YAML 格式见 [commit-messages.md](references/commit-messages.md)。
+2. 把结构化提交描述写入仓库外的临时 YAML 文件。默认只写 `subject` 和 `paths`；仅当标题与 diff 无法充分解释必要的动机、约束或影响时才添加 `body`，不要机械生成提交正文。需要正文时也不要在 shell 参数中拼接多行文本。YAML 格式与正文判断标准见 [commit-messages.md](references/commit-messages.md)。
 3. 从本 skill 目录运行提交脚本，并显式传入目标仓库。支持 `env -S` 时直接执行；不要使用 `python` 或 `uv run python`：
 
 ```bash
