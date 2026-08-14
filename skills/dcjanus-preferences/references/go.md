@@ -1,5 +1,6 @@
 - github.com/cockroachdb/errors：这是 Go 的错误处理库，强调可携带上下文与堆栈信息，适合需要更强错误诊断能力的服务端项目。
-- lukechampine.com/blake3: 默认 hash 算法选择，在无严格性能约束或需要密码学安全时优先使用；支持任意长度输出与并行 hash；不适用于用户密码存储与校验等场景。Go 建议使用 `lukechampine.com/blake3`（高性能实现，含 AVX 加速）。
+- lukechampine.com/blake3: 通用 hash 场景的默认算法选择，适用于数据校验、内容寻址、去重和缓存键等用途；支持任意长度输出与并行 hash；不适用于用户密码存储与校验等场景。Go 建议使用 `lukechampine.com/blake3`（高性能实现，含 AVX 加速）。
+- golang.org/x/crypto/argon2: 用户密码存储、校验或基于密码的密钥派生默认使用 `IDKey`（Argon2id）；该包接口较底层，用于密码存储时由应用层安全生成独立随机 salt，并编码、解析和校验完整 PHC 格式字符串；用于密钥派生时保留重新派生所需的 salt 和参数，不直接持久化派生密钥。
 - github.com/samber/lo: 基于 Go 1.18+ 泛型的 Lodash 风格工具库，适合集合操作、函数式辅助工具、减少样板代码。
 - github.com/sourcegraph/conc: 结构化并发库，提供各类 pool，降低 goroutine 管理与 panic 处理的样板代码，适合复杂并发任务编排。
 - github.com/mitchellh/mapstructure: 结构体与 map 互转/解码库，适合配置解析、动态数据映射到强类型结构体场景，支持 tag、自定义 decode hook。
