@@ -40,6 +40,10 @@ python skills/confluence-cli/scripts/confluence_cli.py --json page get --page-id
 
 4) 注意事项
 - `page get` 默认保持普通缓存读；刚更新页面后需要校验正文时，使用 `--fresh` 绕过 Confluence 或代理缓存，例如：`./scripts/confluence_cli.py --json page get --page-id ... --body-format storage --expand body.storage,version --fresh`
+- 如果 Markdown 文件由 Agent 为当前单次发布临时创建，且成功后不再复用，在同一次
+  shell 调用中把发布命令与 `rm -- <明确路径>` 用 `&&` 串行执行。发布失败时保留文件，
+  不要使用 `;` 无条件删除，也不要用变量、通配符或目录作为清理目标。用户提供的源文档、
+  仓库文件和本地图片不得随 Markdown 临时文件自动删除。
 
 5) 附件下载示例
 - 下载指定附件（可重复传入 `--name`）：`./scripts/confluence_cli.py attachment download --page-id 3060336952 --output-dir ./attachments --name a.png --name b.png`
@@ -48,6 +52,7 @@ python skills/confluence-cli/scripts/confluence_cli.py --json page get --page-id
 
 6) 发布 Markdown 示例
 - 发布到父页面（同名则更新）：`./scripts/confluence_cli.py --json page publish-markdown --parent-id 3061931928 --title "批量重置 Offset 功能测试" --markdown-path /path/to/doc.md`
+- 发布单次临时 Markdown 并在成功后清理：`./scripts/confluence_cli.py --json page publish-markdown --parent-id 3061931928 --title "批量重置 Offset 功能测试" --markdown-path /tmp/confluence-page.md && rm -- /tmp/confluence-page.md`
 - Markdown 表格支持 `:---`、`:---:`、`---:` 这类左对齐、居中、右对齐语法，会转换为 Confluence storage 的 table cell `text-align` 样式。
 - 本地图片发布时会按最大展示框自动生成单个 Confluence 尺寸属性：默认最大宽度 `1000`、最大高度 `800`，可用 `--image-max-width` / `--image-max-height` 覆盖；只写触发缩放的 `ac:width` 或 `ac:height`，不修改附件原图。
 - 如需覆盖单张图片展示尺寸，可使用 Markdown title：`![图](./a.png "confluence-width=1200")`、`![图](./a.png "confluence-height=600")`、`![图](./a.png "confluence-size=original")`。

@@ -70,6 +70,19 @@ cd skills/ticktick-cli
 - 任务标签：创建/更新任务时重复传 `--tag`。
 - 复杂 habit payload：用 `--payload-json` 传 JSON 对象，或传 `@path` 读取文件。
 
+如果 JSON 文件由 Agent 为当前单次写操作临时创建，且成功后不再复用，在同一次 shell
+调用中把写操作与 `rm -- <明确路径>` 用 `&&` 串行执行。写操作失败时保留文件，不要
+使用 `;` 无条件删除，也不要用变量、通配符或目录作为清理目标。用户提供的 JSON 和
+后续更新或校验仍需复用的文件不得自动清理。例如：
+
+```bash
+./scripts/ticktick_cli.py --json task create \
+  --project-id <project-id> \
+  --title "任务标题" \
+  --item-json @/tmp/ticktick-items.json \
+  && rm -- /tmp/ticktick-items.json
+```
+
 ## 数据模型
 
 - Project：任务容器，支持 list / kanban / timeline 等视图。

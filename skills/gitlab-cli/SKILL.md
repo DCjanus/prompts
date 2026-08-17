@@ -31,12 +31,20 @@ python skills/gitlab-cli/scripts/gitlab_cli.py --help
 - 创建或更新 MR / Issue 时，正文必须通过 `--description-file <path>` 传入。
 - 不要使用 shell 直接传多行正文；脚本不支持 `--description`。
 - `--title` 这类短文本参数可以直接传，长正文一律先写到文件里再引用。
+- 如果正文文件由 Agent 为当前单次操作临时创建，且成功后不再复用，在同一次 shell
+  调用中把最终写操作与 `rm -- <明确路径>` 用 `&&` 串行执行。写操作失败时保留文件，
+  不要使用 `;` 无条件删除，也不要用变量、通配符或目录作为清理目标。
 
 示例：
 
 ```bash
 # 正确
 ./scripts/gitlab_cli.py mr update --cwd /path/to/repo 123 --description-file /tmp/mr-body.md
+
+# 临时正文成功写入后立即清理
+./scripts/gitlab_cli.py mr update --cwd /path/to/repo 123 \
+  --description-file /tmp/mr-body.md \
+  && rm -- /tmp/mr-body.md
 
 # 错误
 ./scripts/gitlab_cli.py mr update --cwd /path/to/repo 123 --description "multi-line body"
