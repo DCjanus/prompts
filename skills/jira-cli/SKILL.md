@@ -48,6 +48,10 @@ cd skills/jira-cli
 - `--json` 保留 Jira 原始响应结构，适合 Agent 和脚本处理。
 - 普通模式提供 Rich 摘要或表格。
 - 复杂正文优先写入临时文件，再用 `--description-file` 或 `--body-file` 传递。
+- 如果正文文件由 Agent 为当前单次操作临时创建，且成功后不再复用，在同一次 shell
+  调用中把最终写操作与 `rm -- <明确路径>` 用 `&&` 串行执行。写操作失败时保留文件，
+  不要使用 `;` 无条件删除，也不要用变量、通配符或目录作为清理目标。用户提供的文件、
+  附件和后续操作仍需复用的文件不得自动清理。
 - 额外字段使用重复的 `--field KEY=JSON_OR_TEXT`。
 - 涉及“我”、当前用户、负责人、报告人等身份语义时，先执行
   `./scripts/jira_cli.py --json user me` 获取当前 Jira 认证身份。不得根据会话称呼、
@@ -159,7 +163,8 @@ Issue，继续使用 `issue list --jql 'filter = FILTER_ID'`，不在 CLI 中引
 ./scripts/jira_cli.py issue create \
   --type Task \
   --summary '中文任务标题' \
-  --description-file /tmp/description.txt
+  --description-file /tmp/description.txt \
+  && rm -- /tmp/description.txt
 
 ./scripts/jira_cli.py issue create \
   --type Sub-task \
@@ -198,7 +203,8 @@ Epic 使用配置中的 `epic_name_field` 和 `epic_link_field`：
 评论正文遵循上面的 Jira wiki markup 规则；外部资源使用带简洁显示文本的链接。
 
 ```bash
-./scripts/jira_cli.py comment add SATOS-261728 --body-file /tmp/comment.txt
+./scripts/jira_cli.py comment add SATOS-261728 --body-file /tmp/comment.txt \
+  && rm -- /tmp/comment.txt
 ./scripts/jira_cli.py comment edit SATOS-261728 22384028 --body-file /tmp/comment.txt
 ./scripts/jira_cli.py comment list SATOS-261728
 ```

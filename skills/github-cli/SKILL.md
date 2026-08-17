@@ -18,6 +18,14 @@ description: 使用 GitHub CLI 与 GitHub 资源交互；适用于 repo、issue�
 ./scripts/github_preflight.py --help
 ```
 
+## 临时输入文件清理
+
+- 如果输入文件由 Agent 为当前单次操作临时创建，且成功后不再复用，在同一次 shell
+  调用中把最终写操作与 `rm -- <明确路径>` 用 `&&` 串行执行。写操作失败时保留文件，
+  不要使用 `;` 无条件删除，也不要用变量、通配符或目录作为清理目标。
+- dry-run 后仍要用于正式创建的正文不能提前删除；把清理命令串在正式创建之后。
+- 用户提供的文件、仓库文件，以及后续更新或校验仍需复用的文件不得自动清理。
+
 ## 常用场景
 
 - 仓库、Issue、PR、评论、release、workflow 等资源，优先先用 `gh <group> --help` 确认是否有现成子命令，再执行。
@@ -84,6 +92,17 @@ description: 使用 GitHub CLI 与 GitHub 资源交互；适用于 repo、issue�
 10. 只有脚本明确报告不支持当前平台能力、且无法安全扩展时，才回退网页表单；回复中要说明回退原因。
 11. 创建成功并验证通过后，输出完整 Issue URL。
 
+正式创建并清理单次临时正文的示例：
+
+```bash
+./scripts/github_issue.py create \
+  --repo owner/repo \
+  --template bug.yml \
+  --title "..." \
+  --body-file /tmp/issue-body.md \
+  && rm -- /tmp/issue-body.md
+```
+
 ## 创建 PR
 
 以下规范建立在“创建前检查”已完成的前提上。
@@ -97,7 +116,8 @@ description: 使用 GitHub CLI 与 GitHub 资源交互；适用于 repo、issue�
 gh pr create \
   --title "..." \
   --body-file /tmp/pr-body.md \
-  --base main
+  --base main \
+  && rm -- /tmp/pr-body.md
 ```
 6. 修改 PR 时也复用本地文件，避免手工编辑，例如：`gh pr edit <id> --title "..." --body-file /tmp/pr-body.md`。
 7. 创建成功后，输出完整 PR URL。

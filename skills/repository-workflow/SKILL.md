@@ -34,17 +34,22 @@ description: 处理从本地 Git 变更到 GitHub/GitLab 协作发布的完整�
 
 1. 完整读取 [commit-messages.md](references/commit-messages.md)，并根据最终待提交内容生成 message。
 2. 把结构化提交描述写入仓库外的临时 YAML 文件。默认只写 `subject` 和 `paths`；仅当标题与 diff 无法充分解释必要的动机、约束或影响时才添加 `body`，不要机械生成提交正文。需要正文时也不要在 shell 参数中拼接多行文本。YAML 格式与正文判断标准见 [commit-messages.md](references/commit-messages.md)。
-3. 从本 skill 目录运行提交脚本，并显式传入目标仓库。支持 `env -S` 时直接执行；不要使用 `python` 或 `uv run python`：
+3. 从本 skill 目录运行提交脚本，并显式传入目标仓库。提交成功后不再需要临时 YAML
+   时，在同一次 shell 调用中用 `&& rm -- <明确路径>` 清理；提交失败时保留文件，
+   不要使用 `;` 无条件删除，也不要用变量、通配符或目录作为清理目标。支持 `env -S`
+   时直接执行；不要使用 `python` 或 `uv run python`：
 
 ```bash
-./scripts/commit_from_yaml.py /tmp/commit.yaml --repo /path/to/repository
+./scripts/commit_from_yaml.py /tmp/commit.yaml --repo /path/to/repository \
+  && rm -- /tmp/commit.yaml
 ```
 
 不支持 `env -S` 时使用：
 
 ```bash
 uv run --script scripts/commit_from_yaml.py \
-  /tmp/commit.yaml --repo /path/to/repository
+  /tmp/commit.yaml --repo /path/to/repository \
+  && rm -- /tmp/commit.yaml
 ```
 
 脚本默认从当前 Codex thread 自动解析模型并生成 `Assisted-by: Codex:<model>`。自动探测不可用时只能显式选择以下一种方式，不得猜测模型：
