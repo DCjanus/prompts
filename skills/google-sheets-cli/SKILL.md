@@ -58,8 +58,14 @@ OAuth 通常只需要配置一次；日常任务不要把认证细节加载进�
 ```bash
 ./scripts/gsheets_cli.py --json values batch-update \
   --spreadsheet-id <spreadsheet-id> \
-  --updates-json @/tmp/sheets-updates.json
+  --updates-json @/tmp/sheets-updates.json \
+  && rm -- /tmp/sheets-updates.json
 ```
+
+如果 JSON 文件由 Agent 为当前单次写操作临时创建，且成功后不再复用，在同一次 shell
+调用中把写操作与 `rm -- <明确路径>` 用 `&&` 串行执行。写操作失败时保留文件，不要
+使用 `;` 无条件删除，也不要用变量、通配符或目录作为清理目标。用户提供的 JSON、
+写入前的范围备份，以及后续验证或回滚仍需复用的文件不得自动清理。
 
 ## 读取格式与 table 元数据
 

@@ -41,7 +41,8 @@ python skills/tampermonkey-cli/scripts/tampermonkey.py --help
 ./scripts/tampermonkey.py list
 ./scripts/tampermonkey.py get '<script-path>/source' --output /tmp/example.user.js
 ./scripts/tampermonkey.py put /path/to/example.user.js
-./scripts/tampermonkey.py patch '<script-path>/source' /path/to/example.user.js
+./scripts/tampermonkey.py patch '<script-path>/source' /tmp/example.user.js \
+  && rm -- /tmp/example.user.js
 ```
 
 ## Socket 约定
@@ -69,5 +70,9 @@ python skills/tampermonkey-cli/scripts/tampermonkey.py --help
 - `path` 是 Tampermonkey Editors 返回的内部路径，通常形如 `<script-id>/source`，不要自己猜。
 - `get` 必须指定 `--output`；读取后用 `sed`、`rg`、`diff`、编辑器等常规文件工具查看内容。
 - `put`、`patch` 和 `delete` 会修改浏览器里的 Tampermonkey 脚本；执行前确认目标文件内容是最终版本。
+- 如果 `get` 的输出由 Agent 放在 `/tmp` 中，仅用于当前单次修改，且成功后不再复用，
+  在同一次 shell 调用中把最终 `put` 或 `patch` 与 `rm -- <明确路径>` 用 `&&` 串行执行。
+  写操作失败时保留文件，不要使用 `;` 无条件删除，也不要用变量、通配符或目录作为
+  清理目标。用户提供的 userscript 和仓库源码不得自动清理。
 - 如果 `put` 或 `delete` 返回 `405 Method Not Allowed`，这是 Tampermonkey Editors 端拒绝该 action；先在 Tampermonkey UI 中手动创建脚本，再用 `list` 找到 path，并用 `patch` 覆盖内容。
 - 如果命令提示无法连接 socket，先运行 `serve` 并完成 Tampermonkey Editors 连接。
