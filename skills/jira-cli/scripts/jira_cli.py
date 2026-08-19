@@ -2,7 +2,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#     "httpx2>=2.10.0",
+#     "httpx2>=2.12.0",
 #     "pydantic>=2.13.4",
 #     "rich>=15.0.0",
 #     "tomli-w>=1.2.0",
