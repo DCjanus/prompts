@@ -205,6 +205,72 @@ paths:
         self.assertEqual(committed.rstrip("\n"), message.rstrip("\n"))
         self.assertNotIn("\\n", committed)
 
+    def test_commits_an_untracked_path_without_pre_staging_it(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            commit_from_yaml.run_git(repo, ["init", "--quiet"])
+            commit_from_yaml.run_git(repo, ["config", "user.name", "Test User"])
+            commit_from_yaml.run_git(repo, ["config", "user.email", "test@example.com"])
+            unrelated = repo / "unrelated.txt"
+            unrelated.write_text("base\n", encoding="utf-8")
+            commit_from_yaml.run_git(repo, ["add", "unrelated.txt"])
+            commit_from_yaml.run_git(repo, ["commit", "-m", "test: initial commit"])
+
+            unrelated.write_text("staged change\n", encoding="utf-8")
+            commit_from_yaml.run_git(repo, ["add", "unrelated.txt"])
+            new_file = repo / "new.txt"
+            new_file.write_text("new content\n", encoding="utf-8")
+            spec = commit_from_yaml.load_spec(
+                """
+subject: "test(commit): include untracked path"
+paths:
+  - new.txt
+"""
+            )
+            message = commit_from_yaml.render_message(spec, "Codex:gpt-test")
+
+            sha = commit_from_yaml.create_commit(repo, spec, message, "Codex:gpt-test")
+
+            committed_paths = commit_from_yaml.run_git(
+                repo, ["show", "--format=", "--name-only", sha]
+            ).splitlines()
+            staged_paths = commit_from_yaml.run_git(
+                repo, ["diff", "--cached", "--name-only"]
+            ).splitlines()
+
+        self.assertEqual(committed_paths, ["new.txt"])
+        self.assertEqual(staged_paths, ["unrelated.txt"])
+
+    def test_restores_untracked_path_after_commit_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            commit_from_yaml.run_git(repo, ["init", "--quiet"])
+            commit_from_yaml.run_git(repo, ["config", "user.name", "Test User"])
+            commit_from_yaml.run_git(repo, ["config", "user.email", "test@example.com"])
+            tracked = repo / "tracked.txt"
+            tracked.write_text("base\n", encoding="utf-8")
+            commit_from_yaml.run_git(repo, ["add", "tracked.txt"])
+            commit_from_yaml.run_git(repo, ["commit", "-m", "test: initial commit"])
+
+            new_file = repo / "new.txt"
+            new_file.write_text("new content\n", encoding="utf-8")
+            hook = repo / ".git" / "hooks" / "pre-commit"
+            hook.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+            hook.chmod(0o755)
+            spec = commit_from_yaml.load_spec(
+                'subject: "test(commit): fail safely"\npaths:\n  - new.txt\n'
+            )
+            message = commit_from_yaml.render_message(spec, "Codex:gpt-test")
+
+            with self.assertRaises(commit_from_yaml.CommitError):
+                commit_from_yaml.create_commit(repo, spec, message, "Codex:gpt-test")
+
+            status = commit_from_yaml.run_git(
+                repo, ["status", "--short", "--", "new.txt"]
+            )
+
+        self.assertEqual(status, "?? new.txt\n")
+
 
 class ValidateMessageTest(unittest.TestCase):
     def test_accepts_regular_message_with_expected_assistant(self) -> None:

@@ -2,7 +2,7 @@
 # /// script
 # requires-python = ">=3.12"
 # dependencies = [
-#     "httpx2>=2.10.0",
+#     "httpx2>=2.12.0",
 #     "pydantic>=2.13.4",
 #     "pyyaml>=6.0.3",
 #     "rich>=15.0.0",
@@ -28,7 +28,6 @@ import yaml
 from pydantic import BaseModel, Field, ValidationError, field_validator
 from rich.console import Console
 from rich.table import Table
-
 
 API_VERSION = "2022-11-28"
 METADATA_PERMISSIONS = {"ADMIN", "MAINTAIN", "WRITE", "TRIAGE"}
