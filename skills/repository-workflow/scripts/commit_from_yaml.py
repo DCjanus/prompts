@@ -366,6 +366,16 @@ def validate_rendered_message(message: str, assisted_by: str | None) -> None:
     validate_message(message, None)
 
 
+def list_untracked_paths(repo: Path, paths: list[str]) -> list[str]:
+    """返回 paths 范围内尚未进入 index 的文件。"""
+
+    output = run_git(
+        repo,
+        ["ls-files", "--others", "--exclude-standard", "-z", "--", *paths],
+    )
+    return [path for path in output.split("\0") if path]
+
+
 def create_commit(
     repo: Path, spec: CommitSpec, message: str, assisted_by: str | None
 ) -> str:
@@ -373,6 +383,10 @@ def create_commit(
 
     validate_rendered_message(message, assisted_by)
     run_git(repo, ["rev-parse", "--show-toplevel"])
+
+    untracked_paths = list_untracked_paths(repo, spec.paths) if spec.paths else []
+    if untracked_paths:
+        run_git(repo, ["add", "--intent-to-add", "--", *untracked_paths])
 
     with tempfile.NamedTemporaryFile(
         "w", encoding="utf-8", suffix=".txt"
@@ -385,7 +399,15 @@ def create_commit(
         arguments.extend(["-F", message_file.name])
         if spec.paths:
             arguments.extend(["--", *spec.paths])
-        run_git(repo, arguments)
+        try:
+            run_git(repo, arguments)
+        except CommitError:
+            if untracked_paths:
+                run_git(
+                    repo,
+                    ["update-index", "--force-remove", "--", *untracked_paths],
+                )
+            raise
 
     committed_message = run_git(repo, ["show", "-s", "--format=%B", "HEAD"])
     validate_rendered_message(committed_message, assisted_by)

@@ -42,7 +42,7 @@ paths:
 
 - `subject` 必填，必须符合 Conventional Commits。
 - `body`、`trailers`、`paths` 可选；不满足上述正文条件时不要写 `body`。确需正文时，它是自由多行字符串，内部 Markdown 与换行完全由调用方控制。
-- `paths` 必须是仓库相对路径；非空时脚本使用 `git commit --only`，为空时提交当前 index。
+- `paths` 必须是仓库相对路径；非空时脚本自动处理其中的未跟踪文件，并使用 `git commit --only`，为空时提交当前 index。
 - `trailers` 是 `key` / `value` 结构化列表；key 仅支持字母、数字和连字符，value 必须是非空单行字符串。
 - `Assisted-by` 由脚本生成，禁止放入 `trailers`。
 - 所有字符串都禁止包含字面量 `\\n`；多行正文使用 YAML 的 `|` block scalar 表达。
