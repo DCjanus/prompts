@@ -101,3 +101,6 @@
   - 前端（yarn）：`yarn add <package>`
   - Go：`go get <module>`
 - 依赖变更可复现（通过 lockfile/工具链保证）；不手工编辑描述文件或锁文件。
+
+### 4.6 修改项目版本
+- Rust 项目修改 package version 时统一使用 `cargo set-version <version>`，不要手工编辑 `Cargo.toml` 或 `Cargo.lock`。
