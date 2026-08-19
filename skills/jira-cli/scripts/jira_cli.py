@@ -31,8 +31,8 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from jira_api_client import JiraApiClient, JiraApiError, JiraConfig  # noqa: E402
-from jira_config import (  # noqa: E402
+from jira_api_client import JiraApiClient, JiraApiError, JiraConfig
+from jira_config import (
     DEFAULT_CONFIG_PATH,
     JiraCliSettings,
     load_settings,

@@ -29,7 +29,6 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 from rich.console import Console
 from rich.table import Table
 
-
 API_VERSION = "2022-11-28"
 METADATA_PERMISSIONS = {"ADMIN", "MAINTAIN", "WRITE", "TRIAGE"}
 TEMPLATE_SUFFIXES = {".md", ".yml", ".yaml"}
