@@ -64,6 +64,8 @@ notification_method = "bel"
 - [`AGENTS.md`](AGENTS.md)：Codex 中所有代理共享的基础约束与工作流
 - [`skills/`](skills)：按功能分类的技能库，详情见下方技能列表
 - [`scripts/`](scripts)：放置 uv script 模式的工具脚本（规范见 [SKILL.md（uv-cli-creator）](skills/uv-cli-creator/SKILL.md)）
+  - [`chatgpt_usage.py`](scripts/chatgpt_usage.py)：复用本机 Codex CLI 的 ChatGPT 登录态，展示订阅类型、各 Codex 额度窗口的剩余额度与剩余时间进度，并提供 `--verbose` 与 `--json` 输出
+  - [`run_tests.py`](scripts/run_tests.py)：统一发现并运行仓库内所有脚本与 skill 的 Python 测试，同时兼容 unittest 与 pytest 测试
   - [`script_deps.py`](scripts/script_deps.py)：检查或升级仓库内 PEP 723 / uv script 依赖声明，对比 PyPI 最新版本，并在 GitHub Actions 中报告依赖下限落后或声明不一致
   - [`upstream_skills.py`](scripts/upstream_skills.py)：根据 [`upstream-skills.toml`](upstream-skills.toml) 检查第三方 skill 的上游目录是否出现新 commit；优先使用 CI 的 `GITHUB_TOKEN`，本地回退到已登录的 `gh`，并在 stderr 输出凭据来源；发现变更或查询失败时返回非 0，并写入 GitHub Actions summary
 
@@ -94,7 +96,7 @@ notification_method = "bel"
 
 ### grill-me
 
-本仓库中的 [`grill-me`](skills/grill-me/SKILL.md) 改编自 Matt Pocock 的原始 [`grilling`](https://github.com/mattpocock/skills/blob/86cba45f4244b2545112d13e77ba82eb2bfad325/skills/productivity/grilling/SKILL.md)，基于上游 commit [`86cba45f4244b2545112d13e77ba82eb2bfad325`](https://github.com/mattpocock/skills/commit/86cba45f4244b2545112d13e77ba82eb2bfad325)，按 [MIT License](licenses/grill-me/LICENSE) 使用和修改。
+本仓库中的 [`grill-me`](skills/grill-me/SKILL.md) 改编自 Matt Pocock 的原始 [`grilling`](https://github.com/mattpocock/skills/blob/85f83d3fde1d3a90d5c9a657f6998c79a6c37308/skills/productivity/grilling/SKILL.md)，基于上游 commit [`85f83d3fde1d3a90d5c9a657f6998c79a6c37308`](https://github.com/mattpocock/skills/commit/85f83d3fde1d3a90d5c9a657f6998c79a6c37308)，按 [MIT License](licenses/grill-me/LICENSE) 使用和修改。
 
 ### domain-modeling
 
