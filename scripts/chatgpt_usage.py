@@ -3,6 +3,8 @@
 # /// script
 # requires-python = ">=3.14"
 # dependencies = [
+#     "kittytgp>=0.0.2",
+#     "resvg-py>=0.4.0",
 #     "rich>=15.0.0",
 #     "typer>=0.27.1",
 # ]
@@ -13,18 +15,24 @@
 from __future__ import annotations
 
 import json
+import os
 import queue
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import time
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
+from html import escape
+from math import ceil
 from pathlib import Path
 from typing import Annotated, Any, TextIO
 
 import typer
+from kittytgp import render_png
+from resvg_py import svg_to_bytes
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress_bar import ProgressBar
@@ -33,6 +41,9 @@ from rich.text import Text
 
 APP_NAME = "chatgpt-usage"
 APP_VERSION = "0.1.0"
+SVG_WIDTH = 1440
+IMAGE_SCALE = 2
+DEFAULT_IMAGE_WIDTH_RATIO = 1.0
 console = Console()
 error_console = Console(stderr=True)
 app = typer.Typer(add_completion=False, no_args_is_help=False)
@@ -408,6 +419,303 @@ def render_usage(buckets: list[LimitBucket], now: datetime, *, verbose: bool) ->
         )
 
 
+def _svg_text(value: object) -> str:
+    """转义 SVG 动态文本。"""
+    return escape(str(value), quote=True)
+
+
+def _svg_pace(delta: float | None, duration_minutes: int | None) -> tuple[str, str]:
+    """返回 SVG 使用的节奏文本与颜色。"""
+    pace = _pace_text(delta, duration_minutes)
+    if delta is None:
+        return pace.plain, "#7f8aa3"
+    if abs(delta) < 0.05:
+        return pace.plain, "#8be9fd"
+    if abs(delta) < _pace_tolerance(duration_minutes):
+        return pace.plain, "#f1c75b" if delta < 0 else "#8be9fd"
+    return pace.plain, "#50fa7b" if delta > 0 else "#ff5555"
+
+
+def _svg_relation(delta: float | None, duration_minutes: int | None) -> tuple[str, str]:
+    """返回直接描述额度与时间差距的文本和颜色。"""
+    pace, color = _svg_pace(delta, duration_minutes)
+    if delta is None:
+        return "额度与时间无法比较", color
+    if abs(delta) < 0.05:
+        return "额度与时间同步", color
+    relation = "多" if delta > 0 else "少"
+    direction = pace.split(maxsplit=1)[0]
+    return f"额度{relation} {abs(delta):.1f}pp · {direction}", color
+
+
+def _svg_comparison_rail(
+    progress: WindowProgress,
+    *,
+    x: float,
+    y: float,
+    width: float,
+) -> str:
+    """用同尺度双色双轨比较额度和时间。"""
+    quota_percent = max(0.0, min(100.0, progress.quota_remaining_percent))
+    quota_x = x + width * quota_percent / 100
+    quota_y = y - 17
+    time_y = y + 17
+    parts = [
+        f'<line data-role="quota-track" x1="{x}" y1="{quota_y}" x2="{x + width}" y2="{quota_y}" stroke="#283149" stroke-width="9" stroke-linecap="round"/>',
+        f'<line data-role="time-track" x1="{x}" y1="{time_y}" x2="{x + width}" y2="{time_y}" stroke="#283149" stroke-width="9" stroke-linecap="round"/>',
+    ]
+    if progress.time_remaining_percent is not None:
+        time_percent = max(0.0, min(100.0, progress.time_remaining_percent))
+        time_x = x + width * time_percent / 100
+        parts.extend(
+            [
+                f'<line x1="{x}" y1="{time_y}" x2="{time_x}" y2="{time_y}" stroke="#8f9fe8" stroke-width="9" stroke-linecap="round"/>',
+                f'<line x1="{time_x}" y1="{time_y - 10}" x2="{time_x}" y2="{time_y + 10}" stroke="#aebaff" stroke-width="4" stroke-linecap="round"/>',
+                f'<text x="{x - 14}" y="{time_y + 5}" text-anchor="end" fill="#aebaff" font-size="13" font-weight="650">时间剩余</text>',
+                f'<text x="{x + width + 14}" y="{time_y + 5}" fill="#aebaff" font-size="14" font-weight="700">{time_percent:.0f}%</text>',
+            ]
+        )
+    else:
+        parts.append(
+            f'<text x="{x - 14}" y="{time_y + 5}" text-anchor="end" class="muted" font-size="13">时间剩余</text>\n  <text x="{x + width + 14}" y="{time_y + 5}" class="muted" font-size="14">未知</text>'
+        )
+    parts.extend(
+        [
+            f'<line x1="{x}" y1="{quota_y}" x2="{quota_x}" y2="{quota_y}" stroke="#50fa7b" stroke-width="9" stroke-linecap="round"/>',
+            f'<line x1="{quota_x}" y1="{quota_y - 10}" x2="{quota_x}" y2="{quota_y + 10}" stroke="#50fa7b" stroke-width="4" stroke-linecap="round"/>',
+            f'<text x="{x - 14}" y="{quota_y + 5}" text-anchor="end" fill="#50fa7b" font-size="13" font-weight="650">额度剩余</text>',
+            f'<text x="{x + width + 14}" y="{quota_y + 5}" fill="#50fa7b" font-size="14" font-weight="700">{quota_percent:.0f}%</text>',
+        ]
+    )
+    return "\n  ".join(parts)
+
+
+def _dashboard_summary(buckets: list[LimitBucket], now: datetime) -> tuple[str, str]:
+    """归纳整个看板最需要关注的用量状态。"""
+    deltas = [
+        (progress.pace_delta, window.duration_minutes)
+        for bucket in buckets
+        for window in bucket.windows
+        if (progress := calculate_progress(window, now)).pace_delta is not None
+    ]
+    if any(
+        delta <= -_pace_tolerance(duration)
+        for delta, duration in deltas
+        if delta is not None
+    ):
+        return "消耗偏快，留意额度", "#ff5555"
+    if any(delta < -0.05 for delta, _ in deltas if delta is not None):
+        return "消耗略快，暂时无需干预", "#f1c75b"
+    if any(delta > 0.05 for delta, _ in deltas if delta is not None):
+        return "额度充足，节奏安全", "#50fa7b"
+    if deltas:
+        return "额度与时间基本同步", "#8be9fd"
+    return "等待完整窗口数据", "#7f8aa3"
+
+
+def render_usage_svg(
+    buckets: list[LimitBucket], now: datetime, *, verbose: bool
+) -> str:
+    """把额度看板渲染为共享刻度对比 SVG。"""
+    margin = 48
+    card_gap = 24
+    panel_gap = 18
+    panel_height = 154
+    header_height = 110
+    bucket_header_height = 70
+    max_window_columns = 3
+    bucket_rows: list[list[LimitBucket]] = []
+    current_row: list[LimitBucket] = []
+    occupied_columns = 0
+    for bucket in buckets:
+        span = min(max_window_columns, max(1, len(bucket.windows)))
+        if current_row and occupied_columns + span > max_window_columns:
+            bucket_rows.append(current_row)
+            current_row = []
+            occupied_columns = 0
+        current_row.append(bucket)
+        occupied_columns += span
+    if current_row:
+        bucket_rows.append(current_row)
+
+    row_heights = []
+    for row in bucket_rows:
+        window_rows = max(
+            ceil(max(1, len(bucket.windows)) / max_window_columns) for bucket in row
+        )
+        row_heights.append(
+            bucket_header_height
+            + window_rows * panel_height
+            + (window_rows - 1) * panel_gap
+            + 18
+        )
+    height = (
+        header_height
+        + sum(row_heights)
+        + card_gap * max(0, len(bucket_rows) - 1)
+        + margin
+    )
+    summary, summary_color = _dashboard_summary(buckets, now)
+    parts = [
+        f'''<svg xmlns="http://www.w3.org/2000/svg" width="{SVG_WIDTH}" height="{height}" viewBox="0 0 {SVG_WIDTH} {height}">
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b1020"/>
+      <stop offset="1" stop-color="#121a30"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#050814" flood-opacity="0.42"/>
+    </filter>
+  </defs>
+  <rect width="{SVG_WIDTH}" height="{height}" rx="30" fill="url(#background)"/>
+  <style>
+    text {{ font-family: "SF Pro Display", "PingFang SC", "Noto Sans CJK SC", sans-serif; }}
+    .muted {{ fill: #7f8aa3; }}
+  </style>
+  <text x="{margin}" y="64" fill="#f8f8f2" font-size="38" font-weight="750">ChatGPT Usage</text>
+  <rect x="{SVG_WIDTH - margin - 354}" y="30" width="354" height="48" rx="24" fill="{summary_color}" fill-opacity="0.13"/>
+  <circle cx="{SVG_WIDTH - margin - 326}" cy="54" r="7" fill="{summary_color}"/>
+  <text x="{SVG_WIDTH - margin - 306}" y="61" fill="{summary_color}" font-size="19" font-weight="700">{_svg_text(summary)}</text>'''
+    ]
+
+    bucket_layouts: list[tuple[LimitBucket, float, float, float, float]] = []
+    y = float(header_height)
+    for row, row_height in zip(bucket_rows, row_heights, strict=True):
+        spans = [min(max_window_columns, max(1, len(bucket.windows))) for bucket in row]
+        available_width = SVG_WIDTH - margin * 2 - card_gap * (len(row) - 1)
+        total_span = sum(spans)
+        bucket_x = float(margin)
+        for bucket, span in zip(row, spans, strict=True):
+            bucket_width = available_width * span / total_span
+            bucket_layouts.append((bucket, bucket_x, y, bucket_width, row_height))
+            bucket_x += bucket_width + card_gap
+        y += row_height + card_gap
+
+    for bucket, bucket_x, y, bucket_width, bucket_height in bucket_layouts:
+        accent = "#8be9fd" if bucket.limit_id == "codex" else "#bd93f9"
+        title = bucket.name or (
+            "Codex（通用）" if bucket.limit_id == "codex" else bucket.limit_id
+        )
+        plan = bucket.plan_type.upper() if bucket.plan_type else "UNKNOWN"
+        parts.append(
+            f'''
+  <g filter="url(#shadow)">
+    <rect x="{bucket_x}" y="{y}" width="{bucket_width}" height="{bucket_height}" rx="24" fill="#151b2d" stroke="#283149"/>
+    <rect x="{bucket_x}" y="{y}" width="6" height="{bucket_height}" rx="3" fill="{accent}"/>
+  </g>
+  <circle cx="{bucket_x + 34}" cy="{y + 34}" r="7" fill="{accent}"/>
+  <text x="{bucket_x + 54}" y="{y + 42}" fill="#f8f8f2" font-size="24" font-weight="700">{_svg_text(title)}</text>
+  <rect x="{bucket_x + bucket_width - 104}" y="{y + 18}" width="76" height="30" rx="15" fill="{accent}" fill-opacity="0.14"/>
+  <text x="{bucket_x + bucket_width - 66}" y="{y + 39}" text-anchor="middle" fill="{accent}" font-size="14" font-weight="700">{_svg_text(plan)}</text>'''
+        )
+        if verbose:
+            parts.append(
+                f'  <text x="{bucket_x + 54}" y="{y + 60}" class="muted" font-size="13">{_svg_text(bucket.limit_id)}</text>'
+            )
+
+        windows = bucket.windows or (None,)
+        column_count = min(max_window_columns, len(windows))
+        panel_width = (
+            bucket_width - 40 - panel_gap * (column_count - 1)
+        ) / column_count
+        for index, window in enumerate(windows, start=1):
+            row_index, column_index = divmod(index - 1, column_count)
+            panel_x = bucket_x + 20 + column_index * (panel_width + panel_gap)
+            panel_y = y + bucket_header_height + row_index * (panel_height + panel_gap)
+            parts.append(
+                f'  <rect x="{panel_x}" y="{panel_y}" width="{panel_width}" height="{panel_height}" rx="18" fill="#101626"/>'
+            )
+            if window is None:
+                parts.append(
+                    f'  <text x="{panel_x + 28}" y="{panel_y + 60}" class="muted" font-size="17">服务端未提供窗口</text>'
+                )
+                continue
+
+            progress = calculate_progress(window, now)
+            label = _window_label(window.duration_minutes, index)
+            relation_text, pace_color = _svg_relation(
+                progress.pace_delta, window.duration_minutes
+            )
+            rail_x = panel_x + 112
+            rail_width = panel_width - 176
+            badge_width = min(220, panel_width * 0.55)
+            badge_x = panel_x + panel_width - badge_width - 18
+            parts.append(
+                f'''
+  <text x="{panel_x + 22}" y="{panel_y + 29}" fill="#f8f8f2" font-size="18" font-weight="700">{_svg_text(label)}</text>
+  <rect x="{badge_x}" y="{panel_y + 12}" width="{badge_width}" height="32" rx="16" fill="{pace_color}" fill-opacity="0.13"/>
+  <text x="{badge_x + badge_width / 2}" y="{panel_y + 34}" text-anchor="middle" fill="{pace_color}" font-size="14" font-weight="700">{_svg_text(relation_text)}</text>
+  {_svg_comparison_rail(progress, x=rail_x, y=panel_y + 83, width=rail_width)}
+  <text x="{panel_x + 22}" y="{panel_y + 140}" class="muted" font-size="12">距离重置 {_svg_text(_remaining_text(progress.remaining_seconds))}</text>'''
+            )
+            if verbose and window.resets_at is not None:
+                reset_text = (
+                    datetime.fromtimestamp(window.resets_at)
+                    .astimezone()
+                    .strftime("%Y-%m-%d %H:%M")
+                )
+                parts.append(
+                    f'  <text x="{panel_x + panel_width - 22}" y="{panel_y + 140}" text-anchor="end" class="muted" font-size="11">重置于 {_svg_text(reset_text)}</text>'
+                )
+
+    parts.append("</svg>\n")
+    return "\n".join(parts)
+
+
+def svg_to_png(svg: str) -> bytes:
+    """使用进程内 resvg 把 SVG 栅格化为高分屏 PNG。"""
+    try:
+        png = svg_to_bytes(svg_string=svg, zoom=IMAGE_SCALE)
+    except Exception as error:
+        raise UsageError(f"SVG 渲染失败：{error}") from error
+    if not png.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise UsageError("resvg 没有返回有效的 PNG")
+    return png
+
+
+def render_usage_image(
+    buckets: list[LimitBucket],
+    now: datetime,
+    *,
+    columns: int | None,
+    verbose: bool,
+) -> None:
+    """生成 SVG、栅格化，并通过 Kitty 协议展示。"""
+    svg = render_usage_svg(buckets, now, verbose=verbose)
+    png = svg_to_png(svg)
+    render_png(png, cols=columns)
+
+
+def image_environment_hint(environment: dict[str, str] | None = None) -> bool:
+    """根据终端标识保守识别 Kitty 图片能力。"""
+    values = os.environ if environment is None else environment
+    term = values.get("TERM", "").lower()
+    term_program = values.get("TERM_PROGRAM", "").lower()
+    return bool(
+        values.get("KITTY_WINDOW_ID")
+        or values.get("GHOSTTY_RESOURCES_DIR")
+        or "kitty" in term
+        or "ghostty" in term
+        or term_program in {"ghostty", "wezterm"}
+    )
+
+
+def supports_image_output(stream: Any = None) -> bool:
+    """保守判断当前输出是否适合 Kitty 图片协议。"""
+    target = stream or sys.stdout
+    try:
+        return bool(target.isatty() and image_environment_hint())
+    except (AttributeError, OSError, RuntimeError):
+        return False
+
+
+def default_image_columns() -> int:
+    """使用接近完整宽度，并避开终端行尾自动换行。"""
+    terminal_columns = shutil.get_terminal_size(fallback=(120, 40)).columns
+    requested_columns = ceil(terminal_columns * DEFAULT_IMAGE_WIDTH_RATIO)
+    return min(requested_columns, max(1, terminal_columns - 1))
+
+
 def _json_report(buckets: list[LimitBucket], now: datetime) -> dict[str, Any]:
     """构造稳定的机器可读结果。"""
     rows: list[dict[str, Any]] = []
@@ -441,8 +749,30 @@ def main(
         bool,
         typer.Option("--verbose", "-v", help="显示额度 ID 与精确重置时间。"),
     ] = False,
+    image_output: Annotated[
+        bool | None,
+        typer.Option(
+            "--image/--text",
+            help="强制使用图片或 Rich 文本；默认自动探测。",
+        ),
+    ] = None,
+    image_width: Annotated[
+        int | None,
+        typer.Option(
+            "--image-width",
+            min=24,
+            max=240,
+            help="图片占用的终端列数；默认使用可用终端宽度。",
+        ),
+    ] = None,
+    save_svg: Annotated[
+        Path | None,
+        typer.Option("--save-svg", help="同时把 SVG 看板保存到指定路径。"),
+    ] = None,
 ) -> None:
     """显示当前 ChatGPT 登录态对应的 Codex 额度与时间进度。"""
+    if json_output and image_output is True:
+        raise typer.BadParameter("--json 与 --image 不能同时使用")
     resolved = codex_bin or (Path(found) if (found := shutil.which("codex")) else None)
     if resolved is None:
         error_console.print("[bold red]错误：[/]PATH 中找不到 Codex CLI")
@@ -457,8 +787,29 @@ def main(
         raise typer.Exit(1) from error
 
     now = datetime.now(UTC)
+    use_image = image_output if image_output is not None else supports_image_output()
+    if save_svg is not None:
+        try:
+            save_svg.write_text(
+                render_usage_svg(buckets, now, verbose=verbose), encoding="utf-8"
+            )
+        except OSError as error:
+            error_console.print(f"[bold red]错误：[/]无法保存 SVG：{error}")
+            raise typer.Exit(1) from error
     if json_output:
         print(json.dumps(_json_report(buckets, now), ensure_ascii=False, indent=2))
+    elif use_image:
+        try:
+            columns = (
+                image_width if image_width is not None else default_image_columns()
+            )
+            render_usage_image(buckets, now, columns=columns, verbose=verbose)
+        except (UsageError, OSError, RuntimeError, ValueError) as error:
+            if image_output is True:
+                error_console.print(f"[bold red]错误：[/]无法展示图片：{error}")
+                raise typer.Exit(1) from error
+            error_console.print(f"[yellow]图片模式不可用，已回退到文本：[/]{error}")
+            render_usage(buckets, now, verbose=verbose)
     else:
         render_usage(buckets, now, verbose=verbose)
 

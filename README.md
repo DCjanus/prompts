@@ -64,10 +64,21 @@ notification_method = "bel"
 - [`AGENTS.md`](AGENTS.md)：Codex 中所有代理共享的基础约束与工作流
 - [`skills/`](skills)：按功能分类的技能库，详情见下方技能列表
 - [`scripts/`](scripts)：放置 uv script 模式的工具脚本（规范见 [SKILL.md（uv-cli-creator）](skills/uv-cli-creator/SKILL.md)）
-  - [`chatgpt_usage.py`](scripts/chatgpt_usage.py)：复用本机 Codex CLI 的 ChatGPT 登录态，展示订阅类型、各 Codex 额度窗口的剩余额度与剩余时间进度，并提供 `--verbose` 与 `--json` 输出
+  - [`chatgpt_usage.py`](scripts/chatgpt_usage.py)：复用本机 Codex CLI 的 ChatGPT 登录态，展示订阅类型、各 Codex 额度窗口的剩余额度与剩余时间进度；自动在支持 Kitty 图片协议的终端中展示图片看板，其它环境回退到紧凑 Rich 输出
   - [`run_tests.py`](scripts/run_tests.py)：统一发现并运行仓库内所有脚本与 skill 的 Python 测试，同时兼容 unittest 与 pytest 测试
   - [`script_deps.py`](scripts/script_deps.py)：检查或升级仓库内 PEP 723 / uv script 依赖声明，对比 PyPI 最新版本，并在 GitHub Actions 中报告依赖下限落后或声明不一致
   - [`upstream_skills.py`](scripts/upstream_skills.py)：根据 [`upstream-skills.toml`](upstream-skills.toml) 检查第三方 skill 的上游目录是否出现新 commit；优先使用 CI 的 `GITHUB_TOKEN`，本地回退到已登录的 `gh`，并在 stderr 输出凭据来源；发现变更或查询失败时返回非 0，并写入 GitHub Actions summary
+
+额度看板会结合 TTY 状态与 Ghostty、Kitty 等终端标识自动选择图片模式；图片渲染失败时自动回退到原有 Rich 文本界面。图片默认使用除行尾一列外的可用终端宽度，避免 Unicode placeholder 触发额外自动换行，并将不同模型横向排列以减少终端行占用；每个窗口通过同尺度的绿色额度轨与紫色时间轨直接展示关系，也可用 `--image-width` 指定列数。uv 会自动安装 `resvg_py` 与 `kittytgp`，不要求宿主机额外安装 SVG 转换器或图片查看器。SVG 默认以 2× 像素密度栅格化，在高分屏上保持清晰，同时由终端按 cell placement 控制实际显示尺寸。`kittytgp` 使用 Kitty Graphics Protocol 的 Unicode placeholder placement，使图片能够随终端文本滚动，并兼容已开启 passthrough 的 tmux：
+
+```bash
+./scripts/chatgpt_usage.py
+./scripts/chatgpt_usage.py --text
+./scripts/chatgpt_usage.py --image --image-width 72
+./scripts/chatgpt_usage.py --image --save-svg /tmp/chatgpt-usage.svg
+```
+
+`--image` 与 `--text` 可分别强制使用图片或文本输出；`--save-svg` 可独立保存原始矢量图。
 
 ### 技能列表
 
