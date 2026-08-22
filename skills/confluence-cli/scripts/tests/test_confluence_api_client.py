@@ -41,12 +41,14 @@ class FakeHttpxyzClient:
             raise AssertionError("No queued response")
         return self._queue.pop(0)
 
-    def get(self, path, params=None):
-        self.calls.append(("get", path, params, None, None))
+    def get(self, path, params=None, headers=None):
+        self.calls.append(("get", path, params, None, {"headers": headers}))
         return self._take()
 
     def post(self, path, json=None, files=None, headers=None):
-        self.calls.append(("post", path, None, json, {"files": files, "headers": headers}))
+        self.calls.append(
+            ("post", path, None, json, {"files": files, "headers": headers})
+        )
         return self._take()
 
     def put(self, path, json=None, params=None):
@@ -140,7 +142,9 @@ class ConfluenceApiClientTest(unittest.TestCase):
             finally:
                 self.mod.httpxyz.Client = original_client
 
-        self.assertEqual(fake.calls[1][1], "rest/api/content/123/child/attachment/999/data")
+        self.assertEqual(
+            fake.calls[1][1], "rest/api/content/123/child/attachment/999/data"
+        )
 
 
 if __name__ == "__main__":
