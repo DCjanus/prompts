@@ -42,7 +42,8 @@ paths:
 
 - `subject` 必填，必须符合 Conventional Commits。
 - `body`、`trailers`、`paths` 可选；不满足上述正文条件时不要写 `body`。确需正文时，它是自由多行字符串，内部 Markdown 与换行完全由调用方控制。
-- `paths` 必须是仓库相对路径；非空时脚本自动处理其中的未跟踪文件，并使用 `git commit --only`，为空时提交当前 index。
+- `paths` 的每一项都是仓库相对的 Git pathspec，支持字面路径、目录、`*`、`?`、字符集合以及 `:(glob)` 等 Git pathspec magic；非空时脚本自动处理匹配到的未跟踪文件，并使用 `git commit --only`，为空时提交当前 index。
+- pathspec 会原样传给 Git，不经过 shell 展开。包含通配符或 magic 时必须在 YAML 中使用引号；需要可预测的目录层级匹配时优先使用 `:(glob)`，其中 `*` 不匹配 `/`、`**` 可跨越目录。例如 `':(glob)src/**/*.py'` 会匹配 `src` 下各层级的 Python 文件。
 - `trailers` 是 `key` / `value` 结构化列表；key 仅支持字母、数字和连字符，value 必须是非空单行字符串。
 - `Assisted-by` 由脚本生成，禁止放入 `trailers`。
 - 所有字符串都禁止包含字面量 `\\n`；多行正文使用 YAML 的 `|` block scalar 表达。

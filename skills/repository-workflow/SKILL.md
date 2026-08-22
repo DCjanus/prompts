@@ -28,7 +28,7 @@ description: 处理从本地 Git 变更到 GitHub/GitLab 协作发布的完整�
 2. 区分当前任务改动与用户已有改动，只处理当前任务负责的路径。
 3. 不要为了当前任务 stash、restore、reset 或清理无关改动。
 4. 如果同一文件混有无法安全分离的改动，停止提交并说明情况。
-5. 通过提交 YAML 的 `paths` 精确限定提交范围，不要提前修改 index；脚本会自动处理其中的未跟踪文件。
+5. 通过提交 YAML 的 `paths` 精确限定提交范围，不要提前修改 index；每一项按仓库相对的 Git pathspec 解释，支持字面路径、目录、通配符和 `:(glob)` magic。脚本会自动处理匹配到的未跟踪文件。
 
 ## 创建 commit
 
@@ -64,7 +64,7 @@ uv run --script scripts/commit_from_yaml.py \
 
 `--model` 跳过自动探测但仍生成 trailer；`--skip-assisted-by` 同时跳过探测和 trailer。两者互斥，后者只用于确实无法获得模型信息的场景。
 
-4. YAML 的 `paths` 非空时，脚本会自动让其中的未跟踪文件进入 Git 的 intent-to-add 状态，再使用 `git commit --only` 限定提交范围；调用方无需预先 stage。若提交失败，脚本会清理自己创建的 intent-to-add 条目。`paths` 为空时提交当前 index，也可用于已经解决冲突的 merge commit。
+4. YAML 的 `paths` 非空时，脚本会把每一项原样作为 Git pathspec 传给 Git，自动让匹配到的未跟踪文件进入 intent-to-add 状态，再使用 `git commit --only` 限定提交范围；调用方无需预先 stage。通配符由 Git 而不是 shell 展开，YAML 中应使用引号；需要让 `*` 不跨越目录分隔符时，使用 `:(glob)` 与 `**` 明确表达层级。若提交失败，脚本会清理自己创建的 intent-to-add 条目。`paths` 为空时提交当前 index，也可用于已经解决冲突的 merge commit。
 5. 脚本会在提交前后校验正文、breaking 标记和 trailer；任何字段中的字面量 `\\n` 都会失败。提交后仍需回读范围与工作区：
 
 ```bash
