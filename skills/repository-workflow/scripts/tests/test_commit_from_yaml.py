@@ -241,6 +241,50 @@ paths:
         self.assertEqual(committed_paths, ["new.txt"])
         self.assertEqual(staged_paths, ["unrelated.txt"])
 
+    def test_commits_tracked_and_untracked_paths_matching_git_glob(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            commit_from_yaml.run_git(repo, ["init", "--quiet"])
+            commit_from_yaml.run_git(repo, ["config", "user.name", "Test User"])
+            commit_from_yaml.run_git(repo, ["config", "user.email", "test@example.com"])
+            tracked = repo / "src" / "tracked.txt"
+            tracked.parent.mkdir()
+            tracked.write_text("base\n", encoding="utf-8")
+            unrelated = repo / "unrelated.txt"
+            unrelated.write_text("base\n", encoding="utf-8")
+            commit_from_yaml.run_git(repo, ["add", "src/tracked.txt", "unrelated.txt"])
+            commit_from_yaml.run_git(repo, ["commit", "-m", "test: initial commit"])
+
+            tracked.write_text("changed\n", encoding="utf-8")
+            untracked = repo / "src" / "nested" / "new.txt"
+            untracked.parent.mkdir()
+            untracked.write_text("new content\n", encoding="utf-8")
+            unrelated.write_text("staged change\n", encoding="utf-8")
+            commit_from_yaml.run_git(repo, ["add", "unrelated.txt"])
+            spec = commit_from_yaml.load_spec(
+                """
+subject: "test(commit): support git glob pathspecs"
+paths:
+  - ":(glob)src/**/*.txt"
+"""
+            )
+            message = commit_from_yaml.render_message(spec, "Codex:gpt-test")
+
+            sha = commit_from_yaml.create_commit(repo, spec, message, "Codex:gpt-test")
+
+            committed_paths = commit_from_yaml.run_git(
+                repo, ["show", "--format=", "--name-only", sha]
+            ).splitlines()
+            staged_paths = commit_from_yaml.run_git(
+                repo, ["diff", "--cached", "--name-only"]
+            ).splitlines()
+
+        self.assertEqual(
+            committed_paths,
+            ["src/nested/new.txt", "src/tracked.txt"],
+        )
+        self.assertEqual(staged_paths, ["unrelated.txt"])
+
     def test_restores_untracked_path_after_commit_failure(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             repo = Path(directory)

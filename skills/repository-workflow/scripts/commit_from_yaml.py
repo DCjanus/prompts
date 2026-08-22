@@ -176,7 +176,7 @@ class CommitSpec(StrictModel):
 
     @model_validator(mode="after")
     def validate_paths(self) -> Self:
-        """限制 paths 为不重复的仓库相对路径。"""
+        """限制 paths 为不重复的仓库相对 Git pathspec。"""
 
         if len(self.paths) != len(set(self.paths)):
             raise ValueError("paths must not contain duplicates")
@@ -367,7 +367,7 @@ def validate_rendered_message(message: str, assisted_by: str | None) -> None:
 
 
 def list_untracked_paths(repo: Path, paths: list[str]) -> list[str]:
-    """返回 paths 范围内尚未进入 index 的文件。"""
+    """返回 pathspec 匹配且尚未进入 index 的文件。"""
 
     output = run_git(
         repo,
