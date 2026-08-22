@@ -96,7 +96,7 @@ notification_method = "bel"
 
 ### grill-me
 
-本仓库中的 [`grill-me`](skills/grill-me/SKILL.md) 改编自 Matt Pocock 的原始 [`grilling`](https://github.com/mattpocock/skills/blob/86cba45f4244b2545112d13e77ba82eb2bfad325/skills/productivity/grilling/SKILL.md)，基于上游 commit [`86cba45f4244b2545112d13e77ba82eb2bfad325`](https://github.com/mattpocock/skills/commit/86cba45f4244b2545112d13e77ba82eb2bfad325)，按 [MIT License](licenses/grill-me/LICENSE) 使用和修改。
+本仓库中的 [`grill-me`](skills/grill-me/SKILL.md) 改编自 Matt Pocock 的原始 [`grilling`](https://github.com/mattpocock/skills/blob/85f83d3fde1d3a90d5c9a657f6998c79a6c37308/skills/productivity/grilling/SKILL.md)，基于上游 commit [`85f83d3fde1d3a90d5c9a657f6998c79a6c37308`](https://github.com/mattpocock/skills/commit/85f83d3fde1d3a90d5c9a657f6998c79a6c37308)，按 [MIT License](licenses/grill-me/LICENSE) 使用和修改。
 
 ### domain-modeling
 
