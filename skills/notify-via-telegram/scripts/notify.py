@@ -93,10 +93,10 @@ class Notification(BaseModel):
         return value.strip() if isinstance(value, str) else value
 
 
-STATUS_PRESENTATION = {
-    NotificationStatus.success: ("✅", "任务完成"),
-    NotificationStatus.failed: ("❌", "任务失败"),
-    NotificationStatus.action_required: ("⚠️", "等待你处理"),
+STATUS_ICON = {
+    NotificationStatus.success: "✅",
+    NotificationStatus.failed: "❌",
+    NotificationStatus.action_required: "⚠️",
 }
 
 
@@ -131,17 +131,12 @@ def notification_from_options(
 def render_notification_blocks(notification: Notification) -> list[dict[str, Any]]:
     """生成 Telegram Rich Message 的显式内容块。"""
 
-    icon, status_label = STATUS_PRESENTATION[notification.status]
+    icon = STATUS_ICON[notification.status]
     blocks: list[dict[str, Any]] = [
         {
             "type": "heading",
-            "text": f"{icon} Codex · {status_label}",
+            "text": f"{icon} {notification.title}",
             "size": 3,
-        },
-        {
-            "type": "heading",
-            "text": notification.title,
-            "size": 4,
         },
         {
             "type": "paragraph",
@@ -196,10 +191,9 @@ def render_notification_blocks(notification: Notification) -> list[dict[str, Any
 def render_notification_plain(notification: Notification) -> str:
     """渲染终端预览使用的纯文本通知。"""
 
-    icon, status_label = STATUS_PRESENTATION[notification.status]
+    icon = STATUS_ICON[notification.status]
     lines = [
-        f"{icon} Codex · {status_label}",
-        notification.title,
+        f"{icon} {notification.title}",
         "",
         f"结果：{notification.summary}",
     ]
