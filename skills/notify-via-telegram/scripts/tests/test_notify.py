@@ -50,15 +50,12 @@ def test_render_notification_blocks_create_clear_visual_hierarchy() -> None:
     )
 
     assert notify.render_notification_blocks(notification) == [
-        {"type": "heading", "text": "✅ 修复 <Chat ID>", "size": 3},
+        {"type": "heading", "text": "✅ 任务完成", "size": 3},
         {
             "type": "paragraph",
-            "text": [{"type": "bold", "text": "任务完成"}, " · Codex"],
+            "text": [{"type": "bold", "text": "修复 <Chat ID>"}, " · Codex"],
         },
-        {
-            "type": "blockquote",
-            "blocks": [{"type": "paragraph", "text": "A & B"}],
-        },
+        {"type": "paragraph", "text": "A & B"},
         {
             "type": "paragraph",
             "text": ["👉 ", {"type": "bold", "text": "下一步："}, "重新执行"],
@@ -120,18 +117,15 @@ def test_send_uses_structured_rich_message_payload(monkeypatch, tmp_path: Path) 
         "chat_id": "test-chat",
         "rich_message": {
             "blocks": [
-                {"type": "heading", "text": "✅ 长任务完成", "size": 3},
+                {"type": "heading", "text": "✅ 任务完成", "size": 3},
                 {
                     "type": "paragraph",
                     "text": [
-                        {"type": "bold", "text": "任务完成"},
+                        {"type": "bold", "text": "长任务完成"},
                         " · Codex",
                     ],
                 },
-                {
-                    "type": "blockquote",
-                    "blocks": [{"type": "paragraph", "text": "所有步骤已经完成。"}],
-                },
+                {"type": "paragraph", "text": "所有步骤已经完成。"},
                 {"type": "divider"},
                 {
                     "type": "footer",
@@ -177,18 +171,15 @@ def test_json_preview_exposes_rich_message_without_config_or_network(
         "status": "action-required",
         "rich_message": {
             "blocks": [
-                {"type": "heading", "text": "⚠️ 需要确认", "size": 3},
+                {"type": "heading", "text": "⚠️ 等待你处理", "size": 3},
                 {
                     "type": "paragraph",
                     "text": [
-                        {"type": "bold", "text": "等待你处理"},
+                        {"type": "bold", "text": "需要确认"},
                         " · Codex",
                     ],
                 },
-                {
-                    "type": "blockquote",
-                    "blocks": [{"type": "paragraph", "text": "任务已暂停。"}],
-                },
+                {"type": "paragraph", "text": "任务已暂停。"},
                 {
                     "type": "paragraph",
                     "text": [
@@ -224,6 +215,6 @@ def test_preview_does_not_access_telegram(monkeypatch) -> None:
     )
 
     assert result.exit_code == 0, result.output
-    assert "❌ 长任务未完成" in result.output
-    assert "任务失败 · Codex" in result.output
+    assert "❌ 任务失败" in result.output
+    assert "长任务未完成 · Codex" in result.output
     assert "👉 下一步：检查构建日志" in result.output
