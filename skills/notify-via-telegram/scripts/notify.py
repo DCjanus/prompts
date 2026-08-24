@@ -93,10 +93,10 @@ class Notification(BaseModel):
         return value.strip() if isinstance(value, str) else value
 
 
-STATUS_ICON = {
-    NotificationStatus.success: "✅",
-    NotificationStatus.failed: "❌",
-    NotificationStatus.action_required: "⚠️",
+STATUS_PRESENTATION = {
+    NotificationStatus.success: ("✅", "已完成"),
+    NotificationStatus.failed: ("❌", "未完成"),
+    NotificationStatus.action_required: ("⚠️", "等待处理"),
 }
 
 
@@ -131,26 +131,35 @@ def notification_from_options(
 def render_notification_blocks(notification: Notification) -> list[dict[str, Any]]:
     """生成 Telegram Rich Message 的显式内容块。"""
 
-    icon = STATUS_ICON[notification.status]
+    icon, status_label = STATUS_PRESENTATION[notification.status]
     blocks: list[dict[str, Any]] = [
         {
-            "type": "paragraph",
+            "type": "heading",
             "text": notification.title,
+            "size": 4,
         },
         {
-            "type": "paragraph",
-            "text": notification.summary,
+            "type": "blockquote",
+            "blocks": [{"type": "paragraph", "text": notification.summary}],
         },
-        {"type": "divider"},
     ]
 
-    footer: list[Any] = [f"状态：{icon}"]
     if notification.action:
-        footer.extend(["\n", f"下一步：{notification.action}"])
+        blocks.append(
+            {
+                "type": "paragraph",
+                "text": [
+                    {"type": "marked", "text": "需要你处理"},
+                    f"：{notification.action}",
+                ],
+            }
+        )
+
+    footer: list[Any] = [f"{icon} {status_label}"]
     if notification.verification:
-        footer.extend(["\n", f"验证：{notification.verification}"])
+        footer.extend([" · ", notification.verification])
     if notification.context:
-        footer.extend(["\n", f"上下文：{notification.context}"])
+        footer.extend([" · ", notification.context])
     blocks.append({"type": "footer", "text": footer})
     return blocks
 
@@ -158,21 +167,21 @@ def render_notification_blocks(notification: Notification) -> list[dict[str, Any
 def render_notification_plain(notification: Notification) -> str:
     """渲染终端预览使用的纯文本通知。"""
 
-    icon = STATUS_ICON[notification.status]
+    icon, status_label = STATUS_PRESENTATION[notification.status]
     lines = [
         notification.title,
         "",
-        notification.summary,
-        "",
-        "────────",
-        f"状态：{icon}",
+        f"> {notification.summary}",
     ]
     if notification.action:
-        lines.append(f"下一步：{notification.action}")
+        lines.extend(["", f"需要你处理：{notification.action}"])
+
+    footer = [f"{icon} {status_label}"]
     if notification.verification:
-        lines.append(f"验证：{notification.verification}")
+        footer.append(notification.verification)
     if notification.context:
-        lines.append(f"上下文：{notification.context}")
+        footer.append(notification.context)
+    lines.extend(["", " · ".join(footer)])
     return "\n".join(lines)
 
 

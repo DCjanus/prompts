@@ -51,25 +51,24 @@ def test_render_notification_blocks_create_clear_visual_hierarchy() -> None:
 
     assert notify.render_notification_blocks(notification) == [
         {
-            "type": "paragraph",
+            "type": "heading",
             "text": "修复 <Chat ID>",
+            "size": 4,
+        },
+        {
+            "type": "blockquote",
+            "blocks": [{"type": "paragraph", "text": "A & B"}],
         },
         {
             "type": "paragraph",
-            "text": "A & B",
+            "text": [
+                {"type": "marked", "text": "需要你处理"},
+                "：重新执行",
+            ],
         },
-        {"type": "divider"},
         {
             "type": "footer",
-            "text": [
-                "状态：✅",
-                "\n",
-                "下一步：重新执行",
-                "\n",
-                "验证：157 > 0",
-                "\n",
-                "上下文：prompts",
-            ],
+            "text": ["✅ 已完成", " · ", "157 > 0", " · ", "prompts"],
         },
     ]
 
@@ -116,21 +115,17 @@ def test_send_uses_structured_rich_message_payload(monkeypatch, tmp_path: Path) 
         "rich_message": {
             "blocks": [
                 {
-                    "type": "paragraph",
+                    "type": "heading",
                     "text": "长任务完成",
+                    "size": 4,
                 },
                 {
-                    "type": "paragraph",
-                    "text": "所有步骤已经完成。",
+                    "type": "blockquote",
+                    "blocks": [{"type": "paragraph", "text": "所有步骤已经完成。"}],
                 },
-                {"type": "divider"},
                 {
                     "type": "footer",
-                    "text": [
-                        "状态：✅",
-                        "\n",
-                        "验证：157 项测试通过",
-                    ],
+                    "text": ["✅ 已完成", " · ", "157 项测试通过"],
                 },
             ]
         },
@@ -169,22 +164,22 @@ def test_json_preview_exposes_rich_message_without_config_or_network(
         "rich_message": {
             "blocks": [
                 {
-                    "type": "paragraph",
+                    "type": "heading",
                     "text": "需要确认",
+                    "size": 4,
+                },
+                {
+                    "type": "blockquote",
+                    "blocks": [{"type": "paragraph", "text": "任务已暂停。"}],
                 },
                 {
                     "type": "paragraph",
-                    "text": "任务已暂停。",
-                },
-                {"type": "divider"},
-                {
-                    "type": "footer",
                     "text": [
-                        "状态：⚠️",
-                        "\n",
-                        "下一步：选择发布范围",
+                        {"type": "marked", "text": "需要你处理"},
+                        "：选择发布范围",
                     ],
                 },
+                {"type": "footer", "text": ["⚠️ 等待处理"]},
             ]
         },
     }
@@ -213,5 +208,5 @@ def test_preview_does_not_access_telegram(monkeypatch) -> None:
 
     assert result.exit_code == 0, result.output
     assert result.output == (
-        "长任务未完成\n\n构建失败。\n\n────────\n状态：❌\n下一步：检查构建日志\n"
+        "长任务未完成\n\n> 构建失败。\n\n需要你处理：检查构建日志\n\n❌ 未完成\n"
     )

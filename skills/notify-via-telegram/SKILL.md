@@ -85,7 +85,7 @@ Agent 调用时使用 `--json`，并把全局参数放在子命令前。
   --summary "最终结果的一句话摘要"
 ```
 
-脚本统一生成 Telegram Rich Message 的显式 `blocks`：标题和正文各占一个段落，依靠段落留白形成主内容层级；分隔线以下的 footer 统一显示状态、下一步、验证和上下文。`✅`、`❌`、`⚠️` 只作为 footer 中的状态值，不放在主内容行首。所有输入字段都作为纯文本 RichText 传递；不要自行添加 Telegram HTML、Markdown 或 RichText 结构。
+脚本统一生成 Telegram Rich Message 的显式 `blocks`：任务标题使用小号 heading，最终结论放入 blockquote；仅在提供 `action` 时增加高亮的“需要你处理”段落；最后用单行 footer 紧凑显示状态、验证和上下文。不要添加泛化通知标题、分隔线或逐字段 Emoji。所有输入字段都作为纯文本 RichText 传递；不要自行添加 Telegram HTML、Markdown 或 RichText 结构。
 
 `preview --json` 返回与发送请求一致的 `rich_message` 对象，可在不读取配置、不访问 Telegram 的情况下检查内容块。格式能力与字段定义以 Telegram 官方的 [Rich Messages](https://core.telegram.org/bots/features#rich-messages) 和 [Bot API](https://core.telegram.org/bots/api#sendrichmessage) 文档为准。
 
