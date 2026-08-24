@@ -437,7 +437,7 @@ class LocalUsageHistoryTests(unittest.TestCase):
                 "\n".join(
                     [
                         self._token_count_line(
-                            "2029-12-31T23:59:59.000Z",
+                            "2029-12-31T12:00:00.000Z",
                             ordinal=0,
                             total=(50_000, 40_000, 5_000, 55_000),
                             last=(50_000, 40_000, 5_000, 55_000),
@@ -517,14 +517,14 @@ class LocalUsageHistoryTests(unittest.TestCase):
             )
             by_day = {row.day: row for row in expanded.days}
             self.assertEqual(expanded.scan, chatgpt_usage.ScanStats(1, 0, 1, 0))
-            self.assertEqual(by_day[date(2030, 1, 1)].total_tokens, 55_000)
+            self.assertEqual(by_day[date(2029, 12, 31)].total_tokens, 55_000)
 
             narrowed = chatgpt_usage.collect_usage_history(
                 codex_home, cache_path, now=now, days=7
             )
             by_day = {row.day: row for row in narrowed.days}
             self.assertEqual(len(narrowed.days), 7)
-            self.assertNotIn(date(2030, 1, 1), by_day)
+            self.assertNotIn(date(2029, 12, 31), by_day)
             self.assertEqual(by_day[date(2030, 1, 8)].total_tokens, 280)
             self.assertEqual(narrowed.scan, chatgpt_usage.ScanStats(1, 1, 0, 0))
 
