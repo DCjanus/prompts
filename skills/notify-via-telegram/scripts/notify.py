@@ -13,7 +13,6 @@
 
 from __future__ import annotations
 
-import html
 import json
 import os
 import sys
@@ -129,42 +128,88 @@ def notification_from_options(
         abort(f"通知内容无效：{details}")
 
 
-def notification_lines(notification: Notification, *, html_mode: bool) -> list[str]:
-    """生成结构化通知的各行内容。"""
+def render_notification_blocks(notification: Notification) -> list[dict[str, Any]]:
+    """生成 Telegram Rich Message 的显式内容块。"""
 
     icon, status_label = STATUS_PRESENTATION[notification.status]
-    escape = html.escape if html_mode else lambda value: value
-    header = f"{icon} Codex · {status_label}"
-    title = escape(notification.title)
-    lines = [
-        f"{icon} <b>Codex · {status_label}</b>" if html_mode else header,
-        f"<b>{title}</b>" if html_mode else notification.title,
-        "",
-        escape(notification.summary),
+    blocks: list[dict[str, Any]] = [
+        {
+            "type": "heading",
+            "text": f"{icon} {notification.title}",
+            "size": 3,
+        },
+        {
+            "type": "paragraph",
+            "text": [{"type": "bold", "text": status_label}, " · Codex"],
+        },
+        {
+            "type": "blockquote",
+            "blocks": [{"type": "paragraph", "text": notification.summary}],
+        },
     ]
 
-    optional_lines = []
-    if notification.verification:
-        optional_lines.append(f"🧪 验证：{escape(notification.verification)}")
     if notification.action:
-        optional_lines.append(f"👉 下一步：{escape(notification.action)}")
+        blocks.append(
+            {
+                "type": "paragraph",
+                "text": [
+                    "👉 ",
+                    {"type": "bold", "text": "下一步："},
+                    notification.action,
+                ],
+            }
+        )
+
+    footer: list[Any] = []
+    if notification.verification:
+        footer.extend(
+            [
+                "🧪 ",
+                {"type": "bold", "text": "验证"},
+                f"：{notification.verification}",
+            ]
+        )
     if notification.context:
-        optional_lines.append(f"📦 上下文：{escape(notification.context)}")
-    if optional_lines:
-        lines.extend(["", *optional_lines])
-    return lines
-
-
-def render_notification_html(notification: Notification) -> str:
-    """渲染 Telegram HTML 通知。"""
-
-    return "\n".join(notification_lines(notification, html_mode=True))
+        if footer:
+            footer.append("\n")
+        footer.extend(
+            [
+                "📦 ",
+                {"type": "bold", "text": "上下文"},
+                f"：{notification.context}",
+            ]
+        )
+    if footer:
+        blocks.extend(
+            [
+                {"type": "divider"},
+                {"type": "footer", "text": footer},
+            ]
+        )
+    return blocks
 
 
 def render_notification_plain(notification: Notification) -> str:
     """渲染终端预览使用的纯文本通知。"""
 
-    return "\n".join(notification_lines(notification, html_mode=False))
+    icon, status_label = STATUS_PRESENTATION[notification.status]
+    lines = [
+        f"{icon} {notification.title}",
+        f"{status_label} · Codex",
+        "",
+        f"> {notification.summary}",
+    ]
+    if notification.action:
+        lines.extend(["", f"👉 下一步：{notification.action}"])
+
+    footer = []
+    if notification.verification:
+        footer.append(f"🧪 验证：{notification.verification}")
+    if notification.context:
+        footer.append(f"📦 上下文：{notification.context}")
+    if footer:
+        lines.extend(["", *footer])
+    return "\n".join(lines)
 
 
 def default_config_path() -> Path:
@@ -340,11 +385,12 @@ def send_message(
     config = complete_config(state.config_path)
     result = telegram_call(
         config,
-        "sendMessage",
+        "sendRichMessage",
         {
             "chat_id": config.chat_id,
-            "text": render_notification_html(notification),
-            "parse_mode": "HTML",
+            "rich_message": {
+                "blocks": render_notification_blocks(notification),
+            },
         },
     )
     emit(
@@ -392,8 +438,9 @@ def preview_message(
             state,
             {
                 "status": notification.status.value,
-                "text": render_notification_html(notification),
-                "parse_mode": "HTML",
+                "rich_message": {
+                    "blocks": render_notification_blocks(notification),
+                },
             },
             "",
         )

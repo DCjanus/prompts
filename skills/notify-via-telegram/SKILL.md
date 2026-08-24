@@ -9,7 +9,7 @@ description: 在用户明确要求后，通过本地安全配置发送当前长�
 
 ## 授权边界
 
-- 只有用户在当前任务中明确要求通过 Telegram 通知，才允许发送。自然语言要求和显式调用本 skill 都可以表达授权。
+- 只有用户在当前任务中显式调用 `$notify-via-telegram` 并要求通过 Telegram 通知，才允许发送。
 - 不要因为任务耗时较长、执行了很多步骤、skill 被自动识别或普通任务完成而推断授权。
 - 授权只覆盖当前任务，不延续到之后的任务。
 - 默认不发送开始、进度、阶段完成、单条命令失败或自动重试消息。
@@ -85,7 +85,9 @@ Agent 调用时使用 `--json`，并把全局参数放在子命令前。
   --summary "最终结果的一句话摘要"
 ```
 
-脚本统一生成 Telegram HTML 并转义所有输入字段；不要自行添加 Telegram HTML 或 Markdown 标记。
+脚本统一生成 Telegram Rich Message 的显式 `blocks`，用标题、状态、摘要、下一步和页脚建立视觉层级。所有输入字段都作为纯文本 RichText 传递；不要自行添加 Telegram HTML、Markdown 或 RichText 结构。
+
+`preview --json` 返回与发送请求一致的 `rich_message` 对象，可在不读取配置、不访问 Telegram 的情况下检查内容块。格式能力与字段定义以 Telegram 官方的 [Rich Messages](https://core.telegram.org/bots/features#rich-messages) 和 [Bot API](https://core.telegram.org/bots/api#sendrichmessage) 文档为准。
 
 ## 配置
 
