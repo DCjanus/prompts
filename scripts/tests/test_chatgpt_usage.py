@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import importlib.util
 import io
+import json
 import os
 import sys
 import tempfile
 import unittest
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -95,7 +96,7 @@ class RenderUsageTests(unittest.TestCase):
         self.buckets = [
             chatgpt_usage.LimitBucket(
                 limit_id="codex_internal",
-                name="Codex Spark",
+                name="Codex",
                 plan_type="pro",
                 windows=(
                     chatgpt_usage.UsageWindow(
@@ -133,7 +134,7 @@ class RenderUsageTests(unittest.TestCase):
         chatgpt_usage.render_usage(self.buckets, self.now, verbose=False)
 
         output = self.output.getvalue()
-        self.assertIn("Codex Spark · PRO", output)
+        self.assertIn("Codex · PRO", output)
         self.assertIn("5 小时", output)
         self.assertIn("额度", output)
         self.assertIn("时间", output)
@@ -148,6 +149,88 @@ class RenderUsageTests(unittest.TestCase):
         self.assertIn("偏慢 +25.0pp", output)
         self.assertEqual(output.count("偏慢 +25.0pp"), 1)
         self.assertIn("重置", output)
+
+    def test_default_output_hides_spark_bucket_but_verbose_keeps_it(self) -> None:
+        spark = chatgpt_usage.LimitBucket(
+            limit_id="codex_spark",
+            name="Codex Spark",
+            plan_type="pro",
+            windows=self.buckets[0].windows,
+        )
+
+        chatgpt_usage.render_usage([*self.buckets, spark], self.now, verbose=False)
+
+        self.assertEqual(self.output.getvalue().count("Codex Spark · PRO"), 0)
+        self.output.seek(0)
+        self.output.truncate(0)
+
+        chatgpt_usage.render_usage([*self.buckets, spark], self.now, verbose=True)
+
+        self.assertEqual(self.output.getvalue().count("Codex Spark · PRO"), 1)
+
+    def test_text_output_includes_daily_tokens_and_cache_hit_rate(self) -> None:
+        history = chatgpt_usage.UsageHistory(
+            days=(
+                chatgpt_usage.DailyTokenUsage(
+                    day=date(2029, 12, 31),
+                    input_tokens=1_000,
+                    cached_input_tokens=750,
+                    cache_write_input_tokens=0,
+                    output_tokens=200,
+                    reasoning_output_tokens=50,
+                    total_tokens=1_200,
+                ),
+                chatgpt_usage.DailyTokenUsage(
+                    day=date(2030, 1, 1),
+                    input_tokens=2_000,
+                    cached_input_tokens=1_000,
+                    cache_write_input_tokens=0,
+                    output_tokens=300,
+                    reasoning_output_tokens=75,
+                    total_tokens=2_300,
+                ),
+                chatgpt_usage.DailyTokenUsage(
+                    day=date(2030, 1, 2),
+                    input_tokens=0,
+                    cached_input_tokens=0,
+                    cache_write_input_tokens=0,
+                    output_tokens=0,
+                    reasoning_output_tokens=0,
+                    total_tokens=0,
+                ),
+            ),
+            scan=chatgpt_usage.ScanStats(
+                total_files=10,
+                cache_hits=9,
+                full_scans=0,
+                incremental_scans=1,
+            ),
+        )
+
+        chatgpt_usage.render_usage(
+            self.buckets, self.now, history=history, verbose=False
+        )
+
+        output = self.output.getvalue()
+        self.assertIn("最近 3 天 Token", output)
+        self.assertLess(output.index("最近 3 天 Token"), output.index("Codex · PRO"))
+        self.assertIn("12-31", output)
+        self.assertIn("75.0%", output)
+        self.assertIn("01-01", output)
+        self.assertIn("50.0%", output)
+        self.assertNotIn("索引命中", output)
+
+        self.output.seek(0)
+        self.output.truncate(0)
+        chatgpt_usage.render_usage(
+            self.buckets, self.now, history=history, verbose=True
+        )
+        self.assertIn("索引命中 9/10", self.output.getvalue())
+
+        report = chatgpt_usage._json_report(self.buckets, self.now, history)
+        self.assertEqual(report["local_usage"]["total_tokens"], 3_500)
+        self.assertEqual(report["local_usage"]["days"][0]["day"], "2029-12-31")
+        self.assertEqual(report["local_usage"]["scan"]["cache_hits"], 9)
 
     def test_svg_groups_each_bucket_and_escapes_dynamic_text(self) -> None:
         buckets = [
@@ -205,11 +288,88 @@ class RenderUsageTests(unittest.TestCase):
             ),
         ]
 
-        svg = chatgpt_usage.render_usage_svg(buckets, self.now, verbose=False)
+        svg = chatgpt_usage.render_usage_svg(buckets, self.now, verbose=True)
         height = int(svg.split('height="', 1)[1].split('"', 1)[0])
 
         self.assertLessEqual(height, 500)
         self.assertIn("Codex Spark", svg)
+
+    def test_svg_includes_compact_daily_usage_and_hides_spark(self) -> None:
+        spark = chatgpt_usage.LimitBucket(
+            limit_id="codex_spark",
+            name="Codex Spark",
+            plan_type="pro",
+            windows=self.buckets[0].windows,
+        )
+        history = chatgpt_usage.UsageHistory(
+            days=(
+                chatgpt_usage.DailyTokenUsage(
+                    day=date(2030, 1, 1),
+                    input_tokens=2_000,
+                    cached_input_tokens=1_500,
+                    cache_write_input_tokens=0,
+                    output_tokens=300,
+                    reasoning_output_tokens=75,
+                    total_tokens=2_300,
+                ),
+                chatgpt_usage.DailyTokenUsage(
+                    day=date(2030, 1, 2),
+                    input_tokens=0,
+                    cached_input_tokens=0,
+                    cache_write_input_tokens=0,
+                    output_tokens=0,
+                    reasoning_output_tokens=0,
+                    total_tokens=0,
+                ),
+            ),
+            scan=chatgpt_usage.ScanStats(1, 1, 0, 0),
+        )
+
+        svg = chatgpt_usage.render_usage_svg(
+            [*self.buckets, spark], self.now, history=history, verbose=False
+        )
+
+        self.assertIn("最近 2 天 Token", svg)
+        self.assertIn("75.0%", svg)
+        self.assertNotIn("codex_spark", svg)
+        self.assertNotIn('height="0.0"', svg)
+        self.assertEqual(svg.count('data-role="day-card"'), 2)
+        self.assertIn('data-role="quota-summary"', svg)
+        self.assertLess(
+            svg.index('data-role="daily-usage"'),
+            svg.index('data-role="quota-summary"'),
+        )
+        self.assertNotIn('data-role="quota-track"', svg)
+        height = int(svg.split('height="', 1)[1].split('"', 1)[0])
+        self.assertLessEqual(height, 560)
+
+    def test_svg_wraps_thirty_days_into_three_rows(self) -> None:
+        history = chatgpt_usage.UsageHistory(
+            days=tuple(
+                chatgpt_usage.DailyTokenUsage(
+                    day=date(2030, 1, 30) - timedelta(days=29 - offset),
+                    input_tokens=1_000 + offset,
+                    cached_input_tokens=750,
+                    cache_write_input_tokens=0,
+                    output_tokens=100,
+                    reasoning_output_tokens=0,
+                    total_tokens=1_100 + offset,
+                )
+                for offset in range(30)
+            ),
+            scan=chatgpt_usage.ScanStats(1, 1, 0, 0),
+        )
+
+        svg = chatgpt_usage.render_usage_svg(
+            self.buckets, self.now, history=history, verbose=False
+        )
+
+        self.assertEqual(svg.count('data-role="day-card"'), 30)
+        self.assertIn('data-grid-columns="10"', svg)
+        self.assertIn("最近 30 天 Token", svg)
+        height = int(svg.split('height="', 1)[1].split('"', 1)[0])
+        self.assertGreater(height, 560)
+        self.assertLessEqual(height, 800)
 
     @patch.object(chatgpt_usage, "render_png")
     @patch.object(
@@ -226,6 +386,147 @@ class RenderUsageTests(unittest.TestCase):
 
         svg_to_png_mock.assert_called_once()
         render_png_mock.assert_called_once_with(b"\x89PNG\r\n\x1a\nexample", cols=72)
+
+
+class LocalUsageHistoryTests(unittest.TestCase):
+    def _token_count_line(
+        self,
+        timestamp: str,
+        *,
+        ordinal: int,
+        total: tuple[int, int, int, int],
+        last: tuple[int, int, int, int],
+    ) -> str:
+        def usage(values: tuple[int, int, int, int]) -> dict[str, int]:
+            input_tokens, cached_tokens, output_tokens, total_tokens = values
+            return {
+                "input_tokens": input_tokens,
+                "cached_input_tokens": cached_tokens,
+                "cache_write_input_tokens": 0,
+                "output_tokens": output_tokens,
+                "reasoning_output_tokens": 0,
+                "total_tokens": total_tokens,
+            }
+
+        return json.dumps(
+            {
+                "timestamp": timestamp,
+                "ordinal": ordinal,
+                "type": "event_msg",
+                "payload": {
+                    "type": "token_count",
+                    "info": {
+                        "total_token_usage": usage(total),
+                        "last_token_usage": usage(last),
+                    },
+                },
+            }
+        )
+
+    def test_incrementally_indexes_active_and_archived_rollouts(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            codex_home = root / "codex"
+            active = codex_home / "sessions" / "2030" / "01" / "08"
+            archived = codex_home / "archived_sessions"
+            active.mkdir(parents=True)
+            archived.mkdir(parents=True)
+            thread_id = "00000000-0000-0000-0000-000000000123"
+            rollout = active / f"rollout-2030-01-07T10-00-00-{thread_id}.jsonl"
+            rollout.write_text(
+                "\n".join(
+                    [
+                        self._token_count_line(
+                            "2029-12-31T23:59:59.000Z",
+                            ordinal=0,
+                            total=(50_000, 40_000, 5_000, 55_000),
+                            last=(50_000, 40_000, 5_000, 55_000),
+                        ),
+                        self._token_count_line(
+                            "2030-01-07T10:00:00.000Z",
+                            ordinal=1,
+                            total=(100, 60, 10, 110),
+                            last=(100, 60, 10, 110),
+                        ),
+                        self._token_count_line(
+                            "2030-01-08T10:00:00.000Z",
+                            ordinal=2,
+                            total=(250, 160, 30, 280),
+                            last=(150, 100, 20, 170),
+                        ),
+                        self._token_count_line(
+                            "2030-01-08T10:30:00.000Z",
+                            ordinal=3,
+                            total=(250, 160, 30, 280),
+                            last=(999, 999, 0, 999),
+                        ),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            cache_path = root / "cache" / "usage.duckdb"
+            now = datetime(2030, 1, 8, 12, tzinfo=UTC)
+            os.utime(rollout, (now.timestamp(), now.timestamp()))
+
+            first = chatgpt_usage.collect_usage_history(
+                codex_home, cache_path, now=now, days=7
+            )
+
+            by_day = {row.day: row for row in first.days}
+            self.assertEqual(by_day[date(2030, 1, 7)].total_tokens, 110)
+            self.assertEqual(by_day[date(2030, 1, 8)].total_tokens, 170)
+            self.assertEqual(
+                by_day[date(2030, 1, 8)].cache_hit_percent, 100 / 150 * 100
+            )
+            self.assertEqual(first.scan, chatgpt_usage.ScanStats(1, 0, 1, 0))
+
+            second = chatgpt_usage.collect_usage_history(
+                codex_home, cache_path, now=now, days=7
+            )
+            self.assertEqual(second.scan, chatgpt_usage.ScanStats(1, 1, 0, 0))
+
+            archived_rollout = archived / rollout.name
+            rollout.rename(archived_rollout)
+            moved = chatgpt_usage.collect_usage_history(
+                codex_home, cache_path, now=now, days=7
+            )
+            self.assertEqual(moved.scan, chatgpt_usage.ScanStats(1, 1, 0, 0))
+
+            with archived_rollout.open("a", encoding="utf-8") as file:
+                file.write(
+                    self._token_count_line(
+                        "2030-01-08T11:00:00.000Z",
+                        ordinal=4,
+                        total=(350, 210, 40, 390),
+                        last=(100, 50, 10, 110),
+                    )
+                    + "\n"
+                )
+            os.utime(archived_rollout, (now.timestamp(), now.timestamp()))
+
+            appended = chatgpt_usage.collect_usage_history(
+                codex_home, cache_path, now=now, days=7
+            )
+            by_day = {row.day: row for row in appended.days}
+            self.assertEqual(by_day[date(2030, 1, 8)].total_tokens, 280)
+            self.assertEqual(appended.scan, chatgpt_usage.ScanStats(1, 0, 0, 1))
+
+            expanded = chatgpt_usage.collect_usage_history(
+                codex_home, cache_path, now=now, days=30
+            )
+            by_day = {row.day: row for row in expanded.days}
+            self.assertEqual(expanded.scan, chatgpt_usage.ScanStats(1, 0, 1, 0))
+            self.assertEqual(by_day[date(2030, 1, 1)].total_tokens, 55_000)
+
+            narrowed = chatgpt_usage.collect_usage_history(
+                codex_home, cache_path, now=now, days=7
+            )
+            by_day = {row.day: row for row in narrowed.days}
+            self.assertEqual(len(narrowed.days), 7)
+            self.assertNotIn(date(2030, 1, 1), by_day)
+            self.assertEqual(by_day[date(2030, 1, 8)].total_tokens, 280)
+            self.assertEqual(narrowed.scan, chatgpt_usage.ScanStats(1, 1, 0, 0))
 
 
 class AppServerTests(unittest.TestCase):
@@ -257,6 +558,15 @@ done
 
 
 class CliTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.history_patcher = patch.object(
+            chatgpt_usage, "collect_usage_history", return_value=None
+        )
+        self.collect_history_mock = self.history_patcher.start()
+
+    def tearDown(self) -> None:
+        self.history_patcher.stop()
+
     @patch.object(
         chatgpt_usage.shutil,
         "get_terminal_size",
@@ -276,6 +586,30 @@ class CliTests(unittest.TestCase):
             chatgpt_usage.image_environment_hint({"TERM": "xterm-256color"})
         )
         self.assertFalse(chatgpt_usage.image_environment_hint({}))
+
+    @patch.object(
+        chatgpt_usage,
+        "fetch_rate_limits",
+        return_value={"rateLimits": {"limitId": "codex", "primary": None}},
+    )
+    def test_history_days_is_forwarded_to_local_usage_scan(
+        self, _fetch_mock: unittest.mock.Mock
+    ) -> None:
+        result = CliRunner().invoke(
+            chatgpt_usage.app,
+            ["--codex-bin", "/tmp/codex", "--text", "--history-days", "30"],
+        )
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertEqual(self.collect_history_mock.call_args.kwargs["days"], 30)
+
+    def test_history_days_rejects_values_outside_supported_range(self) -> None:
+        result = CliRunner().invoke(
+            chatgpt_usage.app,
+            ["--codex-bin", "/tmp/codex", "--history-days", "366"],
+        )
+
+        self.assertEqual(result.exit_code, 2, result.output)
 
     @patch.object(chatgpt_usage, "image_environment_hint", return_value=True)
     def test_image_support_requires_a_tty(self, _hint_mock: unittest.mock.Mock) -> None:

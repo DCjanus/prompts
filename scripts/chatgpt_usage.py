@@ -3,6 +3,7 @@
 # /// script
 # requires-python = ">=3.14"
 # dependencies = [
+#     "duckdb>=1.5.5",
 #     "kittytgp>=0.0.2",
 #     "resvg-py>=0.4.0",
 #     "rich>=15.0.0",
@@ -15,8 +16,10 @@
 from __future__ import annotations
 
 import json
+import mmap
 import os
 import queue
+import re
 import shutil
 import subprocess
 import sys
@@ -24,12 +27,13 @@ import tempfile
 import threading
 import time
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from html import escape
 from math import ceil
 from pathlib import Path
 from typing import Annotated, Any, TextIO
 
+import duckdb
 import typer
 from kittytgp import render_png
 from resvg_py import svg_to_bytes
@@ -44,6 +48,13 @@ APP_VERSION = "0.1.0"
 SVG_WIDTH = 1440
 IMAGE_SCALE = 2
 DEFAULT_IMAGE_WIDTH_RATIO = 1.0
+DEFAULT_HISTORY_DAYS = 7
+USAGE_CACHE_SCHEMA_VERSION = 3
+THREAD_ID_PATTERN = re.compile(
+    r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$",
+    re.IGNORECASE,
+)
+TIMESTAMP_PATTERN = re.compile(rb'"timestamp"\s*:\s*"([^"]+)"')
 console = Console()
 error_console = Console(stderr=True)
 app = typer.Typer(add_completion=False, no_args_is_help=False)
@@ -80,6 +91,62 @@ class WindowProgress:
     time_remaining_percent: float | None
     pace_delta: float | None
     remaining_seconds: float | None
+
+
+@dataclass(frozen=True)
+class DailyTokenUsage:
+    """记录一天的本地 Codex Token 用量。"""
+
+    day: date
+    input_tokens: int
+    cached_input_tokens: int
+    cache_write_input_tokens: int
+    output_tokens: int
+    reasoning_output_tokens: int
+    total_tokens: int
+
+    @property
+    def cache_hit_percent(self) -> float | None:
+        """返回模型输入缓存命中率。"""
+        if self.input_tokens <= 0:
+            return None
+        return self.cached_input_tokens / self.input_tokens * 100
+
+
+@dataclass(frozen=True)
+class ScanStats:
+    """记录本地 Thread 增量索引情况。"""
+
+    total_files: int
+    cache_hits: int
+    full_scans: int
+    incremental_scans: int
+
+
+@dataclass(frozen=True)
+class UsageHistory:
+    """记录按天汇总的 Token 用量与索引状态。"""
+
+    days: tuple[DailyTokenUsage, ...]
+    scan: ScanStats
+
+    @property
+    def total_tokens(self) -> int:
+        """返回当前时间范围内的 Token 总量。"""
+        return sum(day.total_tokens for day in self.days)
+
+
+@dataclass(frozen=True)
+class _RolloutState:
+    """记录单个 rollout 的增量解析位点。"""
+
+    path: str
+    device: int
+    inode: int
+    size: int
+    mtime_ns: int
+    parsed_bytes: int
+    last_total: tuple[int, int, int, int, int, int] | None
 
 
 def _jsonrpc_input() -> str:
@@ -262,6 +329,586 @@ def parse_rate_limits(result: dict[str, Any]) -> list[LimitBucket]:
     return buckets
 
 
+def default_codex_home() -> Path:
+    """返回当前 Codex 本地数据目录。"""
+    configured = os.environ.get("CODEX_HOME")
+    return Path(configured).expanduser() if configured else Path.home() / ".codex"
+
+
+def default_usage_cache_path() -> Path:
+    """返回用量增量索引的默认 DuckDB 路径。"""
+    if configured := os.environ.get("XDG_CACHE_HOME"):
+        root = Path(configured).expanduser()
+    elif sys.platform == "darwin":
+        root = Path.home() / "Library" / "Caches"
+    elif os.name == "nt" and (configured := os.environ.get("LOCALAPPDATA")):
+        root = Path(configured).expanduser()
+    else:
+        root = Path.home() / ".cache"
+    return root / APP_NAME / "usage.duckdb"
+
+
+def _visible_buckets(buckets: list[LimitBucket], *, verbose: bool) -> list[LimitBucket]:
+    """默认隐藏低价值的 Spark 额度桶。"""
+    if verbose:
+        return buckets
+    return [
+        bucket
+        for bucket in buckets
+        if "spark" not in f"{bucket.limit_id} {bucket.name or ''}".lower()
+    ]
+
+
+def _usage_tuple(value: Any) -> tuple[int, int, int, int, int, int] | None:
+    """把 Token usage 对象解析为固定顺序的整数元组。"""
+    if not isinstance(value, dict):
+        return None
+    fields = (
+        "input_tokens",
+        "cached_input_tokens",
+        "cache_write_input_tokens",
+        "output_tokens",
+        "reasoning_output_tokens",
+        "total_tokens",
+    )
+    values = tuple(value.get(field, 0) for field in fields)
+    if not all(isinstance(item, int) and not isinstance(item, bool) for item in values):
+        return None
+    return tuple(max(0, item) for item in values)
+
+
+def _usage_contribution(
+    current: tuple[int, int, int, int, int, int],
+    previous: tuple[int, int, int, int, int, int] | None,
+    last: tuple[int, int, int, int, int, int] | None,
+) -> tuple[int, int, int, int, int, int]:
+    """从累计快照提取本次真实增量。"""
+    if previous is None or current[-1] < previous[-1]:
+        return last or current
+    if current[-1] == previous[-1]:
+        return (0, 0, 0, 0, 0, 0)
+    return tuple(max(0, value - old) for value, old in zip(current, previous))
+
+
+def _parse_event_timestamp(value: Any, timezone: Any) -> datetime | None:
+    """解析 rollout 事件时间并转换为本地时区。"""
+    if not isinstance(value, str):
+        return None
+    try:
+        timestamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=UTC)
+    return timestamp.astimezone(timezone)
+
+
+def _ensure_usage_cache(
+    connection: duckdb.DuckDBPyConnection, *, days: int, timezone_name: str
+) -> int:
+    """初始化索引，并在请求更长时间范围时扩展缓存覆盖范围。"""
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS usage_cache_metadata (
+            key VARCHAR PRIMARY KEY,
+            value VARCHAR NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS rollout_files (
+            thread_id VARCHAR PRIMARY KEY,
+            path VARCHAR NOT NULL,
+            device UBIGINT NOT NULL,
+            inode UBIGINT NOT NULL,
+            size UBIGINT NOT NULL,
+            mtime_ns UBIGINT NOT NULL,
+            parsed_bytes UBIGINT NOT NULL,
+            last_input BIGINT,
+            last_cached_input BIGINT,
+            last_cache_write_input BIGINT,
+            last_output BIGINT,
+            last_reasoning_output BIGINT,
+            last_total BIGINT
+        );
+        CREATE TABLE IF NOT EXISTS token_usage_daily (
+            thread_id VARCHAR NOT NULL,
+            usage_date DATE NOT NULL,
+            input_tokens BIGINT NOT NULL,
+            cached_input_tokens BIGINT NOT NULL,
+            cache_write_input_tokens BIGINT NOT NULL,
+            output_tokens BIGINT NOT NULL,
+            reasoning_output_tokens BIGINT NOT NULL,
+            total_tokens BIGINT NOT NULL,
+            PRIMARY KEY (thread_id, usage_date)
+        );
+        """
+    )
+    existing = dict(
+        connection.execute("SELECT key, value FROM usage_cache_metadata").fetchall()
+    )
+    try:
+        coverage_days = int(existing.get("coverage_days", "0"))
+    except ValueError:
+        coverage_days = 0
+    static_metadata_matches = (
+        existing.get("schema_version") == str(USAGE_CACHE_SCHEMA_VERSION)
+        and existing.get("timezone") == timezone_name
+        and coverage_days >= 1
+    )
+    if not static_metadata_matches or days > coverage_days:
+        coverage_days = max(days, coverage_days) if static_metadata_matches else days
+        connection.execute("DELETE FROM rollout_files")
+        connection.execute("DELETE FROM token_usage_daily")
+        connection.execute("DELETE FROM usage_cache_metadata")
+        connection.executemany(
+            "INSERT INTO usage_cache_metadata VALUES (?, ?)",
+            {
+                "schema_version": str(USAGE_CACHE_SCHEMA_VERSION),
+                "coverage_days": str(coverage_days),
+                "timezone": timezone_name,
+            }.items(),
+        )
+    return coverage_days
+
+
+def _read_rollout_state(
+    connection: duckdb.DuckDBPyConnection, thread_id: str
+) -> _RolloutState | None:
+    """读取单个 Thread 的解析位点。"""
+    row = connection.execute(
+        """
+        SELECT path, device, inode, size, mtime_ns, parsed_bytes,
+               last_input, last_cached_input, last_cache_write_input,
+               last_output, last_reasoning_output, last_total
+        FROM rollout_files
+        WHERE thread_id = ?
+        """,
+        [thread_id],
+    ).fetchone()
+    if row is None:
+        return None
+    last_total = None if row[6] is None else tuple(int(value) for value in row[6:12])
+    return _RolloutState(
+        path=str(row[0]),
+        device=int(row[1]),
+        inode=int(row[2]),
+        size=int(row[3]),
+        mtime_ns=int(row[4]),
+        parsed_bytes=int(row[5]),
+        last_total=last_total,
+    )
+
+
+def _write_rollout_state(
+    connection: duckdb.DuckDBPyConnection,
+    thread_id: str,
+    path: Path,
+    stat: os.stat_result,
+    parsed_bytes: int,
+    last_total: tuple[int, int, int, int, int, int] | None,
+) -> None:
+    """持久化单个 Thread 的解析位点。"""
+    values: tuple[int | None, ...] = last_total or (None,) * 6
+    connection.execute(
+        """
+        INSERT INTO rollout_files VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (thread_id) DO UPDATE SET
+            path = excluded.path,
+            device = excluded.device,
+            inode = excluded.inode,
+            size = excluded.size,
+            mtime_ns = excluded.mtime_ns,
+            parsed_bytes = excluded.parsed_bytes,
+            last_input = excluded.last_input,
+            last_cached_input = excluded.last_cached_input,
+            last_cache_write_input = excluded.last_cache_write_input,
+            last_output = excluded.last_output,
+            last_reasoning_output = excluded.last_reasoning_output,
+            last_total = excluded.last_total
+        """,
+        [
+            thread_id,
+            str(path),
+            stat.st_dev,
+            stat.st_ino,
+            stat.st_size,
+            stat.st_mtime_ns,
+            parsed_bytes,
+            *values,
+        ],
+    )
+
+
+def _parse_rollout_usage(
+    path: Path,
+    *,
+    thread_id: str,
+    start_offset: int,
+    previous_total: tuple[int, int, int, int, int, int] | None,
+    first_day: date,
+    timezone: Any,
+) -> tuple[
+    list[tuple[str, str, date, int, int, int, int, int, int]],
+    int,
+    tuple[int, int, int, int, int, int] | None,
+]:
+    """从指定字节位点解析 TokenCount 增量。"""
+    events: list[tuple[str, str, date, int, int, int, int, int, int]] = []
+    parsed_bytes = start_offset
+    with path.open("rb") as file:
+        file.seek(start_offset)
+        while True:
+            line_start = file.tell()
+            line = file.readline()
+            if not line:
+                break
+            if not line.endswith(b"\n"):
+                parsed_bytes = line_start
+                break
+            parsed_bytes = file.tell()
+            if b"token_count" not in line:
+                continue
+            event, previous_total = _parse_usage_event(
+                line,
+                thread_id=thread_id,
+                line_start=line_start,
+                previous_total=previous_total,
+                first_day=first_day,
+                timezone=timezone,
+            )
+            if event is not None:
+                events.append(event)
+    return events, parsed_bytes, previous_total
+
+
+def _parse_usage_event(
+    line: bytes,
+    *,
+    thread_id: str,
+    line_start: int,
+    previous_total: tuple[int, int, int, int, int, int] | None,
+    first_day: date,
+    timezone: Any,
+) -> tuple[
+    tuple[str, str, date, int, int, int, int, int, int] | None,
+    tuple[int, int, int, int, int, int] | None,
+]:
+    """解析单条 TokenCount，并推进累计快照。"""
+    try:
+        item = json.loads(line)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None, previous_total
+    payload = item.get("payload") if isinstance(item, dict) else None
+    if not isinstance(payload, dict) or payload.get("type") != "token_count":
+        return None, previous_total
+    info = payload.get("info")
+    if not isinstance(info, dict):
+        return None, previous_total
+    current = _usage_tuple(info.get("total_token_usage"))
+    if current is None:
+        return None, previous_total
+    last = _usage_tuple(info.get("last_token_usage"))
+    contribution = _usage_contribution(current, previous_total, last)
+    timestamp = _parse_event_timestamp(item.get("timestamp"), timezone)
+    if timestamp is None or timestamp.date() < first_day or contribution[-1] <= 0:
+        return None, current
+    ordinal = item.get("ordinal")
+    event_key = (
+        f"ordinal:{ordinal}"
+        if isinstance(ordinal, int) and not isinstance(ordinal, bool)
+        else f"offset:{line_start}"
+    )
+    return (thread_id, event_key, timestamp.date(), *contribution), current
+
+
+def _parse_rollout_usage_tail(
+    path: Path,
+    *,
+    thread_id: str,
+    first_day: date,
+    timezone: Any,
+) -> tuple[
+    list[tuple[str, str, date, int, int, int, int, int, int]],
+    int,
+    tuple[int, int, int, int, int, int] | None,
+]:
+    """从文件尾部反向定位时间窗口，只解析窗口内的 TokenCount。"""
+    selected: list[tuple[int, bytes]] = []
+    with path.open("rb") as file:
+        if os.fstat(file.fileno()).st_size == 0:
+            return [], 0, None
+        with mmap.mmap(file.fileno(), 0, access=mmap.ACCESS_READ) as data:
+            final_newline = data.rfind(b"\n")
+            parsed_bytes = final_newline + 1
+            position = parsed_bytes
+            while position > 0:
+                line_end = position - 1
+                previous_newline = data.rfind(b"\n", 0, line_end)
+                line_start = previous_newline + 1
+                prefix = bytes(data[line_start : min(line_end, line_start + 1024)])
+                match = TIMESTAMP_PATTERN.search(prefix)
+                if match is not None:
+                    timestamp = _parse_event_timestamp(
+                        match.group(1).decode("ascii", errors="ignore"), timezone
+                    )
+                    if timestamp is not None and timestamp.date() < first_day:
+                        break
+                if b"token_count" in prefix:
+                    selected.append((line_start, bytes(data[line_start:line_end])))
+                position = line_start
+
+    events: list[tuple[str, str, date, int, int, int, int, int, int]] = []
+    previous_total = None
+    for line_start, line in reversed(selected):
+        event, previous_total = _parse_usage_event(
+            line,
+            thread_id=thread_id,
+            line_start=line_start,
+            previous_total=previous_total,
+            first_day=first_day,
+            timezone=timezone,
+        )
+        if event is not None:
+            events.append(event)
+    return events, parsed_bytes, previous_total
+
+
+def _upsert_usage_events(
+    connection: duckdb.DuckDBPyConnection,
+    events: list[tuple[str, str, date, int, int, int, int, int, int]],
+) -> None:
+    """按 Thread 和日期聚合后批量写入 Token 增量。"""
+    if not events:
+        return
+    daily: dict[date, list[int]] = {}
+    for _, _, usage_date, *usage in events:
+        totals = daily.setdefault(usage_date, [0] * 6)
+        for index, value in enumerate(usage):
+            totals[index] += value
+    connection.executemany(
+        """
+        INSERT INTO token_usage_daily VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (thread_id, usage_date) DO UPDATE SET
+            input_tokens = token_usage_daily.input_tokens + excluded.input_tokens,
+            cached_input_tokens = token_usage_daily.cached_input_tokens
+                + excluded.cached_input_tokens,
+            cache_write_input_tokens = token_usage_daily.cache_write_input_tokens
+                + excluded.cache_write_input_tokens,
+            output_tokens = token_usage_daily.output_tokens + excluded.output_tokens,
+            reasoning_output_tokens = token_usage_daily.reasoning_output_tokens
+                + excluded.reasoning_output_tokens,
+            total_tokens = token_usage_daily.total_tokens + excluded.total_tokens
+        """,
+        [(events[0][0], usage_date, *usage) for usage_date, usage in daily.items()],
+    )
+
+
+def _rollout_paths(codex_home: Path) -> list[Path]:
+    """同时发现活跃与已归档 rollout。"""
+    roots = (codex_home / "sessions", codex_home / "archived_sessions")
+    return sorted(
+        path
+        for root in roots
+        if root.is_dir()
+        for path in root.rglob("*.jsonl")
+        if path.is_file()
+    )
+
+
+def collect_usage_history(
+    codex_home: Path,
+    cache_path: Path,
+    *,
+    now: datetime,
+    days: int = DEFAULT_HISTORY_DAYS,
+) -> UsageHistory:
+    """增量索引本地 Thread，并返回按天 Token 用量。"""
+    if days < 1:
+        raise ValueError("days 必须大于等于 1")
+    local_now = now.astimezone()
+    timezone = local_now.tzinfo or UTC
+    display_first_day = local_now.date() - timedelta(days=days - 1)
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        connection = duckdb.connect(str(cache_path))
+        connection.execute("SET force_compression = 'zstd'")
+    except duckdb.Error as error:
+        if "connection" in locals():
+            connection.close()
+        raise UsageError(f"无法打开本地用量索引：{error}") from error
+    paths = _rollout_paths(codex_home)
+    cache_hits = 0
+    full_scans = 0
+    incremental_scans = 0
+    discovered: set[str] = set()
+    try:
+        coverage_days = _ensure_usage_cache(
+            connection, days=days, timezone_name=str(timezone)
+        )
+        index_first_day = local_now.date() - timedelta(days=coverage_days - 1)
+        first_timestamp = datetime.combine(
+            index_first_day, datetime.min.time(), timezone
+        ).timestamp()
+        connection.execute("BEGIN TRANSACTION")
+        for path in paths:
+            match = THREAD_ID_PATTERN.search(path.name)
+            if match is None:
+                continue
+            thread_id = match.group(1).lower()
+            discovered.add(thread_id)
+            try:
+                stat = path.stat()
+            except FileNotFoundError:
+                continue
+            state = _read_rollout_state(connection, thread_id)
+            same_file = state is not None and (
+                state.device == stat.st_dev and state.inode == stat.st_ino
+            )
+            unchanged = (
+                same_file
+                and state is not None
+                and (
+                    state.size == stat.st_size
+                    and state.mtime_ns == stat.st_mtime_ns
+                    and state.parsed_bytes == stat.st_size
+                )
+            )
+            if unchanged:
+                cache_hits += 1
+                if state.path != str(path):
+                    _write_rollout_state(
+                        connection,
+                        thread_id,
+                        path,
+                        stat,
+                        state.parsed_bytes,
+                        state.last_total,
+                    )
+                continue
+
+            if state is None and stat.st_mtime < first_timestamp:
+                cache_hits += 1
+                _write_rollout_state(
+                    connection, thread_id, path, stat, stat.st_size, None
+                )
+                continue
+
+            can_append = (
+                same_file
+                and state is not None
+                and stat.st_size > state.parsed_bytes
+                and stat.st_size >= state.size
+                and state.parsed_bytes <= state.size
+            )
+            if can_append:
+                start_offset = state.parsed_bytes
+                previous_total = state.last_total
+                incremental_scans += 1
+            else:
+                full_scans += 1
+                connection.execute(
+                    "DELETE FROM token_usage_daily WHERE thread_id = ?", [thread_id]
+                )
+            try:
+                if can_append:
+                    events, parsed_bytes, last_total = _parse_rollout_usage(
+                        path,
+                        thread_id=thread_id,
+                        start_offset=start_offset,
+                        previous_total=previous_total,
+                        first_day=index_first_day,
+                        timezone=timezone,
+                    )
+                else:
+                    events, parsed_bytes, last_total = _parse_rollout_usage_tail(
+                        path,
+                        thread_id=thread_id,
+                        first_day=index_first_day,
+                        timezone=timezone,
+                    )
+            except FileNotFoundError:
+                continue
+            _upsert_usage_events(connection, events)
+            current_stat = path.stat()
+            _write_rollout_state(
+                connection,
+                thread_id,
+                path,
+                current_stat,
+                parsed_bytes,
+                last_total,
+            )
+
+        for (thread_id,) in connection.execute(
+            "SELECT thread_id FROM rollout_files"
+        ).fetchall():
+            if thread_id not in discovered:
+                connection.execute(
+                    "DELETE FROM token_usage_daily WHERE thread_id = ?", [thread_id]
+                )
+                connection.execute(
+                    "DELETE FROM rollout_files WHERE thread_id = ?", [thread_id]
+                )
+        connection.execute(
+            "DELETE FROM token_usage_daily WHERE usage_date < ?", [index_first_day]
+        )
+        connection.execute("COMMIT")
+
+        rows = connection.execute(
+            """
+            SELECT usage_date,
+                   SUM(input_tokens),
+                   SUM(cached_input_tokens),
+                   SUM(cache_write_input_tokens),
+                   SUM(output_tokens),
+                   SUM(reasoning_output_tokens),
+                   SUM(total_tokens)
+            FROM token_usage_daily
+            WHERE usage_date BETWEEN ? AND ?
+            GROUP BY usage_date
+            ORDER BY usage_date
+            """,
+            [display_first_day, local_now.date()],
+        ).fetchall()
+    except Exception as error:
+        try:
+            connection.execute("ROLLBACK")
+        except duckdb.Error:
+            pass
+        raise UsageError(f"无法更新本地用量索引：{error}") from error
+    finally:
+        connection.close()
+
+    usage_by_day = {
+        row[0]: DailyTokenUsage(
+            day=row[0],
+            input_tokens=int(row[1]),
+            cached_input_tokens=int(row[2]),
+            cache_write_input_tokens=int(row[3]),
+            output_tokens=int(row[4]),
+            reasoning_output_tokens=int(row[5]),
+            total_tokens=int(row[6]),
+        )
+        for row in rows
+    }
+    empty = (0, 0, 0, 0, 0, 0)
+    daily = tuple(
+        usage_by_day.get(
+            day,
+            DailyTokenUsage(day, *empty),
+        )
+        for offset in range(days)
+        for day in (display_first_day + timedelta(days=offset),)
+    )
+    return UsageHistory(
+        days=daily,
+        scan=ScanStats(
+            total_files=len(discovered),
+            cache_hits=cache_hits,
+            full_scans=full_scans,
+            incremental_scans=incremental_scans,
+        ),
+    )
+
+
 def calculate_progress(window: UsageWindow, now: datetime) -> WindowProgress:
     """计算额度剩余、时间剩余及两者差值。"""
     quota_remaining = max(0.0, min(100.0, 100.0 - window.used_percent))
@@ -351,9 +998,66 @@ def _pace_text(delta: float | None, duration_minutes: int | None) -> Text:
     return Text(f"偏快 {delta:+.1f}pp", style="bright_red")
 
 
-def render_usage(buckets: list[LimitBucket], now: datetime, *, verbose: bool) -> None:
+def _format_token_count(value: int) -> str:
+    """把 Token 数量压缩成紧凑展示文本。"""
+    for divisor, suffix in ((1_000_000_000, "B"), (1_000_000, "M"), (1_000, "K")):
+        if value >= divisor:
+            number = value / divisor
+            precision = 0 if number >= 100 else 1
+            return f"{number:.{precision}f}{suffix}"
+    return str(value)
+
+
+def _cache_hit_text(day: DailyTokenUsage) -> str:
+    """格式化每日模型输入缓存命中率。"""
+    percent = day.cache_hit_percent
+    return "—" if percent is None else f"{percent:.1f}%"
+
+
+def _render_usage_history(history: UsageHistory, *, verbose: bool) -> None:
+    """用 Rich 展示按天 Token 用量与缓存命中率。"""
+    table = Table(box=None, padding=(0, 1), show_header=True)
+    table.add_column("日期", style="bold", no_wrap=True)
+    table.add_column("Token", justify="right", no_wrap=True)
+    table.add_column("缓存命中", justify="right", no_wrap=True)
+    for day in history.days:
+        table.add_row(
+            day.day.strftime("%m-%d"),
+            _format_token_count(day.total_tokens),
+            _cache_hit_text(day),
+        )
+    scan = history.scan
+    subtitle = None
+    if verbose:
+        subtitle = (
+            f"[dim]索引命中 {scan.cache_hits}/{scan.total_files} · "
+            f"全量 {scan.full_scans} · 增量 {scan.incremental_scans}[/]"
+        )
+    console.print(
+        Panel(
+            table,
+            title=(
+                f"[bold]最近 {len(history.days)} 天 Token · "
+                f"{_format_token_count(history.total_tokens)}[/]"
+            ),
+            subtitle=subtitle,
+            border_style="blue",
+            padding=(0, 1),
+        )
+    )
+
+
+def render_usage(
+    buckets: list[LimitBucket],
+    now: datetime,
+    *,
+    history: UsageHistory | None = None,
+    verbose: bool,
+) -> None:
     """用 Rich 渲染订阅与额度进度。"""
-    for bucket in buckets:
+    if history is not None:
+        _render_usage_history(history, verbose=verbose)
+    for bucket in _visible_buckets(buckets, verbose=verbose):
         table = Table(
             box=None,
             padding=(0, 1),
@@ -513,10 +1217,182 @@ def _dashboard_summary(buckets: list[LimitBucket], now: datetime) -> tuple[str, 
     return "等待完整窗口数据", "#7f8aa3"
 
 
+def _svg_usage_history(
+    history: UsageHistory,
+    *,
+    x: float,
+    y: float,
+    width: float,
+    height: float,
+    verbose: bool,
+) -> str:
+    """生成不受极值影响的等高每日 Token 信息卡。"""
+    days = history.days
+    max_tokens = max((day.total_tokens for day in days), default=0)
+    card_gap = 10.0
+    grid_columns = min(10, max(1, len(days)))
+    content_x = x + 18
+    content_y = y + 58
+    content_width = width - 36
+    card_width = (content_width - card_gap * max(0, grid_columns - 1)) / grid_columns
+    card_height = 128.0
+    parts = [
+        f'<g data-role="daily-usage" data-grid-columns="{grid_columns}" filter="url(#shadow)"><rect x="{x}" y="{y}" width="{width}" height="{height}" rx="24" fill="#151b2d" stroke="#283149"/></g>',
+        f'<text x="{x + 26}" y="{y + 40}" fill="#f8f8f2" font-size="22" font-weight="700">最近 {len(days)} 天 Token · {_svg_text(_format_token_count(history.total_tokens))}</text>',
+    ]
+    if verbose:
+        scan = history.scan
+        parts.append(
+            f'<text x="{x + width - 26}" y="{y + 38}" text-anchor="end" class="muted" font-size="13">索引命中 {scan.cache_hits}/{scan.total_files} · 全量 {scan.full_scans} · 增量 {scan.incremental_scans}</text>'
+        )
+    for index, day in enumerate(days):
+        row_index, column_index = divmod(index, grid_columns)
+        card_x = content_x + column_index * (card_width + card_gap)
+        card_y = content_y + row_index * (card_height + card_gap)
+        center_x = card_x + card_width / 2
+        intensity_width = (
+            0.0
+            if max_tokens <= 0 or day.total_tokens <= 0
+            else max(12.0, (card_width - 28) * day.total_tokens / max_tokens)
+        )
+        cache_text = _cache_hit_text(day)
+        parts.extend(
+            [
+                f'<g data-role="day-card"><rect x="{card_x}" y="{card_y}" width="{card_width}" height="{card_height}" rx="14" fill="#101626" stroke="#202941"/></g>',
+                f'<text x="{center_x}" y="{card_y + 27}" text-anchor="middle" class="muted" font-size="13">{day.day.strftime("%m-%d")}</text>',
+                f'<text x="{center_x}" y="{card_y + 63}" text-anchor="middle" fill="#f8f8f2" font-size="24" font-weight="750">{_svg_text(_format_token_count(day.total_tokens))}</text>',
+                f'<text x="{center_x}" y="{card_y + 91}" text-anchor="middle" fill="#bd93f9" font-size="13" font-weight="650">缓存 {_svg_text(cache_text)}</text>',
+            ]
+        )
+        if intensity_width > 0:
+            parts.append(
+                f'<rect x="{card_x + 14}" y="{card_y + card_height - 10}" width="{intensity_width}" height="4" rx="2" fill="#8be9fd" fill-opacity="0.86"/>'
+            )
+    return "\n  ".join(parts)
+
+
+def _usage_history_height(day_count: int) -> int:
+    """根据日期数量返回自适应网格高度。"""
+    columns = min(10, max(1, day_count))
+    rows = ceil(max(1, day_count) / columns)
+    return 76 + rows * 128 + max(0, rows - 1) * 10
+
+
+def _render_compact_usage_svg(
+    buckets: list[LimitBucket], now: datetime, history: UsageHistory
+) -> str:
+    """渲染以每日用量为主、额度摘要为辅的默认看板。"""
+    margin = 48
+    header_height = 86
+    card_gap = 20
+    history_height = _usage_history_height(len(history.days))
+    quota_heights = [70 + 56 * max(1, len(bucket.windows)) for bucket in buckets]
+    height = (
+        header_height
+        + history_height
+        + card_gap
+        + sum(quota_heights)
+        + card_gap * max(0, len(quota_heights) - 1)
+        + margin
+    )
+    summary, summary_color = _dashboard_summary(buckets, now)
+    parts = [
+        f'''<svg xmlns="http://www.w3.org/2000/svg" width="{SVG_WIDTH}" height="{height}" viewBox="0 0 {SVG_WIDTH} {height}">
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b1020"/>
+      <stop offset="1" stop-color="#121a30"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#050814" flood-opacity="0.36"/>
+    </filter>
+  </defs>
+  <rect width="{SVG_WIDTH}" height="{height}" rx="30" fill="url(#background)"/>
+  <style>
+    text {{ font-family: "SF Pro Display", "PingFang SC", "Noto Sans CJK SC", sans-serif; }}
+    .muted {{ fill: #7f8aa3; }}
+  </style>
+  <text x="{margin}" y="55" fill="#f8f8f2" font-size="32" font-weight="750">ChatGPT Usage</text>
+  <rect x="{SVG_WIDTH - margin - 300}" y="22" width="300" height="40" rx="20" fill="{summary_color}" fill-opacity="0.13"/>
+  <circle cx="{SVG_WIDTH - margin - 276}" cy="42" r="6" fill="{summary_color}"/>
+  <text x="{SVG_WIDTH - margin - 258}" y="48" fill="{summary_color}" font-size="16" font-weight="700">{_svg_text(summary)}</text>'''
+    ]
+    parts.append(
+        _svg_usage_history(
+            history,
+            x=margin,
+            y=header_height,
+            width=SVG_WIDTH - margin * 2,
+            height=history_height,
+            verbose=False,
+        )
+    )
+
+    y = float(header_height + history_height + card_gap)
+    for bucket, quota_height in zip(buckets, quota_heights, strict=True):
+        accent = "#8be9fd" if bucket.limit_id == "codex" else "#bd93f9"
+        title = bucket.name or (
+            "Codex（通用）" if bucket.limit_id == "codex" else bucket.limit_id
+        )
+        plan = bucket.plan_type.upper() if bucket.plan_type else "UNKNOWN"
+        parts.append(
+            f'''<g data-role="quota-summary" filter="url(#shadow)"><rect x="{margin}" y="{y}" width="{SVG_WIDTH - margin * 2}" height="{quota_height}" rx="22" fill="#151b2d" stroke="#283149"/></g>
+  <circle cx="{margin + 28}" cy="{y + 30}" r="6" fill="{accent}"/>
+  <text x="{margin + 46}" y="{y + 37}" fill="#f8f8f2" font-size="20" font-weight="700">{_svg_text(title)}</text>
+  <text x="{SVG_WIDTH - margin - 24}" y="{y + 36}" text-anchor="end" fill="{accent}" font-size="13" font-weight="700">{_svg_text(plan)}</text>'''
+        )
+        windows = bucket.windows or (None,)
+        for index, window in enumerate(windows, start=1):
+            row_y = y + 66 + (index - 1) * 56
+            if window is None:
+                parts.append(
+                    f'<text x="{margin + 26}" y="{row_y + 18}" class="muted" font-size="15">服务端未提供窗口</text>'
+                )
+                continue
+            progress = calculate_progress(window, now)
+            label = _window_label(window.duration_minutes, index)
+            relation, pace_color = _svg_relation(
+                progress.pace_delta, window.duration_minutes
+            )
+            track_x = margin + 190
+            track_width = 650
+            quota_x = track_x + track_width * progress.quota_remaining_percent / 100
+            parts.extend(
+                [
+                    f'<text x="{margin + 26}" y="{row_y + 19}" fill="#f8f8f2" font-size="15" font-weight="700">{_svg_text(label)}</text>',
+                    f'<text x="{margin + 92}" y="{row_y + 19}" fill="#50fa7b" font-size="18" font-weight="750">{progress.quota_remaining_percent:.0f}%</text>',
+                    f'<line data-role="quota-progress" x1="{track_x}" y1="{row_y + 13}" x2="{track_x + track_width}" y2="{row_y + 13}" stroke="#283149" stroke-width="8" stroke-linecap="round"/>',
+                    f'<line x1="{track_x}" y1="{row_y + 13}" x2="{quota_x}" y2="{row_y + 13}" stroke="#50fa7b" stroke-width="8" stroke-linecap="round"/>',
+                ]
+            )
+            if progress.time_remaining_percent is not None:
+                time_x = track_x + track_width * progress.time_remaining_percent / 100
+                parts.append(
+                    f'<line x1="{time_x}" y1="{row_y + 3}" x2="{time_x}" y2="{row_y + 23}" stroke="#aebaff" stroke-width="3" stroke-linecap="round"/>'
+                )
+            parts.extend(
+                [
+                    f'<text x="{track_x + track_width + 24}" y="{row_y + 19}" class="muted" font-size="13">{_svg_text(_remaining_text(progress.remaining_seconds))}后重置</text>',
+                    f'<rect x="{SVG_WIDTH - margin - 214}" y="{row_y - 4}" width="190" height="34" rx="17" fill="{pace_color}" fill-opacity="0.13"/>',
+                    f'<text x="{SVG_WIDTH - margin - 119}" y="{row_y + 18}" text-anchor="middle" fill="{pace_color}" font-size="13" font-weight="700">{_svg_text(relation)}</text>',
+                ]
+            )
+        y += quota_height + card_gap
+    parts.append("</svg>\n")
+    return "\n".join(parts)
+
+
 def render_usage_svg(
-    buckets: list[LimitBucket], now: datetime, *, verbose: bool
+    buckets: list[LimitBucket],
+    now: datetime,
+    *,
+    history: UsageHistory | None = None,
+    verbose: bool,
 ) -> str:
     """把额度看板渲染为共享刻度对比 SVG。"""
+    buckets = _visible_buckets(buckets, verbose=verbose)
+    if history is not None and not verbose:
+        return _render_compact_usage_svg(buckets, now, history)
     margin = 48
     card_gap = 24
     panel_gap = 18
@@ -549,10 +1425,15 @@ def render_usage_svg(
             + (window_rows - 1) * panel_gap
             + 18
         )
+    bucket_content_height = (
+        header_height + sum(row_heights) + card_gap * max(0, len(bucket_rows) - 1)
+    )
+    history_height = (
+        _usage_history_height(len(history.days)) if history is not None else 0
+    )
     height = (
-        header_height
-        + sum(row_heights)
-        + card_gap * max(0, len(bucket_rows) - 1)
+        bucket_content_height
+        + (card_gap + history_height if history is not None else 0)
         + margin
     )
     summary, summary_color = _dashboard_summary(buckets, now)
@@ -658,6 +1539,17 @@ def render_usage_svg(
                     f'  <text x="{panel_x + panel_width - 22}" y="{panel_y + 140}" text-anchor="end" class="muted" font-size="11">重置于 {_svg_text(reset_text)}</text>'
                 )
 
+    if history is not None:
+        parts.append(
+            _svg_usage_history(
+                history,
+                x=margin,
+                y=bucket_content_height + card_gap,
+                width=SVG_WIDTH - margin * 2,
+                height=history_height,
+                verbose=verbose,
+            )
+        )
     parts.append("</svg>\n")
     return "\n".join(parts)
 
@@ -677,11 +1569,12 @@ def render_usage_image(
     buckets: list[LimitBucket],
     now: datetime,
     *,
+    history: UsageHistory | None = None,
     columns: int | None,
     verbose: bool,
 ) -> None:
     """生成 SVG、栅格化，并通过 Kitty 协议展示。"""
-    svg = render_usage_svg(buckets, now, verbose=verbose)
+    svg = render_usage_svg(buckets, now, history=history, verbose=verbose)
     png = svg_to_png(svg)
     render_png(png, cols=columns)
 
@@ -716,7 +1609,11 @@ def default_image_columns() -> int:
     return min(requested_columns, max(1, terminal_columns - 1))
 
 
-def _json_report(buckets: list[LimitBucket], now: datetime) -> dict[str, Any]:
+def _json_report(
+    buckets: list[LimitBucket],
+    now: datetime,
+    history: UsageHistory | None = None,
+) -> dict[str, Any]:
     """构造稳定的机器可读结果。"""
     rows: list[dict[str, Any]] = []
     for bucket in buckets:
@@ -728,7 +1625,20 @@ def _json_report(buckets: list[LimitBucket], now: datetime) -> dict[str, Any]:
             window_data["progress"] = asdict(calculate_progress(window, now))
             bucket_data["windows"].append(window_data)
         rows.append(bucket_data)
-    return {"fetched_at": now.isoformat(), "buckets": rows}
+    local_usage = None
+    if history is not None:
+        local_usage = {
+            "days": [
+                {**asdict(day), "day": day.day.isoformat()} for day in history.days
+            ],
+            "total_tokens": history.total_tokens,
+            "scan": asdict(history.scan),
+        }
+    return {
+        "fetched_at": now.isoformat(),
+        "buckets": rows,
+        "local_usage": local_usage,
+    }
 
 
 @app.command()
@@ -741,6 +1651,29 @@ def main(
         float,
         typer.Option("--timeout", min=1, help="等待 Codex app-server 的秒数。"),
     ] = 30,
+    codex_home: Annotated[
+        Path | None,
+        typer.Option(
+            "--codex-home",
+            help="Codex 本地数据目录；默认使用 CODEX_HOME 或 ~/.codex。",
+        ),
+    ] = None,
+    usage_cache: Annotated[
+        Path | None,
+        typer.Option(
+            "--usage-cache",
+            help="本地用量 DuckDB 索引路径。",
+        ),
+    ] = None,
+    history_days: Annotated[
+        int,
+        typer.Option(
+            "--history-days",
+            min=1,
+            max=365,
+            help="本地 Token 用量展示天数；扩大范围时会补建一次索引。",
+        ),
+    ] = DEFAULT_HISTORY_DAYS,
     json_output: Annotated[
         bool,
         typer.Option("--json", help="输出机器可读 JSON。"),
@@ -770,7 +1703,7 @@ def main(
         typer.Option("--save-svg", help="同时把 SVG 看板保存到指定路径。"),
     ] = None,
 ) -> None:
-    """显示当前 ChatGPT 登录态对应的 Codex 额度与时间进度。"""
+    """显示 Codex 额度、时间进度与最近本地 Token 用量。"""
     if json_output and image_output is True:
         raise typer.BadParameter("--json 与 --image 不能同时使用")
     resolved = codex_bin or (Path(found) if (found := shutil.which("codex")) else None)
@@ -787,31 +1720,52 @@ def main(
         raise typer.Exit(1) from error
 
     now = datetime.now(UTC)
+    history = None
+    try:
+        history = collect_usage_history(
+            (codex_home or default_codex_home()).expanduser(),
+            (usage_cache or default_usage_cache_path()).expanduser(),
+            now=datetime.now().astimezone(),
+            days=history_days,
+        )
+    except (OSError, RuntimeError, ValueError, UsageError) as error:
+        error_console.print(f"[yellow]本地 Token 统计不可用：[/]{error}")
     use_image = image_output if image_output is not None else supports_image_output()
     if save_svg is not None:
         try:
             save_svg.write_text(
-                render_usage_svg(buckets, now, verbose=verbose), encoding="utf-8"
+                render_usage_svg(buckets, now, history=history, verbose=verbose),
+                encoding="utf-8",
             )
         except OSError as error:
             error_console.print(f"[bold red]错误：[/]无法保存 SVG：{error}")
             raise typer.Exit(1) from error
     if json_output:
-        print(json.dumps(_json_report(buckets, now), ensure_ascii=False, indent=2))
+        print(
+            json.dumps(
+                _json_report(buckets, now, history), ensure_ascii=False, indent=2
+            )
+        )
     elif use_image:
         try:
             columns = (
                 image_width if image_width is not None else default_image_columns()
             )
-            render_usage_image(buckets, now, columns=columns, verbose=verbose)
+            render_usage_image(
+                buckets,
+                now,
+                history=history,
+                columns=columns,
+                verbose=verbose,
+            )
         except (UsageError, OSError, RuntimeError, ValueError) as error:
             if image_output is True:
                 error_console.print(f"[bold red]错误：[/]无法展示图片：{error}")
                 raise typer.Exit(1) from error
             error_console.print(f"[yellow]图片模式不可用，已回退到文本：[/]{error}")
-            render_usage(buckets, now, verbose=verbose)
+            render_usage(buckets, now, history=history, verbose=verbose)
     else:
-        render_usage(buckets, now, verbose=verbose)
+        render_usage(buckets, now, history=history, verbose=verbose)
 
 
 if __name__ == "__main__":

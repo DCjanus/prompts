@@ -3,6 +3,7 @@
 # /// script
 # requires-python = ">=3.14"
 # dependencies = [
+#     "duckdb>=1.5.5",
 #     "google-api-python-client>=2.199.0",
 #     "google-auth-httplib2>=0.4.1",
 #     "google-auth-oauthlib>=1.4.0",
