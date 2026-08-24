@@ -1,0 +1,109 @@
+---
+name: notify-via-telegram
+description: 在用户明确要求后，通过本地安全配置发送当前长任务的 Telegram 结果通知；适用于用户希望离开终端，并在任务最终成功、最终失败或等待其处理时收到消息的场景。不得仅因任务耗时较长或一般任务完成而发送。
+---
+
+# Notify via Telegram
+
+把 Telegram 通知视为用户对当前长任务的“结果订阅”，不是一般通知渠道。Bot Token 和目标 Chat ID 保存在用户本地配置文件中，不写入提示词、命令参数或仓库。
+
+## 授权边界
+
+- 只有用户在当前任务中明确要求通过 Telegram 通知，才允许发送。自然语言要求和显式调用本 skill 都可以表达授权。
+- 不要因为任务耗时较长、执行了很多步骤、skill 被自动识别或普通任务完成而推断授权。
+- 授权只覆盖当前任务，不延续到之后的任务。
+- 默认不发送开始、进度、阶段完成、单条命令失败或自动重试消息。
+- 在最终成功、确定无法继续的最终失败或必须等待用户输入时发送。可自动恢复的中间失败不发送。
+- 等待用户处理时发送一次；用户回复并恢复执行后，当前订阅继续有效，任务最终结束时再发送结果。
+- 每个通知事件只尝试发送一次。发送失败后不要自动重试，避免结果不确定时产生重复消息。
+
+## 执行约定
+
+说明：以下脚本调用均以当前 `SKILL.md` 所在文件夹为 workdir。
+
+脚本调用方式（支持 `env -S` 时直接执行；不要用 `uv run python` 或 `python`）：
+
+```bash
+cd skills/notify-via-telegram && ./scripts/notify.py --help
+```
+
+不支持 `env -S` 时使用：
+
+```bash
+cd skills/notify-via-telegram && uv run --script scripts/notify.py --help
+```
+
+Agent 调用时使用 `--json`，并把全局参数放在子命令前。
+
+## 通知格式
+
+只使用以下状态：
+
+- `success`：整个任务最终完成。
+- `failed`：整个任务确定无法完成，而不是某个中间步骤失败。
+- `action-required`：任务暂停，必须等待用户输入或授权。
+
+`title` 和 `summary` 必填；`verification`、`action`、`context` 可选。保持内容简洁，不发送完整日志、堆栈、凭据或冗长本地路径。
+
+发送成功结果：
+
+```bash
+./scripts/notify.py --json send \
+  --status success \
+  --title "任务标题" \
+  --summary "最终结果的一句话摘要" \
+  --verification "关键验证结果" \
+  --context "仓库或任务上下文"
+```
+
+发送失败结果：
+
+```bash
+./scripts/notify.py --json send \
+  --status failed \
+  --title "任务标题" \
+  --summary "无法完成的直接原因" \
+  --action "建议的下一步"
+```
+
+等待用户处理：
+
+```bash
+./scripts/notify.py --json send \
+  --status action-required \
+  --title "任务标题" \
+  --summary "当前状态" \
+  --action "需要用户决定或提供的内容"
+```
+
+在不读取配置、不访问 Telegram 的情况下预览同样的结构化参数：
+
+```bash
+./scripts/notify.py preview \
+  --status success \
+  --title "任务标题" \
+  --summary "最终结果的一句话摘要"
+```
+
+脚本统一生成 Telegram HTML 并转义所有输入字段；不要自行添加 Telegram HTML 或 Markdown 标记。
+
+## 配置
+
+默认配置文件为 `${XDG_CONFIG_HOME:-~/.config}/notify-via-telegram/config.toml`；可用 `NOTIFY_VIA_TELEGRAM_CONFIG` 或全局 `--config` 指定其它文件。
+
+```bash
+./scripts/notify.py config path
+./scripts/notify.py config show
+./scripts/notify.py config get chat-id
+./scripts/notify.py config set chat-id <chat-id>
+./scripts/notify.py config set bot-token
+./scripts/notify.py config unset chat-id
+./scripts/notify.py config check
+```
+
+- `config set bot-token` 需要用户在交互式终端中隐藏输入；不要索取 Token，也不要尝试通过命令行参数传入。
+- `config show`、`config get bot-token` 与所有 JSON 输出都不会回显 Token。
+- `config check` 会访问 Telegram 验证 Bot 与目标 Chat，但不会发送消息。
+- 配置缺失时，告诉用户应执行哪些配置命令；不要替用户猜测 Token 或 Chat ID。
+
+发送成功后读取 JSON 中的 `message_id`。发送失败时，把通知失败与原任务结果分开报告，不要因此改变原任务的最终状态。
