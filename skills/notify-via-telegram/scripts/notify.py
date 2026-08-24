@@ -135,17 +135,21 @@ def render_notification_blocks(notification: Notification) -> list[dict[str, Any
     blocks: list[dict[str, Any]] = [
         {
             "type": "heading",
-            "text": f"{icon} {status_label}",
+            "text": f"{icon} Codex · {status_label}",
             "size": 3,
+        },
+        {
+            "type": "heading",
+            "text": notification.title,
+            "size": 4,
         },
         {
             "type": "paragraph",
             "text": [
-                {"type": "bold", "text": notification.title},
-                " · Codex",
+                {"type": "bold", "text": "结果："},
+                notification.summary,
             ],
         },
-        {"type": "paragraph", "text": notification.summary},
     ]
 
     if notification.action:
@@ -194,10 +198,10 @@ def render_notification_plain(notification: Notification) -> str:
 
     icon, status_label = STATUS_PRESENTATION[notification.status]
     lines = [
-        f"{icon} {status_label}",
-        f"{notification.title} · Codex",
+        f"{icon} Codex · {status_label}",
+        notification.title,
         "",
-        notification.summary,
+        f"结果：{notification.summary}",
     ]
     if notification.action:
         lines.extend(["", f"👉 下一步：{notification.action}"])
