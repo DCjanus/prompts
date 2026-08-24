@@ -135,59 +135,23 @@ def render_notification_blocks(notification: Notification) -> list[dict[str, Any
     blocks: list[dict[str, Any]] = [
         {
             "type": "paragraph",
-            "text": [
-                f"{icon} ",
-                {"type": "bold", "text": "标题"},
-                f"：{notification.title}",
-            ],
+            "text": notification.title,
         },
         {
             "type": "paragraph",
-            "text": [
-                {"type": "bold", "text": "正文"},
-                f"：{notification.summary}",
-            ],
+            "text": notification.summary,
         },
+        {"type": "divider"},
     ]
 
+    footer: list[Any] = [f"状态：{icon}"]
     if notification.action:
-        blocks.append(
-            {
-                "type": "paragraph",
-                "text": [
-                    "👉 ",
-                    {"type": "bold", "text": "下一步："},
-                    notification.action,
-                ],
-            }
-        )
-
-    footer: list[Any] = []
+        footer.extend(["\n", f"下一步：{notification.action}"])
     if notification.verification:
-        footer.extend(
-            [
-                "🧪 ",
-                {"type": "bold", "text": "验证"},
-                f"：{notification.verification}",
-            ]
-        )
+        footer.extend(["\n", f"验证：{notification.verification}"])
     if notification.context:
-        if footer:
-            footer.append("\n")
-        footer.extend(
-            [
-                "📦 ",
-                {"type": "bold", "text": "上下文"},
-                f"：{notification.context}",
-            ]
-        )
-    if footer:
-        blocks.extend(
-            [
-                {"type": "divider"},
-                {"type": "footer", "text": footer},
-            ]
-        )
+        footer.extend(["\n", f"上下文：{notification.context}"])
+    blocks.append({"type": "footer", "text": footer})
     return blocks
 
 
@@ -196,19 +160,19 @@ def render_notification_plain(notification: Notification) -> str:
 
     icon = STATUS_ICON[notification.status]
     lines = [
-        f"{icon} 标题：{notification.title}",
-        f"正文：{notification.summary}",
+        notification.title,
+        "",
+        notification.summary,
+        "",
+        "────────",
+        f"状态：{icon}",
     ]
     if notification.action:
-        lines.extend(["", f"👉 下一步：{notification.action}"])
-
-    footer = []
+        lines.append(f"下一步：{notification.action}")
     if notification.verification:
-        footer.append(f"🧪 验证：{notification.verification}")
+        lines.append(f"验证：{notification.verification}")
     if notification.context:
-        footer.append(f"📦 上下文：{notification.context}")
-    if footer:
-        lines.extend(["", *footer])
+        lines.append(f"上下文：{notification.context}")
     return "\n".join(lines)
 
 

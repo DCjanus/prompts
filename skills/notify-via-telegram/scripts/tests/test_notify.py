@@ -52,31 +52,23 @@ def test_render_notification_blocks_create_clear_visual_hierarchy() -> None:
     assert notify.render_notification_blocks(notification) == [
         {
             "type": "paragraph",
-            "text": [
-                "✅ ",
-                {"type": "bold", "text": "标题"},
-                "：修复 <Chat ID>",
-            ],
+            "text": "修复 <Chat ID>",
         },
         {
             "type": "paragraph",
-            "text": [{"type": "bold", "text": "正文"}, "：A & B"],
-        },
-        {
-            "type": "paragraph",
-            "text": ["👉 ", {"type": "bold", "text": "下一步："}, "重新执行"],
+            "text": "A & B",
         },
         {"type": "divider"},
         {
             "type": "footer",
             "text": [
-                "🧪 ",
-                {"type": "bold", "text": "验证"},
-                "：157 > 0",
+                "状态：✅",
                 "\n",
-                "📦 ",
-                {"type": "bold", "text": "上下文"},
-                "：prompts",
+                "下一步：重新执行",
+                "\n",
+                "验证：157 > 0",
+                "\n",
+                "上下文：prompts",
             ],
         },
     ]
@@ -125,26 +117,19 @@ def test_send_uses_structured_rich_message_payload(monkeypatch, tmp_path: Path) 
             "blocks": [
                 {
                     "type": "paragraph",
-                    "text": [
-                        "✅ ",
-                        {"type": "bold", "text": "标题"},
-                        "：长任务完成",
-                    ],
+                    "text": "长任务完成",
                 },
                 {
                     "type": "paragraph",
-                    "text": [
-                        {"type": "bold", "text": "正文"},
-                        "：所有步骤已经完成。",
-                    ],
+                    "text": "所有步骤已经完成。",
                 },
                 {"type": "divider"},
                 {
                     "type": "footer",
                     "text": [
-                        "🧪 ",
-                        {"type": "bold", "text": "验证"},
-                        "：157 项测试通过",
+                        "状态：✅",
+                        "\n",
+                        "验证：157 项测试通过",
                     ],
                 },
             ]
@@ -185,25 +170,19 @@ def test_json_preview_exposes_rich_message_without_config_or_network(
             "blocks": [
                 {
                     "type": "paragraph",
-                    "text": [
-                        "⚠️ ",
-                        {"type": "bold", "text": "标题"},
-                        "：需要确认",
-                    ],
+                    "text": "需要确认",
                 },
                 {
                     "type": "paragraph",
-                    "text": [
-                        {"type": "bold", "text": "正文"},
-                        "：任务已暂停。",
-                    ],
+                    "text": "任务已暂停。",
                 },
+                {"type": "divider"},
                 {
-                    "type": "paragraph",
+                    "type": "footer",
                     "text": [
-                        "👉 ",
-                        {"type": "bold", "text": "下一步："},
-                        "选择发布范围",
+                        "状态：⚠️",
+                        "\n",
+                        "下一步：选择发布范围",
                     ],
                 },
             ]
@@ -233,6 +212,6 @@ def test_preview_does_not_access_telegram(monkeypatch) -> None:
     )
 
     assert result.exit_code == 0, result.output
-    assert "❌ 标题：长任务未完成" in result.output
-    assert "正文：构建失败。" in result.output
-    assert "👉 下一步：检查构建日志" in result.output
+    assert result.output == (
+        "长任务未完成\n\n构建失败。\n\n────────\n状态：❌\n下一步：检查构建日志\n"
+    )
