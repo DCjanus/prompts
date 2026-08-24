@@ -1,11 +1,11 @@
 ---
 name: dcjanus-preferences
-description: 记录 DCjanus 的跨语言技术选型偏好以及 Python/Rust/Go 第三方库偏好，供 AI 在存储、分析、压缩、归档、引入依赖或替换库时优先参考。适用于技术方案对比或需要遵循 DCjanus 个人偏好进行开发的场景。
+description: 记录 DCjanus 的跨语言技术选型、API 能力选择以及 Python/Rust/Go 第三方库偏好，供 AI 在存储、分析、压缩、归档、消息呈现、引入依赖或替换库时优先参考。适用于技术方案对比或需要遵循 DCjanus 个人偏好进行开发的场景。
 ---
 
 ## Usage
 
-- 先确认选型问题是否跨语言：数据库、分析、压缩或归档场景读取 `references/data-storage.md`；语言生态库选择则读取对应语言参考文件。
+- 先确认选型问题是否跨语言：数据库、分析、压缩或归档场景读取 `references/data-storage.md`；Telegram Bot 消息能力选择读取 `references/telegram-bot-api.md`；语言生态库选择则读取对应语言参考文件。
 - 引入或替换第三方库时优先使用偏好清单。
 - 当工作负载同时具有多种特征、偏好清单未覆盖或与明确需求冲突时，先说明主要工作负载、取舍与建议；结论仍不明确时再向用户确认。
 - 新增语言时创建 `references/<language>.md`；新增跨语言主题时创建聚焦该主题的 reference，避免将无关偏好堆入泛化的 general 文件。
@@ -19,6 +19,7 @@ description: 记录 DCjanus 的跨语言技术选型偏好以及 Python/Rust/Go 
 ## References
 
 - 跨语言数据存储、分析、压缩与归档：`references/data-storage.md`
+- Telegram Bot API 消息能力选择：`references/telegram-bot-api.md`
 - Python: `references/python.md`
 - Rust: `references/rust.md`
 - Go: `references/go.md`

@@ -2,3 +2,5 @@ interface:
   display_name: "Notify via Telegram"
   short_description: "在明确订阅后发送长任务的 Telegram 结果通知"
   default_prompt: "使用 $notify-via-telegram 在这个长任务有最终结果或需要我处理时发送 Telegram 通知。"
+policy:
+  allow_implicit_invocation: false
