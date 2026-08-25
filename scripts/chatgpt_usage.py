@@ -5,7 +5,7 @@
 # dependencies = [
 #     "duckdb>=1.5.5",
 #     "kittytgp>=0.0.2",
-#     "resvg-py>=0.4.0",
+#     "resvg-py>=0.5.0",
 #     "rich>=15.0.0",
 #     "typer>=0.27.1",
 # ]
