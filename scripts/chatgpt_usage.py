@@ -11,7 +11,7 @@
 # ]
 # ///
 
-"""通过本机 Codex 登录态展示 ChatGPT 订阅的 Codex 额度。"""
+"""展示 ChatGPT Codex 额度、本地 Token 用量与 API 等价成本。"""
 
 from __future__ import annotations
 
@@ -26,6 +26,8 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.request
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import UTC, date, datetime, timedelta
 from html import escape
@@ -44,12 +46,17 @@ from rich.table import Table
 from rich.text import Text
 
 APP_NAME = "chatgpt-usage"
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.2.0"
 SVG_WIDTH = 1440
 IMAGE_SCALE = 2
 DEFAULT_IMAGE_WIDTH_RATIO = 1.0
 DEFAULT_HISTORY_DAYS = 7
-USAGE_CACHE_SCHEMA_VERSION = 3
+USAGE_CACHE_SCHEMA_VERSION = 5
+PRICING_UPDATED_AT = "2026-08-25"
+MODELS_DEV_URL = "https://models.dev/api.json"
+PRICING_CACHE_VERSION = 1
+PRICING_CACHE_TTL = timedelta(hours=24)
+PRICING_FETCH_TIMEOUT = 5.0
 THREAD_ID_PATTERN = re.compile(
     r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$",
     re.IGNORECASE,
@@ -104,6 +111,7 @@ class DailyTokenUsage:
     output_tokens: int
     reasoning_output_tokens: int
     total_tokens: int
+    models: tuple[ModelTokenUsage, ...] = ()
 
     @property
     def cache_hit_percent(self) -> float | None:
@@ -111,6 +119,69 @@ class DailyTokenUsage:
         if self.input_tokens <= 0:
             return None
         return self.cached_input_tokens / self.input_tokens * 100
+
+    @property
+    def estimated_cost_usd(self) -> float:
+        """返回已知模型价格对应的 API 等价成本。"""
+        return sum(model.estimated_cost_usd or 0.0 for model in self.models)
+
+    @property
+    def unpriced_tokens(self) -> int:
+        """返回因模型价格未知而未能估价的 Token 数。"""
+        if not self.models:
+            return self.total_tokens
+        return sum(
+            model.total_tokens
+            for model in self.models
+            if model.estimated_cost_usd is None
+        )
+
+
+@dataclass(frozen=True)
+class ModelTokenUsage:
+    """记录一天内单个模型的 Token 用量与 API 等价成本。"""
+
+    model: str
+    input_tokens: int
+    cached_input_tokens: int
+    cache_write_input_tokens: int
+    output_tokens: int
+    reasoning_output_tokens: int
+    total_tokens: int
+    estimated_cost_usd: float | None
+
+
+@dataclass(frozen=True)
+class ModelPricing:
+    """描述模型每百万 Token 的标准 API 美元价格。"""
+
+    input_per_million: float
+    cached_input_per_million: float | None
+    output_per_million: float
+    cache_write_per_million: float | None = None
+    long_context_threshold: int | None = None
+    long_input_per_million: float | None = None
+    long_cached_input_per_million: float | None = None
+    long_output_per_million: float | None = None
+    long_cache_write_per_million: float | None = None
+
+
+@dataclass(frozen=True)
+class PricingMetadata:
+    """描述本次估价所用价格目录的来源。"""
+
+    source: str
+    fetched_at: datetime | None
+    stale: bool
+    error: str | None = None
+
+
+@dataclass(frozen=True)
+class PricingCatalog:
+    """保存可用于估价的模型价格和来源元数据。"""
+
+    prices: dict[str, ModelPricing]
+    metadata: PricingMetadata
 
 
 @dataclass(frozen=True)
@@ -129,11 +200,22 @@ class UsageHistory:
 
     days: tuple[DailyTokenUsage, ...]
     scan: ScanStats
+    pricing: PricingMetadata | None = None
 
     @property
     def total_tokens(self) -> int:
         """返回当前时间范围内的 Token 总量。"""
         return sum(day.total_tokens for day in self.days)
+
+    @property
+    def estimated_cost_usd(self) -> float:
+        """返回当前时间范围内已知模型的 API 等价成本。"""
+        return sum(day.estimated_cost_usd for day in self.days)
+
+    @property
+    def unpriced_tokens(self) -> int:
+        """返回当前时间范围内未能估价的 Token 数。"""
+        return sum(day.unpriced_tokens for day in self.days)
 
 
 @dataclass(frozen=True)
@@ -147,6 +229,18 @@ class _RolloutState:
     mtime_ns: int
     parsed_bytes: int
     last_total: tuple[int, int, int, int, int, int] | None
+    last_model: str | None
+
+
+@dataclass(frozen=True)
+class _UsageEvent:
+    """记录一条已归属模型的 Token 增量。"""
+
+    thread_id: str
+    event_key: str
+    day: date
+    model: str
+    usage: tuple[int, int, int, int, int, int]
 
 
 def _jsonrpc_input() -> str:
@@ -348,6 +442,13 @@ def default_usage_cache_path() -> Path:
     return root / APP_NAME / "usage.duckdb"
 
 
+def default_pricing_cache_path() -> Path:
+    """返回 models.dev 价格目录缓存的默认路径。"""
+    return default_usage_cache_path().with_name(
+        f"models-dev-v{PRICING_CACHE_VERSION}.json"
+    )
+
+
 def _visible_buckets(buckets: list[LimitBucket], *, verbose: bool) -> list[LimitBucket]:
     """默认隐藏低价值的 Spark 额度桶。"""
     if verbose:
@@ -377,6 +478,384 @@ def _usage_tuple(value: Any) -> tuple[int, int, int, int, int, int] | None:
     return tuple(max(0, item) for item in values)
 
 
+# 当前标准 API 单价快照。GPT-5.6 采用 OpenAI 2026-08-25 公布价格，其余
+# Codex 模型沿用 CodexBar 的内置映射；缓存写入价缺失时按普通输入计费。
+MODEL_PRICING: dict[str, ModelPricing] = {
+    "gpt-5": ModelPricing(1.25, 0.125, 10.0),
+    "gpt-5-codex": ModelPricing(1.25, 0.125, 10.0),
+    "gpt-5-mini": ModelPricing(0.25, 0.025, 2.0),
+    "gpt-5-nano": ModelPricing(0.05, 0.005, 0.4),
+    "gpt-5-pro": ModelPricing(15.0, None, 120.0),
+    "gpt-5.1": ModelPricing(1.25, 0.125, 10.0),
+    "gpt-5.1-codex": ModelPricing(1.25, 0.125, 10.0),
+    "gpt-5.1-codex-max": ModelPricing(1.25, 0.125, 10.0),
+    "gpt-5.1-codex-mini": ModelPricing(0.25, 0.025, 2.0),
+    "gpt-5.2": ModelPricing(1.75, 0.175, 14.0),
+    "gpt-5.2-codex": ModelPricing(1.75, 0.175, 14.0),
+    "gpt-5.2-pro": ModelPricing(21.0, None, 168.0),
+    "gpt-5.3-codex": ModelPricing(1.75, 0.175, 14.0),
+    "gpt-5.3-codex-spark": ModelPricing(0.0, 0.0, 0.0),
+    "gpt-5.4": ModelPricing(
+        2.5,
+        0.25,
+        15.0,
+        long_context_threshold=272_000,
+        long_input_per_million=5.0,
+        long_cached_input_per_million=0.5,
+        long_output_per_million=22.5,
+    ),
+    "gpt-5.4-mini": ModelPricing(0.75, 0.075, 4.5),
+    "gpt-5.4-nano": ModelPricing(0.2, 0.02, 1.25),
+    "gpt-5.4-pro": ModelPricing(30.0, None, 180.0),
+    "gpt-5.5": ModelPricing(
+        5.0,
+        0.5,
+        30.0,
+        long_context_threshold=272_000,
+        long_input_per_million=10.0,
+        long_cached_input_per_million=1.0,
+        long_output_per_million=45.0,
+    ),
+    "gpt-5.5-pro": ModelPricing(30.0, None, 180.0),
+    "gpt-5.6-sol": ModelPricing(
+        2.0,
+        0.2,
+        10.0,
+        cache_write_per_million=2.5,
+        long_context_threshold=272_000,
+        long_input_per_million=4.0,
+        long_cached_input_per_million=0.4,
+        long_output_per_million=15.0,
+        long_cache_write_per_million=5.0,
+    ),
+    "gpt-5.6-terra": ModelPricing(
+        1.0,
+        0.1,
+        6.0,
+        cache_write_per_million=1.25,
+        long_context_threshold=272_000,
+        long_input_per_million=2.0,
+        long_cached_input_per_million=0.2,
+        long_output_per_million=9.0,
+        long_cache_write_per_million=2.5,
+    ),
+    "gpt-5.6-luna": ModelPricing(
+        0.1,
+        0.01,
+        0.6,
+        cache_write_per_million=0.125,
+        long_context_threshold=272_000,
+        long_input_per_million=0.2,
+        long_cached_input_per_million=0.02,
+        long_output_per_million=0.9,
+        long_cache_write_per_million=0.25,
+    ),
+}
+
+
+def _price_number(value: Any) -> float | None:
+    """解析非负的每百万 Token 价格。"""
+    if not isinstance(value, (int, float)) or isinstance(value, bool) or value < 0:
+        return None
+    return float(value)
+
+
+def _models_dev_providers(payload: Any) -> dict[str, Any]:
+    """兼容 models.dev 顶层 provider 映射与 providers 包装格式。"""
+    if not isinstance(payload, dict):
+        return {}
+    providers = payload.get("providers", payload)
+    return providers if isinstance(providers, dict) else {}
+
+
+def _provider_has_pricing(provider: Any) -> bool:
+    """判断 provider 是否至少包含一个完整输入/输出价格。"""
+    models = provider.get("models") if isinstance(provider, dict) else None
+    if not isinstance(models, dict):
+        return False
+    return any(
+        isinstance(model, dict)
+        and isinstance(model.get("cost"), dict)
+        and _price_number(model["cost"].get("input")) is not None
+        and _price_number(model["cost"].get("output")) is not None
+        for model in models.values()
+    )
+
+
+def _models_dev_prices(payload: bytes) -> dict[str, ModelPricing]:
+    """校验并解析 models.dev 的 OpenAI 模型价格。"""
+    try:
+        decoded = json.loads(payload)
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise UsageError(f"models.dev 返回了无效 JSON：{error}") from error
+    providers = _models_dev_providers(decoded)
+    if not all(
+        _provider_has_pricing(providers.get(provider_id))
+        for provider_id in ("anthropic", "openai")
+    ):
+        raise UsageError("models.dev 价格目录不完整")
+    openai = providers["openai"]
+    prices: dict[str, ModelPricing] = {}
+    for map_key, model in openai["models"].items():
+        if not isinstance(model, dict) or not isinstance(model.get("cost"), dict):
+            continue
+        cost = model["cost"]
+        input_rate = _price_number(cost.get("input"))
+        output_rate = _price_number(cost.get("output"))
+        if input_rate is None or output_rate is None:
+            continue
+        raw_model_id = model.get("id", map_key)
+        if not isinstance(raw_model_id, str) or not raw_model_id.strip():
+            continue
+        model_id = raw_model_id.strip().removeprefix("openai/")
+        base = MODEL_PRICING.get(_normalize_model(model_id))
+        long_cost = cost.get("context_over_200k")
+        has_long_cost = isinstance(long_cost, dict)
+        cached_rate = _price_number(cost.get("cache_read"))
+        cache_write_rate = _price_number(cost.get("cache_write"))
+        prices[model_id] = ModelPricing(
+            input_per_million=input_rate,
+            cached_input_per_million=(
+                cached_rate
+                if cached_rate is not None
+                else (base.cached_input_per_million if base else None)
+            ),
+            output_per_million=output_rate,
+            cache_write_per_million=(
+                cache_write_rate
+                if cache_write_rate is not None
+                else (base.cache_write_per_million if base else None)
+            ),
+            long_context_threshold=(
+                base.long_context_threshold
+                if base and base.long_context_threshold is not None
+                else (200_000 if has_long_cost else None)
+            ),
+            long_input_per_million=(
+                _price_number(long_cost.get("input")) if has_long_cost else None
+            ),
+            long_cached_input_per_million=(
+                _price_number(long_cost.get("cache_read")) if has_long_cost else None
+            ),
+            long_output_per_million=(
+                _price_number(long_cost.get("output")) if has_long_cost else None
+            ),
+            long_cache_write_per_million=(
+                _price_number(long_cost.get("cache_write")) if has_long_cost else None
+            ),
+        )
+    if not prices:
+        raise UsageError("models.dev 的 OpenAI 价格目录为空")
+    return prices
+
+
+def _pricing_cache_load(
+    cache_path: Path,
+) -> tuple[datetime, dict[str, ModelPricing]] | None:
+    """读取并校验本地价格目录缓存。"""
+    try:
+        artifact = json.loads(cache_path.read_text(encoding="utf-8"))
+        if artifact.get("version") != PRICING_CACHE_VERSION:
+            return None
+        fetched_at = datetime.fromisoformat(artifact["fetched_at"])
+        if fetched_at.tzinfo is None:
+            fetched_at = fetched_at.replace(tzinfo=UTC)
+        raw_prices = artifact["prices"]
+        if not isinstance(raw_prices, dict):
+            return None
+        prices = {
+            model: ModelPricing(**value)
+            for model, value in raw_prices.items()
+            if isinstance(model, str) and isinstance(value, dict)
+        }
+        return (fetched_at, prices) if prices else None
+    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return None
+
+
+def _pricing_cache_save(
+    cache_path: Path, *, fetched_at: datetime, prices: dict[str, ModelPricing]
+) -> None:
+    """原子写入价格目录缓存。"""
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    artifact = {
+        "version": PRICING_CACHE_VERSION,
+        "fetched_at": fetched_at.isoformat(),
+        "prices": {model: asdict(price) for model, price in prices.items()},
+    }
+    descriptor, temporary_name = tempfile.mkstemp(
+        dir=cache_path.parent, prefix=f".{cache_path.name}.", suffix=".tmp"
+    )
+    os.close(descriptor)
+    temporary_path = Path(temporary_name)
+    try:
+        temporary_path.write_text(
+            json.dumps(artifact, ensure_ascii=False, separators=(",", ":")),
+            encoding="utf-8",
+        )
+        os.replace(temporary_path, cache_path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
+
+
+def _fetch_models_dev(url: str, timeout: float) -> bytes:
+    """通过 HTTPS 获取 models.dev 价格目录。"""
+    request = urllib.request.Request(
+        url,
+        headers={
+            "Accept": "application/json",
+            "User-Agent": f"{APP_NAME}/{APP_VERSION}",
+        },
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return response.read()
+
+
+def _pricing_catalog(
+    remote_prices: dict[str, ModelPricing], metadata: PricingMetadata
+) -> PricingCatalog:
+    """让在线目录优先，并保留内置价格作为逐模型回退。"""
+    return PricingCatalog(prices={**MODEL_PRICING, **remote_prices}, metadata=metadata)
+
+
+def load_pricing_catalog(
+    cache_path: Path,
+    *,
+    now: datetime,
+    timeout: float = PRICING_FETCH_TIMEOUT,
+    fetcher: Callable[[str, float], bytes] = _fetch_models_dev,
+) -> PricingCatalog:
+    """加载价格目录：新鲜缓存优先，过期时刷新，失败则安全回退。"""
+    aware_now = now if now.tzinfo is not None else now.replace(tzinfo=UTC)
+    cached = _pricing_cache_load(cache_path)
+    if cached is not None:
+        fetched_at, cached_prices = cached
+        if aware_now - fetched_at <= PRICING_CACHE_TTL:
+            return _pricing_catalog(
+                cached_prices,
+                PricingMetadata("models.dev_cache", fetched_at, False),
+            )
+    try:
+        refreshed = _models_dev_prices(fetcher(MODELS_DEV_URL, timeout))
+        if cached is not None:
+            refreshed = {**cached[1], **refreshed}
+        _pricing_cache_save(cache_path, fetched_at=aware_now, prices=refreshed)
+        return _pricing_catalog(
+            refreshed, PricingMetadata("models.dev", aware_now, False)
+        )
+    except (OSError, RuntimeError, TypeError, ValueError, UsageError) as error:
+        message = str(error) or error.__class__.__name__
+        if cached is not None:
+            return _pricing_catalog(
+                cached[1],
+                PricingMetadata("models.dev_cache", cached[0], True, message),
+            )
+        return PricingCatalog(
+            prices=dict(MODEL_PRICING),
+            metadata=PricingMetadata(
+                "built_in",
+                datetime.fromisoformat(PRICING_UPDATED_AT).replace(tzinfo=UTC),
+                True,
+                message,
+            ),
+        )
+
+
+def _normalize_model(raw: str | None) -> str:
+    """把 Codex 记录中的模型别名归一化到价目表键。"""
+    if not raw:
+        return "unknown"
+    model = raw.strip()
+    if model.startswith("openai/"):
+        model = model.removeprefix("openai/")
+    if model == "gpt-5.6":
+        return "gpt-5.6-sol"
+    if model in MODEL_PRICING:
+        return model
+    base = re.sub(r"-\d{4}-\d{2}-\d{2}$", "", model)
+    return base if base in MODEL_PRICING else model
+
+
+def estimate_api_cost(
+    model: str,
+    *,
+    input_tokens: int,
+    cached_input_tokens: int,
+    cache_write_input_tokens: int,
+    output_tokens: int,
+    prices: dict[str, ModelPricing] | None = None,
+) -> float | None:
+    """按当前标准 API 单价估算一次用量的美元成本。"""
+    catalog = MODEL_PRICING if prices is None else prices
+    normalized = _normalize_model(model)
+    candidates = [normalized]
+    if normalized.startswith("openai/"):
+        candidates.append(normalized.removeprefix("openai/"))
+    dated_base = re.sub(r"-\d{4}-\d{2}-\d{2}$", "", normalized)
+    if dated_base not in candidates:
+        candidates.append(dated_base)
+    pricing = next((catalog[key] for key in candidates if key in catalog), None)
+    if pricing is None:
+        return None
+    total_input = max(0, input_tokens)
+    cached = min(max(0, cached_input_tokens), total_input)
+    remaining = total_input - cached
+    cache_write = min(max(0, cache_write_input_tokens), remaining)
+    uncached = remaining - cache_write
+    long_context = (
+        pricing.long_context_threshold is not None
+        and total_input > pricing.long_context_threshold
+    )
+    if long_context:
+        input_rate = (
+            pricing.long_input_per_million
+            if pricing.long_input_per_million is not None
+            else pricing.input_per_million
+        )
+        cached_rate = (
+            pricing.long_cached_input_per_million
+            if pricing.long_cached_input_per_million is not None
+            else (
+                pricing.cached_input_per_million
+                if pricing.cached_input_per_million is not None
+                else input_rate
+            )
+        )
+        cache_write_rate = (
+            pricing.long_cache_write_per_million
+            if pricing.long_cache_write_per_million is not None
+            else (
+                pricing.cache_write_per_million
+                if pricing.cache_write_per_million is not None
+                else input_rate
+            )
+        )
+        output_rate = (
+            pricing.long_output_per_million
+            if pricing.long_output_per_million is not None
+            else pricing.output_per_million
+        )
+    else:
+        input_rate = pricing.input_per_million
+        cached_rate = (
+            pricing.cached_input_per_million
+            if pricing.cached_input_per_million is not None
+            else input_rate
+        )
+        cache_write_rate = (
+            pricing.cache_write_per_million
+            if pricing.cache_write_per_million is not None
+            else input_rate
+        )
+        output_rate = pricing.output_per_million
+    return (
+        uncached * input_rate
+        + cached * cached_rate
+        + cache_write * cache_write_rate
+        + max(0, output_tokens) * output_rate
+    ) / 1_000_000
+
+
 def _usage_contribution(
     current: tuple[int, int, int, int, int, int],
     previous: tuple[int, int, int, int, int, int] | None,
@@ -403,16 +882,10 @@ def _parse_event_timestamp(value: Any, timezone: Any) -> datetime | None:
     return timestamp.astimezone(timezone)
 
 
-def _ensure_usage_cache(
-    connection: duckdb.DuckDBPyConnection, *, days: int, timezone_name: str
-) -> int:
-    """初始化索引，并在请求更长时间范围时扩展缓存覆盖范围。"""
+def _create_usage_tables(connection: duckdb.DuckDBPyConnection) -> None:
+    """创建当前版本的用量索引表。"""
     connection.execute(
         """
-        CREATE TABLE IF NOT EXISTS usage_cache_metadata (
-            key VARCHAR PRIMARY KEY,
-            value VARCHAR NOT NULL
-        );
         CREATE TABLE IF NOT EXISTS rollout_files (
             thread_id VARCHAR PRIMARY KEY,
             path VARCHAR NOT NULL,
@@ -426,21 +899,38 @@ def _ensure_usage_cache(
             last_cache_write_input BIGINT,
             last_output BIGINT,
             last_reasoning_output BIGINT,
-            last_total BIGINT
+            last_total BIGINT,
+            last_model VARCHAR
         );
         CREATE TABLE IF NOT EXISTS token_usage_daily (
             thread_id VARCHAR NOT NULL,
             usage_date DATE NOT NULL,
+            model VARCHAR NOT NULL,
             input_tokens BIGINT NOT NULL,
             cached_input_tokens BIGINT NOT NULL,
             cache_write_input_tokens BIGINT NOT NULL,
             output_tokens BIGINT NOT NULL,
             reasoning_output_tokens BIGINT NOT NULL,
             total_tokens BIGINT NOT NULL,
-            PRIMARY KEY (thread_id, usage_date)
+            PRIMARY KEY (thread_id, usage_date, model)
         );
         """
     )
+
+
+def _ensure_usage_cache(
+    connection: duckdb.DuckDBPyConnection, *, days: int, timezone_name: str
+) -> int:
+    """初始化索引，并在请求更长时间范围时扩展缓存覆盖范围。"""
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS usage_cache_metadata (
+            key VARCHAR PRIMARY KEY,
+            value VARCHAR NOT NULL
+        );
+        """
+    )
+    _create_usage_tables(connection)
     existing = dict(
         connection.execute("SELECT key, value FROM usage_cache_metadata").fetchall()
     )
@@ -453,10 +943,18 @@ def _ensure_usage_cache(
         and existing.get("timezone") == timezone_name
         and coverage_days >= 1
     )
-    if not static_metadata_matches or days > coverage_days:
-        coverage_days = max(days, coverage_days) if static_metadata_matches else days
+    needs_rebuild = not static_metadata_matches
+    needs_expansion = static_metadata_matches and days > coverage_days
+    if needs_rebuild:
+        coverage_days = days
+        connection.execute("DROP TABLE rollout_files")
+        connection.execute("DROP TABLE token_usage_daily")
+        _create_usage_tables(connection)
+    elif needs_expansion:
+        coverage_days = days
         connection.execute("DELETE FROM rollout_files")
         connection.execute("DELETE FROM token_usage_daily")
+    if needs_rebuild or needs_expansion:
         connection.execute("DELETE FROM usage_cache_metadata")
         connection.executemany(
             "INSERT INTO usage_cache_metadata VALUES (?, ?)",
@@ -477,7 +975,7 @@ def _read_rollout_state(
         """
         SELECT path, device, inode, size, mtime_ns, parsed_bytes,
                last_input, last_cached_input, last_cache_write_input,
-               last_output, last_reasoning_output, last_total
+               last_output, last_reasoning_output, last_total, last_model
         FROM rollout_files
         WHERE thread_id = ?
         """,
@@ -494,6 +992,7 @@ def _read_rollout_state(
         mtime_ns=int(row[4]),
         parsed_bytes=int(row[5]),
         last_total=last_total,
+        last_model=str(row[12]) if row[12] is not None else None,
     )
 
 
@@ -504,12 +1003,13 @@ def _write_rollout_state(
     stat: os.stat_result,
     parsed_bytes: int,
     last_total: tuple[int, int, int, int, int, int] | None,
+    last_model: str | None,
 ) -> None:
     """持久化单个 Thread 的解析位点。"""
     values: tuple[int | None, ...] = last_total or (None,) * 6
     connection.execute(
         """
-        INSERT INTO rollout_files VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO rollout_files VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (thread_id) DO UPDATE SET
             path = excluded.path,
             device = excluded.device,
@@ -522,7 +1022,8 @@ def _write_rollout_state(
             last_cache_write_input = excluded.last_cache_write_input,
             last_output = excluded.last_output,
             last_reasoning_output = excluded.last_reasoning_output,
-            last_total = excluded.last_total
+            last_total = excluded.last_total,
+            last_model = excluded.last_model
         """,
         [
             thread_id,
@@ -533,6 +1034,7 @@ def _write_rollout_state(
             stat.st_mtime_ns,
             parsed_bytes,
             *values,
+            last_model,
         ],
     )
 
@@ -543,15 +1045,14 @@ def _parse_rollout_usage(
     thread_id: str,
     start_offset: int,
     previous_total: tuple[int, int, int, int, int, int] | None,
+    current_model: str | None,
     first_day: date,
     timezone: Any,
 ) -> tuple[
-    list[tuple[str, str, date, int, int, int, int, int, int]],
-    int,
-    tuple[int, int, int, int, int, int] | None,
+    list[_UsageEvent], int, tuple[int, int, int, int, int, int] | None, str | None
 ]:
     """从指定字节位点解析 TokenCount 增量。"""
-    events: list[tuple[str, str, date, int, int, int, int, int, int]] = []
+    events: list[_UsageEvent] = []
     parsed_bytes = start_offset
     with path.open("rb") as file:
         file.seek(start_offset)
@@ -564,6 +1065,8 @@ def _parse_rollout_usage(
                 parsed_bytes = line_start
                 break
             parsed_bytes = file.tell()
+            if b"turn_context" in line:
+                current_model = _parse_turn_context_model(line) or current_model
             if b"token_count" not in line:
                 continue
             event, previous_total = _parse_usage_event(
@@ -571,12 +1074,26 @@ def _parse_rollout_usage(
                 thread_id=thread_id,
                 line_start=line_start,
                 previous_total=previous_total,
+                model=current_model,
                 first_day=first_day,
                 timezone=timezone,
             )
             if event is not None:
                 events.append(event)
-    return events, parsed_bytes, previous_total
+    return events, parsed_bytes, previous_total, current_model
+
+
+def _parse_turn_context_model(line: bytes) -> str | None:
+    """从 turn_context 记录提取模型名。"""
+    try:
+        item = json.loads(line)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(item, dict) or item.get("type") != "turn_context":
+        return None
+    payload = item.get("payload")
+    model = payload.get("model") if isinstance(payload, dict) else None
+    return _normalize_model(model) if isinstance(model, str) else None
 
 
 def _parse_usage_event(
@@ -585,10 +1102,11 @@ def _parse_usage_event(
     thread_id: str,
     line_start: int,
     previous_total: tuple[int, int, int, int, int, int] | None,
+    model: str | None,
     first_day: date,
     timezone: Any,
 ) -> tuple[
-    tuple[str, str, date, int, int, int, int, int, int] | None,
+    _UsageEvent | None,
     tuple[int, int, int, int, int, int] | None,
 ]:
     """解析单条 TokenCount，并推进累计快照。"""
@@ -616,7 +1134,17 @@ def _parse_usage_event(
         if isinstance(ordinal, int) and not isinstance(ordinal, bool)
         else f"offset:{line_start}"
     )
-    return (thread_id, event_key, timestamp.date(), *contribution), current
+    normalized_model = _normalize_model(model)
+    return (
+        _UsageEvent(
+            thread_id=thread_id,
+            event_key=event_key,
+            day=timestamp.date(),
+            model=normalized_model,
+            usage=contribution,
+        ),
+        current,
+    )
 
 
 def _parse_rollout_usage_tail(
@@ -626,9 +1154,7 @@ def _parse_rollout_usage_tail(
     first_day: date,
     timezone: Any,
 ) -> tuple[
-    list[tuple[str, str, date, int, int, int, int, int, int]],
-    int,
-    tuple[int, int, int, int, int, int] | None,
+    list[_UsageEvent], int, tuple[int, int, int, int, int, int] | None, str | None
 ]:
     """从文件尾部反向定位时间窗口，只解析窗口内的 TokenCount。"""
     selected: list[tuple[int, bytes]] = []
@@ -639,6 +1165,7 @@ def _parse_rollout_usage_tail(
             final_newline = data.rfind(b"\n")
             parsed_bytes = final_newline + 1
             position = parsed_bytes
+            crossed_boundary = False
             while position > 0:
                 line_end = position - 1
                 previous_newline = data.rfind(b"\n", 0, line_end)
@@ -650,43 +1177,57 @@ def _parse_rollout_usage_tail(
                         match.group(1).decode("ascii", errors="ignore"), timezone
                     )
                     if timestamp is not None and timestamp.date() < first_day:
+                        crossed_boundary = True
+                is_turn_context = b"turn_context" in prefix
+                if crossed_boundary:
+                    if is_turn_context:
+                        selected.append((line_start, bytes(data[line_start:line_end])))
                         break
-                if b"token_count" in prefix:
+                    position = line_start
+                    continue
+                if b"token_count" in prefix or is_turn_context:
                     selected.append((line_start, bytes(data[line_start:line_end])))
                 position = line_start
 
-    events: list[tuple[str, str, date, int, int, int, int, int, int]] = []
+    events: list[_UsageEvent] = []
     previous_total = None
+    current_model = None
     for line_start, line in reversed(selected):
+        if b"turn_context" in line:
+            current_model = _parse_turn_context_model(line) or current_model
+        if b"token_count" not in line:
+            continue
         event, previous_total = _parse_usage_event(
             line,
             thread_id=thread_id,
             line_start=line_start,
             previous_total=previous_total,
+            model=current_model,
             first_day=first_day,
             timezone=timezone,
         )
         if event is not None:
             events.append(event)
-    return events, parsed_bytes, previous_total
+    return events, parsed_bytes, previous_total, current_model
 
 
 def _upsert_usage_events(
     connection: duckdb.DuckDBPyConnection,
-    events: list[tuple[str, str, date, int, int, int, int, int, int]],
+    events: list[_UsageEvent],
 ) -> None:
     """按 Thread 和日期聚合后批量写入 Token 增量。"""
     if not events:
         return
-    daily: dict[date, list[int]] = {}
-    for _, _, usage_date, *usage in events:
-        totals = daily.setdefault(usage_date, [0] * 6)
-        for index, value in enumerate(usage):
+    daily: dict[tuple[date, str], list[int]] = {}
+    for event in events:
+        key = (event.day, event.model)
+        totals = daily.setdefault(key, [0] * 6)
+        for index, value in enumerate(event.usage):
             totals[index] += value
     connection.executemany(
         """
-        INSERT INTO token_usage_daily VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT (thread_id, usage_date) DO UPDATE SET
+        INSERT INTO token_usage_daily VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (thread_id, usage_date, model) DO UPDATE SET
             input_tokens = token_usage_daily.input_tokens + excluded.input_tokens,
             cached_input_tokens = token_usage_daily.cached_input_tokens
                 + excluded.cached_input_tokens,
@@ -697,7 +1238,10 @@ def _upsert_usage_events(
                 + excluded.reasoning_output_tokens,
             total_tokens = token_usage_daily.total_tokens + excluded.total_tokens
         """,
-        [(events[0][0], usage_date, *usage) for usage_date, usage in daily.items()],
+        [
+            (events[0].thread_id, usage_date, model, *usage)
+            for (usage_date, model), usage in daily.items()
+        ],
     )
 
 
@@ -719,6 +1263,7 @@ def collect_usage_history(
     *,
     now: datetime,
     days: int = DEFAULT_HISTORY_DAYS,
+    pricing_catalog: PricingCatalog | None = None,
 ) -> UsageHistory:
     """增量索引本地 Thread，并返回按天 Token 用量。"""
     if days < 1:
@@ -781,13 +1326,14 @@ def collect_usage_history(
                         stat,
                         state.parsed_bytes,
                         state.last_total,
+                        state.last_model,
                     )
                 continue
 
             if state is None and stat.st_mtime < first_timestamp:
                 cache_hits += 1
                 _write_rollout_state(
-                    connection, thread_id, path, stat, stat.st_size, None
+                    connection, thread_id, path, stat, stat.st_size, None, None
                 )
                 continue
 
@@ -809,20 +1355,23 @@ def collect_usage_history(
                 )
             try:
                 if can_append:
-                    events, parsed_bytes, last_total = _parse_rollout_usage(
+                    events, parsed_bytes, last_total, last_model = _parse_rollout_usage(
                         path,
                         thread_id=thread_id,
                         start_offset=start_offset,
                         previous_total=previous_total,
+                        current_model=state.last_model,
                         first_day=index_first_day,
                         timezone=timezone,
                     )
                 else:
-                    events, parsed_bytes, last_total = _parse_rollout_usage_tail(
-                        path,
-                        thread_id=thread_id,
-                        first_day=index_first_day,
-                        timezone=timezone,
+                    events, parsed_bytes, last_total, last_model = (
+                        _parse_rollout_usage_tail(
+                            path,
+                            thread_id=thread_id,
+                            first_day=index_first_day,
+                            timezone=timezone,
+                        )
                     )
             except FileNotFoundError:
                 continue
@@ -835,6 +1384,7 @@ def collect_usage_history(
                 current_stat,
                 parsed_bytes,
                 last_total,
+                last_model,
             )
 
         for (thread_id,) in connection.execute(
@@ -855,6 +1405,7 @@ def collect_usage_history(
         rows = connection.execute(
             """
             SELECT usage_date,
+                   model,
                    SUM(input_tokens),
                    SUM(cached_input_tokens),
                    SUM(cache_write_input_tokens),
@@ -863,8 +1414,8 @@ def collect_usage_history(
                    SUM(total_tokens)
             FROM token_usage_daily
             WHERE usage_date BETWEEN ? AND ?
-            GROUP BY usage_date
-            ORDER BY usage_date
+            GROUP BY usage_date, model
+            ORDER BY usage_date, model
             """,
             [display_first_day, local_now.date()],
         ).fetchall()
@@ -877,18 +1428,52 @@ def collect_usage_history(
     finally:
         connection.close()
 
-    usage_by_day = {
-        row[0]: DailyTokenUsage(
-            day=row[0],
-            input_tokens=int(row[1]),
-            cached_input_tokens=int(row[2]),
-            cache_write_input_tokens=int(row[3]),
-            output_tokens=int(row[4]),
-            reasoning_output_tokens=int(row[5]),
-            total_tokens=int(row[6]),
+    models_by_day: dict[date, list[ModelTokenUsage]] = {}
+    resolved_pricing = pricing_catalog or PricingCatalog(
+        dict(MODEL_PRICING),
+        PricingMetadata(
+            "built_in",
+            datetime.fromisoformat(PRICING_UPDATED_AT).replace(tzinfo=UTC),
+            False,
+        ),
+    )
+    for row in rows:
+        cost = estimate_api_cost(
+            str(row[1]),
+            input_tokens=int(row[2]),
+            cached_input_tokens=int(row[3]),
+            cache_write_input_tokens=int(row[4]),
+            output_tokens=int(row[5]),
+            prices=resolved_pricing.prices,
         )
-        for row in rows
-    }
+        models_by_day.setdefault(row[0], []).append(
+            ModelTokenUsage(
+                model=str(row[1]),
+                input_tokens=int(row[2]),
+                cached_input_tokens=int(row[3]),
+                cache_write_input_tokens=int(row[4]),
+                output_tokens=int(row[5]),
+                reasoning_output_tokens=int(row[6]),
+                total_tokens=int(row[7]),
+                estimated_cost_usd=cost,
+            )
+        )
+    usage_by_day = {}
+    for usage_day, models in models_by_day.items():
+        totals = tuple(
+            sum(getattr(model, field) for model in models)
+            for field in (
+                "input_tokens",
+                "cached_input_tokens",
+                "cache_write_input_tokens",
+                "output_tokens",
+                "reasoning_output_tokens",
+                "total_tokens",
+            )
+        )
+        usage_by_day[usage_day] = DailyTokenUsage(
+            usage_day, *totals, models=tuple(models)
+        )
     empty = (0, 0, 0, 0, 0, 0)
     daily = tuple(
         usage_by_day.get(
@@ -906,6 +1491,7 @@ def collect_usage_history(
             full_scans=full_scans,
             incremental_scans=incremental_scans,
         ),
+        pricing=resolved_pricing.metadata,
     )
 
 
@@ -1014,33 +1600,57 @@ def _cache_hit_text(day: DailyTokenUsage) -> str:
     return "—" if percent is None else f"{percent:.1f}%"
 
 
+def _format_cost(estimated_cost_usd: float, unpriced_tokens: int) -> str:
+    """格式化 API 等价成本，并标记未完整估价的情况。"""
+    if unpriced_tokens > 0:
+        return f"≥${estimated_cost_usd:.2f}" if estimated_cost_usd > 0 else "—"
+    return f"≈${estimated_cost_usd:.2f}"
+
+
 def _render_usage_history(history: UsageHistory, *, verbose: bool) -> None:
     """用 Rich 展示按天 Token 用量与缓存命中率。"""
     table = Table(box=None, padding=(0, 1), show_header=True)
     table.add_column("日期", style="bold", no_wrap=True)
     table.add_column("Token", justify="right", no_wrap=True)
     table.add_column("缓存命中", justify="right", no_wrap=True)
+    table.add_column("预估金额", justify="right", no_wrap=True)
     for day in history.days:
         table.add_row(
             day.day.strftime("%m-%d"),
             _format_token_count(day.total_tokens),
             _cache_hit_text(day),
+            _format_cost(day.estimated_cost_usd, day.unpriced_tokens),
         )
     scan = history.scan
-    subtitle = None
+    subtitle_parts = []
+    if history.unpriced_tokens:
+        subtitle_parts.append(
+            f"[yellow]未估价 {_format_token_count(history.unpriced_tokens)} Token[/]"
+        )
     if verbose:
-        subtitle = (
+        subtitle_parts.append(
             f"[dim]索引命中 {scan.cache_hits}/{scan.total_files} · "
             f"全量 {scan.full_scans} · 增量 {scan.incremental_scans}[/]"
         )
+        if history.pricing is not None:
+            fetched_at = (
+                history.pricing.fetched_at.astimezone().strftime("%m-%d %H:%M")
+                if history.pricing.fetched_at is not None
+                else "未知"
+            )
+            stale = " · 已过期" if history.pricing.stale else ""
+            subtitle_parts.append(
+                f"[dim]价格 {history.pricing.source} · {fetched_at}{stale}[/]"
+            )
     console.print(
         Panel(
             table,
             title=(
                 f"[bold]最近 {len(history.days)} 天 Token · "
-                f"{_format_token_count(history.total_tokens)}[/]"
+                f"{_format_token_count(history.total_tokens)} · "
+                f"API 等价 {_format_cost(history.estimated_cost_usd, history.unpriced_tokens)}[/]"
             ),
-            subtitle=subtitle,
+            subtitle=" · ".join(subtitle_parts) or None,
             border_style="blue",
             padding=(0, 1),
         )
@@ -1235,10 +1845,10 @@ def _svg_usage_history(
     content_y = y + 58
     content_width = width - 36
     card_width = (content_width - card_gap * max(0, grid_columns - 1)) / grid_columns
-    card_height = 128.0
+    card_height = 140.0
     parts = [
         f'<g data-role="daily-usage" data-grid-columns="{grid_columns}" filter="url(#shadow)"><rect x="{x}" y="{y}" width="{width}" height="{height}" rx="24" fill="#151b2d" stroke="#283149"/></g>',
-        f'<text x="{x + 26}" y="{y + 40}" fill="#f8f8f2" font-size="22" font-weight="700">最近 {len(days)} 天 Token · {_svg_text(_format_token_count(history.total_tokens))}</text>',
+        f'<text x="{x + 26}" y="{y + 40}" fill="#f8f8f2" font-size="22" font-weight="700">最近 {len(days)} 天 Token · {_svg_text(_format_token_count(history.total_tokens))} · API 等价 {_svg_text(_format_cost(history.estimated_cost_usd, history.unpriced_tokens))}</text>',
     ]
     if verbose:
         scan = history.scan
@@ -1262,6 +1872,7 @@ def _svg_usage_history(
                 f'<text x="{center_x}" y="{card_y + 27}" text-anchor="middle" class="muted" font-size="13">{day.day.strftime("%m-%d")}</text>',
                 f'<text x="{center_x}" y="{card_y + 63}" text-anchor="middle" fill="#f8f8f2" font-size="24" font-weight="750">{_svg_text(_format_token_count(day.total_tokens))}</text>',
                 f'<text x="{center_x}" y="{card_y + 91}" text-anchor="middle" fill="#bd93f9" font-size="13" font-weight="650">缓存 {_svg_text(cache_text)}</text>',
+                f'<text x="{center_x}" y="{card_y + 116}" text-anchor="middle" fill="#50fa7b" font-size="14" font-weight="700">{_svg_text(_format_cost(day.estimated_cost_usd, day.unpriced_tokens))}</text>',
             ]
         )
         if intensity_width > 0:
@@ -1275,7 +1886,7 @@ def _usage_history_height(day_count: int) -> int:
     """根据日期数量返回自适应网格高度。"""
     columns = min(10, max(1, day_count))
     rows = ceil(max(1, day_count) / columns)
-    return 76 + rows * 128 + max(0, rows - 1) * 10
+    return 76 + rows * 140 + max(0, rows - 1) * 10
 
 
 def _render_compact_usage_svg(
@@ -1627,11 +2238,32 @@ def _json_report(
         rows.append(bucket_data)
     local_usage = None
     if history is not None:
+        pricing = history.pricing
         local_usage = {
             "days": [
-                {**asdict(day), "day": day.day.isoformat()} for day in history.days
+                {
+                    **asdict(day),
+                    "day": day.day.isoformat(),
+                    "estimated_cost_usd": day.estimated_cost_usd,
+                    "unpriced_tokens": day.unpriced_tokens,
+                }
+                for day in history.days
             ],
             "total_tokens": history.total_tokens,
+            "estimated_cost_usd": history.estimated_cost_usd,
+            "unpriced_tokens": history.unpriced_tokens,
+            "pricing_basis": "current_standard_api_equivalent",
+            "pricing": {
+                "source": pricing.source if pricing is not None else "unknown",
+                "fetched_at": (
+                    pricing.fetched_at.isoformat()
+                    if pricing is not None and pricing.fetched_at is not None
+                    else None
+                ),
+                "stale": pricing.stale if pricing is not None else True,
+                "fallback": "built_in",
+                "error": pricing.error if pricing is not None else None,
+            },
             "scan": asdict(history.scan),
         }
     return {
@@ -1721,12 +2353,22 @@ def main(
 
     now = datetime.now(UTC)
     history = None
+    resolved_usage_cache = (usage_cache or default_usage_cache_path()).expanduser()
+    pricing_cache = resolved_usage_cache.with_name(
+        f"models-dev-v{PRICING_CACHE_VERSION}.json"
+    )
+    pricing_catalog = load_pricing_catalog(
+        pricing_cache,
+        now=now,
+        timeout=min(PRICING_FETCH_TIMEOUT, timeout),
+    )
     try:
         history = collect_usage_history(
             (codex_home or default_codex_home()).expanduser(),
-            (usage_cache or default_usage_cache_path()).expanduser(),
+            resolved_usage_cache,
             now=datetime.now().astimezone(),
             days=history_days,
+            pricing_catalog=pricing_catalog,
         )
     except (OSError, RuntimeError, ValueError, UsageError) as error:
         error_console.print(f"[yellow]本地 Token 统计不可用：[/]{error}")
