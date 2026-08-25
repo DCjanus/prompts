@@ -16,6 +16,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Annotated, Any
@@ -23,12 +24,12 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import urlopen
 
+import typer
 from packaging.requirements import InvalidRequirement, Requirement
 from packaging.utils import canonicalize_name
 from packaging.version import InvalidVersion, Version
 from rich.console import Console
 from rich.table import Table
-import typer
 
 console = Console()
 app = typer.Typer(add_completion=False, no_args_is_help=False)
@@ -150,14 +151,30 @@ def collect_dependencies(root: Path) -> tuple[dict[str, PackageReport], list[str
     return reports, errors
 
 
-def fetch_latest_version(package: str, timeout: float) -> tuple[str | None, str | None]:
-    """从 PyPI JSON API 读取最新版本。"""
+def fetch_latest_version(
+    package: str,
+    timeout: float,
+    *,
+    attempts: int = 3,
+    retry_delay: float = 0.25,
+) -> tuple[str | None, str | None]:
+    """从 PyPI JSON API 读取最新版本，并重试瞬时网络错误。"""
     url = f"https://pypi.org/pypi/{quote(package)}/json"
-    try:
-        with urlopen(url, timeout=timeout) as response:
-            payload = json.load(response)
-    except (HTTPError, URLError, TimeoutError, OSError) as exc:
-        return None, str(exc)
+    payload: Any = None
+    for attempt in range(max(1, attempts)):
+        try:
+            with urlopen(url, timeout=timeout) as response:
+                payload = json.load(response)
+            break
+        except HTTPError as exc:
+            retryable = exc.code in {408, 429} or 500 <= exc.code < 600
+            if not retryable or attempt + 1 >= attempts:
+                return None, str(exc)
+        except (URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
+            if attempt + 1 >= attempts:
+                return None, str(exc)
+        if retry_delay > 0:
+            time.sleep(retry_delay * 2**attempt)
 
     version = payload.get("info", {}).get("version")
     if not isinstance(version, str) or not version:
