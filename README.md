@@ -64,12 +64,14 @@ notification_method = "bel"
 - [`AGENTS.md`](AGENTS.md)：Codex 中所有代理共享的基础约束与工作流
 - [`skills/`](skills)：按功能分类的技能库，详情见下方技能列表
 - [`scripts/`](scripts)：放置 uv script 模式的工具脚本（规范见 [SKILL.md（uv-cli-creator）](skills/uv-cli-creator/SKILL.md)）
-  - [`chatgpt_usage.py`](scripts/chatgpt_usage.py)：复用本机 Codex CLI 的 ChatGPT 登录态，展示 Codex 额度窗口，并通过 DuckDB 增量索引活跃与已归档 Thread，统计最近 7 天 Token 用量和每日输入缓存命中率；自动在支持 Kitty 图片协议的终端中展示图片看板，其它环境回退到紧凑 Rich 输出
+  - [`chatgpt_usage.py`](scripts/chatgpt_usage.py)：复用本机 Codex CLI 的 ChatGPT 登录态，展示 Codex 额度窗口，并通过 DuckDB 增量索引活跃与已归档 Thread，统计最近 7 天 Token 用量、每日输入缓存命中率和按当前标准 API 单价折算的美元成本；自动在支持 Kitty 图片协议的终端中展示图片看板，其它环境回退到紧凑 Rich 输出
   - [`run_tests.py`](scripts/run_tests.py)：统一发现并运行仓库内所有脚本与 skill 的 Python 测试，同时兼容 unittest 与 pytest 测试
   - [`script_deps.py`](scripts/script_deps.py)：检查或升级仓库内 PEP 723 / uv script 依赖声明，对比 PyPI 最新版本，并在 GitHub Actions 中报告依赖下限落后或声明不一致
   - [`upstream_skills.py`](scripts/upstream_skills.py)：根据 [`upstream-skills.toml`](upstream-skills.toml) 检查第三方 skill 的上游目录是否出现新 commit；优先使用 CI 的 `GITHUB_TOKEN`，本地回退到已登录的 `gh`，并在 stderr 输出凭据来源；发现变更或查询失败时返回非 0，并写入 GitHub Actions summary
 
-额度看板会结合 TTY 状态与 Ghostty、Kitty 等终端标识自动选择图片模式；图片渲染失败时自动回退到原有 Rich 文本界面。默认省略低使用频率的 Codex Spark 额度桶，`--verbose` 仍可查看服务端返回的完整额度与本地索引命中情况。本地用量索引默认保存在系统缓存目录，DuckDB 数据使用 zstd 压缩；归档 rename 只更新路径，未变化的 Thread 不重扫，追加内容只解析新增字节，并按 Thread 与日期聚合后落盘。`--history-days` 可选择 1–365 天，默认 7 天；缓存覆盖范围只扩不缩，首次请求更长范围时补建一次，之后切回较短范围不会重复扫描。
+额度看板会结合 TTY 状态与 Ghostty、Kitty 等终端标识自动选择图片模式；图片渲染失败时自动回退到原有 Rich 文本界面。默认省略低使用频率的 Codex Spark 额度桶，`--verbose` 仍可查看服务端返回的完整额度与本地索引命中情况。本地用量索引默认保存在系统缓存目录，DuckDB 数据使用 zstd 压缩；归档 rename 只更新路径，未变化的 Thread 不重扫，追加内容只解析新增字节，并按 Thread、日期与模型聚合后落盘。`--history-days` 可选择 1–365 天，默认 7 天；缓存覆盖范围只扩不缩，首次请求更长范围时补建一次，之后切回较短范围不会重复扫描。
+
+金额是根据本地 rollout 中记录的模型、普通输入、缓存命中、缓存写入和输出 Token，按当前 OpenAI 标准 API 单价计算出的等价成本；它用于比较用量价值，不代表 ChatGPT/Codex 订阅的实际账单。脚本优先从 [models.dev](https://models.dev/) 更新价格目录并缓存 24 小时，响应不完整或网络不可用时会依次使用过期缓存和内置价格，因此离线运行不会影响 Token 统计。每次展示时都会用当前价格重算已缓存的 Token 事实，价格更新不需要重新扫描 rollout；`--json` 会给出价格来源、抓取时间、是否过期和刷新错误。输入超过 272K Token 时，对已公布长上下文价格的模型按整次请求的长上下文单价估算；未知模型不会套用猜测价格，JSON 输出会保留对应模型明细与未估价 Token 数。
 
 图片默认使用除行尾一列外的可用终端宽度，避免 Unicode placeholder 触发额外自动换行，也可用 `--image-width` 指定列数。默认看板把最近 7 天用量放在主体位置，以等高日期卡展示 Token 和缓存命中率，额度窗口压缩为下方摘要；`--verbose` 则恢复多模型双轨对比与精确诊断。uv 会自动安装 `resvg_py` 与 `kittytgp`，不要求宿主机额外安装 SVG 转换器或图片查看器。SVG 默认以 2× 像素密度栅格化，在高分屏上保持清晰，同时由终端按 cell placement 控制实际显示尺寸。`kittytgp` 使用 Kitty Graphics Protocol 的 Unicode placeholder placement，使图片能够随终端文本滚动，并兼容已开启 passthrough 的 tmux：
 

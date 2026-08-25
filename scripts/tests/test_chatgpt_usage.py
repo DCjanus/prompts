@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from rich.console import Console
 from typer.testing import CliRunner
@@ -218,6 +218,7 @@ class RenderUsageTests(unittest.TestCase):
         self.assertIn("75.0%", output)
         self.assertIn("01-01", output)
         self.assertIn("50.0%", output)
+        self.assertIn("预估金额", output)
         self.assertNotIn("索引命中", output)
 
         self.output.seek(0)
@@ -231,6 +232,45 @@ class RenderUsageTests(unittest.TestCase):
         self.assertEqual(report["local_usage"]["total_tokens"], 3_500)
         self.assertEqual(report["local_usage"]["days"][0]["day"], "2029-12-31")
         self.assertEqual(report["local_usage"]["scan"]["cache_hits"], 9)
+
+    def test_estimates_cached_input_and_long_context_at_model_rates(self) -> None:
+        short = chatgpt_usage.estimate_api_cost(
+            "gpt-5.6-sol",
+            input_tokens=100,
+            cached_input_tokens=60,
+            cache_write_input_tokens=10,
+            output_tokens=20,
+        )
+        long = chatgpt_usage.estimate_api_cost(
+            "gpt-5.6",
+            input_tokens=300_000,
+            cached_input_tokens=200_000,
+            cache_write_input_tokens=50_000,
+            output_tokens=10_000,
+        )
+
+        self.assertAlmostEqual(short, 0.000_297)
+        self.assertAlmostEqual(long, 0.68)
+        self.assertEqual(
+            chatgpt_usage.estimate_api_cost(
+                "gpt-free-cache",
+                input_tokens=100,
+                cached_input_tokens=100,
+                cache_write_input_tokens=0,
+                output_tokens=0,
+                prices={"gpt-free-cache": chatgpt_usage.ModelPricing(1, 0, 2)},
+            ),
+            0,
+        )
+        self.assertIsNone(
+            chatgpt_usage.estimate_api_cost(
+                "codex-auto-review",
+                input_tokens=100,
+                cached_input_tokens=0,
+                cache_write_input_tokens=0,
+                output_tokens=20,
+            )
+        )
 
     def test_svg_groups_each_bucket_and_escapes_dynamic_text(self) -> None:
         buckets = [
@@ -388,7 +428,135 @@ class RenderUsageTests(unittest.TestCase):
         render_png_mock.assert_called_once_with(b"\x89PNG\r\n\x1a\nexample", cols=72)
 
 
+class PricingCatalogTests(unittest.TestCase):
+    @staticmethod
+    def _models_dev_payload() -> bytes:
+        return json.dumps(
+            {
+                "anthropic": {
+                    "id": "anthropic",
+                    "models": {
+                        "claude-example": {
+                            "id": "claude-example",
+                            "cost": {"input": 1, "output": 5},
+                        }
+                    },
+                },
+                "openai": {
+                    "id": "openai",
+                    "models": {
+                        "gpt-5.6-sol": {
+                            "id": "gpt-5.6-sol",
+                            "cost": {
+                                "input": 3,
+                                "output": 12,
+                                "cache_read": 0.3,
+                                "cache_write": 3.75,
+                                "context_over_200k": {
+                                    "input": 6,
+                                    "output": 18,
+                                    "cache_read": 0.6,
+                                    "cache_write": 7.5,
+                                },
+                            },
+                        },
+                        "gpt-future": {
+                            "id": "gpt-future",
+                            "cost": {"input": 4, "output": 16},
+                        },
+                    },
+                },
+            }
+        ).encode()
+
+    def test_fetches_models_dev_catalog_and_reuses_fresh_cache(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            cache_path = Path(directory) / "pricing.json"
+            now = datetime(2030, 1, 1, tzinfo=UTC)
+            fetcher = Mock(return_value=self._models_dev_payload())
+
+            fetched = chatgpt_usage.load_pricing_catalog(
+                cache_path, now=now, timeout=2, fetcher=fetcher
+            )
+            cached = chatgpt_usage.load_pricing_catalog(
+                cache_path,
+                now=now + timedelta(hours=23),
+                timeout=2,
+                fetcher=Mock(side_effect=AssertionError("不应刷新新鲜缓存")),
+            )
+
+            self.assertEqual(fetched.metadata.source, "models.dev")
+            self.assertFalse(fetched.metadata.stale)
+            self.assertEqual(cached.metadata.source, "models.dev_cache")
+            self.assertEqual(fetched.prices["gpt-future"].input_per_million, 4)
+            self.assertEqual(
+                fetched.prices["gpt-5.6-sol"].long_context_threshold, 272_000
+            )
+            self.assertEqual(fetched.prices["gpt-5.6-sol"].long_input_per_million, 6)
+            fetcher.assert_called_once()
+
+    def test_refresh_failure_uses_stale_cache_before_built_in_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            cache_path = Path(directory) / "pricing.json"
+            now = datetime(2030, 1, 1, tzinfo=UTC)
+            chatgpt_usage.load_pricing_catalog(
+                cache_path,
+                now=now,
+                timeout=2,
+                fetcher=Mock(return_value=self._models_dev_payload()),
+            )
+
+            stale = chatgpt_usage.load_pricing_catalog(
+                cache_path,
+                now=now + timedelta(hours=25),
+                timeout=2,
+                fetcher=Mock(side_effect=OSError("offline")),
+            )
+
+            self.assertEqual(stale.metadata.source, "models.dev_cache")
+            self.assertTrue(stale.metadata.stale)
+            self.assertIn("offline", stale.metadata.error or "")
+            self.assertIn("gpt-future", stale.prices)
+            self.assertIn("gpt-5.5", stale.prices)
+
+    def test_rejects_partial_catalog_and_uses_built_in_prices(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            partial = json.dumps(
+                {
+                    "openai": {
+                        "models": {
+                            "gpt-future": {
+                                "id": "gpt-future",
+                                "cost": {"input": 4, "output": 16},
+                            }
+                        }
+                    }
+                }
+            ).encode()
+
+            catalog = chatgpt_usage.load_pricing_catalog(
+                Path(directory) / "pricing.json",
+                now=datetime(2030, 1, 1, tzinfo=UTC),
+                timeout=2,
+                fetcher=Mock(return_value=partial),
+            )
+
+            self.assertEqual(catalog.metadata.source, "built_in")
+            self.assertIn("不完整", catalog.metadata.error or "")
+            self.assertNotIn("gpt-future", catalog.prices)
+
+
 class LocalUsageHistoryTests(unittest.TestCase):
+    @staticmethod
+    def _turn_context_line(timestamp: str, model: str) -> str:
+        return json.dumps(
+            {
+                "timestamp": timestamp,
+                "type": "turn_context",
+                "payload": {"model": model},
+            }
+        )
+
     def _token_count_line(
         self,
         timestamp: str,
@@ -436,6 +604,7 @@ class LocalUsageHistoryTests(unittest.TestCase):
             rollout.write_text(
                 "\n".join(
                     [
+                        self._turn_context_line("2029-12-31T11:59:00.000Z", "gpt-5.5"),
                         self._token_count_line(
                             "2029-12-31T12:00:00.000Z",
                             ordinal=0,
@@ -447,6 +616,9 @@ class LocalUsageHistoryTests(unittest.TestCase):
                             ordinal=1,
                             total=(100, 60, 10, 110),
                             last=(100, 60, 10, 110),
+                        ),
+                        self._turn_context_line(
+                            "2030-01-08T09:59:00.000Z", "gpt-5.6-sol"
                         ),
                         self._token_count_line(
                             "2030-01-08T10:00:00.000Z",
@@ -479,6 +651,11 @@ class LocalUsageHistoryTests(unittest.TestCase):
             self.assertEqual(
                 by_day[date(2030, 1, 8)].cache_hit_percent, 100 / 150 * 100
             )
+            self.assertEqual(
+                [usage.model for usage in by_day[date(2030, 1, 8)].models],
+                ["gpt-5.6-sol"],
+            )
+            self.assertGreater(by_day[date(2030, 1, 8)].estimated_cost_usd, 0)
             self.assertEqual(first.scan, chatgpt_usage.ScanStats(1, 0, 1, 0))
 
             second = chatgpt_usage.collect_usage_history(
@@ -510,6 +687,10 @@ class LocalUsageHistoryTests(unittest.TestCase):
             )
             by_day = {row.day: row for row in appended.days}
             self.assertEqual(by_day[date(2030, 1, 8)].total_tokens, 280)
+            self.assertEqual(
+                [usage.model for usage in by_day[date(2030, 1, 8)].models],
+                ["gpt-5.6-sol"],
+            )
             self.assertEqual(appended.scan, chatgpt_usage.ScanStats(1, 0, 0, 1))
 
             expanded = chatgpt_usage.collect_usage_history(
@@ -527,6 +708,112 @@ class LocalUsageHistoryTests(unittest.TestCase):
             self.assertNotIn(date(2029, 12, 31), by_day)
             self.assertEqual(by_day[date(2030, 1, 8)].total_tokens, 280)
             self.assertEqual(narrowed.scan, chatgpt_usage.ScanStats(1, 1, 0, 0))
+
+            report = chatgpt_usage._json_report([], now, narrowed)
+            latest = report["local_usage"]["days"][-1]
+            self.assertEqual(latest["models"][0]["model"], "gpt-5.6-sol")
+            self.assertGreater(latest["estimated_cost_usd"], 0)
+            self.assertEqual(
+                report["local_usage"]["pricing_basis"],
+                "current_standard_api_equivalent",
+            )
+            self.assertEqual(report["local_usage"]["pricing"]["source"], "built_in")
+            self.assertEqual(report["local_usage"]["pricing"]["fallback"], "built_in")
+
+    def test_rebuilds_an_older_usage_cache_schema(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cache_path = root / "cache" / "usage.duckdb"
+            cache_path.parent.mkdir(parents=True)
+            connection = chatgpt_usage.duckdb.connect(str(cache_path))
+            connection.execute(
+                """
+                CREATE TABLE usage_cache_metadata (
+                    key VARCHAR PRIMARY KEY, value VARCHAR NOT NULL
+                );
+                INSERT INTO usage_cache_metadata VALUES
+                    ('schema_version', '3'), ('coverage_days', '7'),
+                    ('timezone', 'UTC');
+                CREATE TABLE rollout_files (thread_id VARCHAR PRIMARY KEY);
+                CREATE TABLE token_usage_daily (
+                    thread_id VARCHAR, usage_date DATE
+                );
+                """
+            )
+            connection.close()
+
+            history = chatgpt_usage.collect_usage_history(
+                root / "codex", cache_path, now=datetime(2030, 1, 8, tzinfo=UTC)
+            )
+
+            self.assertEqual(history.total_tokens, 0)
+            connection = chatgpt_usage.duckdb.connect(str(cache_path))
+            columns = {
+                row[1]
+                for row in connection.execute(
+                    "PRAGMA table_info('token_usage_daily')"
+                ).fetchall()
+            }
+            version = connection.execute(
+                "SELECT value FROM usage_cache_metadata WHERE key = 'schema_version'"
+            ).fetchone()[0]
+            connection.close()
+            self.assertIn("model", columns)
+            self.assertNotIn("estimated_cost_usd", columns)
+            self.assertEqual(version, str(chatgpt_usage.USAGE_CACHE_SCHEMA_VERSION))
+
+    def test_reprices_cached_usage_without_rescanning_rollouts(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            codex_home = root / "codex"
+            active = codex_home / "sessions" / "2030" / "01" / "08"
+            active.mkdir(parents=True)
+            thread_id = "00000000-0000-0000-0000-000000000456"
+            rollout = active / f"rollout-2030-01-08T10-00-00-{thread_id}.jsonl"
+            rollout.write_text(
+                "\n".join(
+                    [
+                        self._turn_context_line(
+                            "2030-01-08T09:59:00.000Z", "gpt-future"
+                        ),
+                        self._token_count_line(
+                            "2030-01-08T10:00:00.000Z",
+                            ordinal=1,
+                            total=(1_000_000, 0, 1_000_000, 2_000_000),
+                            last=(1_000_000, 0, 1_000_000, 2_000_000),
+                        ),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            now = datetime(2030, 1, 8, 12, tzinfo=UTC)
+            os.utime(rollout, (now.timestamp(), now.timestamp()))
+            cache_path = root / "cache" / "usage.duckdb"
+
+            low = chatgpt_usage.PricingCatalog(
+                prices={"gpt-future": chatgpt_usage.ModelPricing(1, None, 2)},
+                metadata=chatgpt_usage.PricingMetadata(
+                    source="test", fetched_at=now, stale=False
+                ),
+            )
+            high = chatgpt_usage.PricingCatalog(
+                prices={"gpt-future": chatgpt_usage.ModelPricing(3, None, 4)},
+                metadata=chatgpt_usage.PricingMetadata(
+                    source="test", fetched_at=now, stale=False
+                ),
+            )
+
+            first = chatgpt_usage.collect_usage_history(
+                codex_home, cache_path, now=now, pricing_catalog=low
+            )
+            repriced = chatgpt_usage.collect_usage_history(
+                codex_home, cache_path, now=now, pricing_catalog=high
+            )
+
+            self.assertEqual(first.estimated_cost_usd, 3)
+            self.assertEqual(repriced.estimated_cost_usd, 7)
+            self.assertEqual(repriced.scan, chatgpt_usage.ScanStats(1, 1, 0, 0))
 
 
 class AppServerTests(unittest.TestCase):
@@ -563,8 +850,22 @@ class CliTests(unittest.TestCase):
             chatgpt_usage, "collect_usage_history", return_value=None
         )
         self.collect_history_mock = self.history_patcher.start()
+        self.pricing_patcher = patch.object(
+            chatgpt_usage,
+            "load_pricing_catalog",
+            return_value=chatgpt_usage.PricingCatalog(
+                prices=dict(chatgpt_usage.MODEL_PRICING),
+                metadata=chatgpt_usage.PricingMetadata(
+                    source="built_in",
+                    fetched_at=datetime(2030, 1, 1, tzinfo=UTC),
+                    stale=False,
+                ),
+            ),
+        )
+        self.pricing_patcher.start()
 
     def tearDown(self) -> None:
+        self.pricing_patcher.stop()
         self.history_patcher.stop()
 
     @patch.object(
