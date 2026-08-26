@@ -28,6 +28,7 @@ import threading
 import time
 import urllib.request
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from datetime import UTC, date, datetime, timedelta
 from html import escape
@@ -51,6 +52,8 @@ SVG_WIDTH = 1440
 IMAGE_SCALE = 2
 DEFAULT_IMAGE_WIDTH_RATIO = 1.0
 DEFAULT_HISTORY_DAYS = 7
+USAGE_EVENT_BATCH_SIZE = 2_048
+USAGE_SCAN_WORKERS = 4
 USAGE_CACHE_SCHEMA_VERSION = 6
 PRICING_UPDATED_AT = "2026-08-26"
 MODELS_DEV_URL = "https://models.dev/api.json"
@@ -62,6 +65,7 @@ THREAD_ID_PATTERN = re.compile(
     re.IGNORECASE,
 )
 TIMESTAMP_PATTERN = re.compile(rb'"timestamp"\s*:\s*"([^"]+)"')
+ROLLOUT_DATE_PATTERN = re.compile(r"rollout-(\d{4}-\d{2}-\d{2})T")
 console = Console()
 error_console = Console(stderr=True)
 app = typer.Typer(add_completion=False, no_args_is_help=False)
@@ -245,6 +249,17 @@ class _UsageEvent:
     model: str
     service_tier: str
     usage: tuple[int, int, int, int, int, int]
+
+
+@dataclass(frozen=True)
+class _RolloutScanJob:
+    """描述一个可独立并行处理的 rollout 扫描任务。"""
+
+    path: Path
+    thread_id: str
+    stat: os.stat_result
+    state: _RolloutState | None
+    can_append: bool
 
 
 def _jsonrpc_input() -> str:
@@ -1080,6 +1095,7 @@ def _parse_rollout_usage(
     current_service_tier: str,
     first_day: date,
     timezone: Any,
+    event_sink: Callable[[list[_UsageEvent]], None] | None = None,
 ) -> tuple[
     list[_UsageEvent],
     int,
@@ -1121,6 +1137,12 @@ def _parse_rollout_usage(
             )
             if event is not None:
                 events.append(event)
+                if event_sink is not None and len(events) >= USAGE_EVENT_BATCH_SIZE:
+                    event_sink(events)
+                    events = []
+    if event_sink is not None and events:
+        event_sink(events)
+        events = []
     return (
         events,
         parsed_bytes,
@@ -1227,6 +1249,7 @@ def _parse_rollout_usage_tail(
     thread_id: str,
     first_day: date,
     timezone: Any,
+    event_sink: Callable[[list[_UsageEvent]], None] | None = None,
 ) -> tuple[
     list[_UsageEvent],
     int,
@@ -1235,7 +1258,9 @@ def _parse_rollout_usage_tail(
     str,
 ]:
     """从文件尾部反向定位时间窗口，只解析窗口内的 TokenCount。"""
-    selected: list[tuple[int, bytes]] = []
+    scan_start = 0
+    initial_model = None
+    initial_service_tier = "standard"
     with path.open("rb") as file:
         if os.fstat(file.fileno()).st_size == 0:
             return [], 0, None, None, "standard"
@@ -1255,52 +1280,44 @@ def _parse_rollout_usage_tail(
                         match.group(1).decode("ascii", errors="ignore"), timezone
                     )
                     if timestamp is not None and timestamp.date() < first_day:
+                        if not crossed_boundary:
+                            scan_start = line_end + 1
                         crossed_boundary = True
-                is_turn_context = b"turn_context" in prefix
-                is_thread_settings = b"thread_settings_applied" in prefix
                 if crossed_boundary:
-                    if is_turn_context or is_thread_settings:
-                        selected.append((line_start, bytes(data[line_start:line_end])))
-                    if is_thread_settings:
+                    if b"turn_context" in prefix and initial_model is None:
+                        initial_model = _parse_turn_context_model(
+                            bytes(data[line_start:line_end])
+                        )
+                    if b"thread_settings_applied" in prefix:
+                        settings_model, settings_tier = _parse_thread_settings(
+                            bytes(data[line_start:line_end])
+                        )
+                        initial_model = initial_model or settings_model
+                        initial_service_tier = settings_tier or initial_service_tier
                         break
-                    position = line_start
-                    continue
-                if b"token_count" in prefix or is_turn_context or is_thread_settings:
-                    selected.append((line_start, bytes(data[line_start:line_end])))
                 position = line_start
-
-    events: list[_UsageEvent] = []
-    previous_total = None
-    current_model = None
-    current_service_tier = "standard"
-    for line_start, line in reversed(selected):
-        if b"thread_settings_applied" in line:
-            settings_model, settings_tier = _parse_thread_settings(line)
-            current_model = settings_model or current_model
-            current_service_tier = settings_tier or current_service_tier
-        if b"turn_context" in line:
-            current_model = _parse_turn_context_model(line) or current_model
-        if b"token_count" not in line:
-            continue
-        event, previous_total = _parse_usage_event(
-            line,
-            thread_id=thread_id,
-            line_start=line_start,
-            previous_total=previous_total,
-            model=current_model,
-            service_tier=current_service_tier,
-            first_day=first_day,
-            timezone=timezone,
-        )
-        if event is not None:
-            events.append(event)
-    return (
-        events,
-        parsed_bytes,
-        previous_total,
-        current_model,
-        current_service_tier,
+    return _parse_rollout_usage(
+        path,
+        thread_id=thread_id,
+        start_offset=scan_start,
+        previous_total=None,
+        current_model=initial_model,
+        current_service_tier=initial_service_tier,
+        first_day=first_day,
+        timezone=timezone,
+        event_sink=event_sink,
     )
+
+
+def _rollout_starts_within(path: Path, first_day: date) -> bool:
+    """判断 rollout 文件名记录的起始日期是否已位于索引窗口内。"""
+    match = ROLLOUT_DATE_PATTERN.search(path.name)
+    if match is None:
+        return False
+    try:
+        return date.fromisoformat(match.group(1)) >= first_day
+    except ValueError:
+        return False
 
 
 def _upsert_usage_events(
@@ -1327,6 +1344,144 @@ def _upsert_usage_events(
             for event in events
         ],
     )
+
+
+def _commit_usage_events(
+    connection: duckdb.DuckDBPyConnection, events: list[_UsageEvent]
+) -> None:
+    """提交固定大小的事件批次，限制 DuckDB 事务内存。"""
+    connection.execute("BEGIN TRANSACTION")
+    try:
+        _upsert_usage_events(connection, events)
+        connection.execute("COMMIT")
+    except Exception:
+        connection.execute("ROLLBACK")
+        raise
+
+
+def _reset_rollout_scan(
+    connection: duckdb.DuckDBPyConnection,
+    *,
+    thread_id: str,
+    path: Path,
+    stat: os.stat_result,
+) -> None:
+    """清空旧事件并留下未完成标记，使中断后的全量扫描可重试。"""
+    connection.execute("BEGIN TRANSACTION")
+    try:
+        connection.execute(
+            "DELETE FROM token_usage_events WHERE thread_id = ?", [thread_id]
+        )
+        _write_rollout_state(
+            connection,
+            thread_id,
+            path,
+            stat,
+            0,
+            None,
+            None,
+            "standard",
+        )
+        connection.execute("COMMIT")
+    except Exception:
+        connection.execute("ROLLBACK")
+        raise
+
+
+def _delete_rollout_state(
+    connection: duckdb.DuckDBPyConnection, thread_id: str
+) -> None:
+    """原子删除单个已消失 rollout 的事件与解析状态。"""
+    connection.execute("BEGIN TRANSACTION")
+    try:
+        connection.execute(
+            "DELETE FROM token_usage_events WHERE thread_id = ?", [thread_id]
+        )
+        connection.execute("DELETE FROM rollout_files WHERE thread_id = ?", [thread_id])
+        connection.execute("COMMIT")
+    except Exception:
+        connection.execute("ROLLBACK")
+        raise
+
+
+def _index_rollout_job(
+    connection: duckdb.DuckDBPyConnection,
+    job: _RolloutScanJob,
+    *,
+    first_day: date,
+    timezone: Any,
+) -> None:
+    """使用线程本地连接增量或全量索引一个 rollout。"""
+    local_connection = connection.cursor()
+    try:
+        if job.can_append:
+            if job.state is None:
+                raise RuntimeError("增量扫描缺少 rollout 状态")
+            start_offset = job.state.parsed_bytes
+            previous_total = job.state.last_total
+            current_model = job.state.last_model
+            current_service_tier = job.state.last_service_tier
+        else:
+            _reset_rollout_scan(
+                local_connection,
+                thread_id=job.thread_id,
+                path=job.path,
+                stat=job.stat,
+            )
+            start_offset = 0
+            previous_total = None
+            current_model = None
+            current_service_tier = "standard"
+
+        event_sink = lambda batch: _commit_usage_events(local_connection, batch)
+        try:
+            if job.can_append or _rollout_starts_within(job.path, first_day):
+                (
+                    _events,
+                    parsed_bytes,
+                    last_total,
+                    last_model,
+                    last_service_tier,
+                ) = _parse_rollout_usage(
+                    job.path,
+                    thread_id=job.thread_id,
+                    start_offset=start_offset,
+                    previous_total=previous_total,
+                    current_model=current_model,
+                    current_service_tier=current_service_tier,
+                    first_day=first_day,
+                    timezone=timezone,
+                    event_sink=event_sink,
+                )
+            else:
+                (
+                    _events,
+                    parsed_bytes,
+                    last_total,
+                    last_model,
+                    last_service_tier,
+                ) = _parse_rollout_usage_tail(
+                    job.path,
+                    thread_id=job.thread_id,
+                    first_day=first_day,
+                    timezone=timezone,
+                    event_sink=event_sink,
+                )
+        except FileNotFoundError:
+            return
+        current_stat = job.path.stat()
+        _write_rollout_state(
+            local_connection,
+            job.thread_id,
+            job.path,
+            current_stat,
+            parsed_bytes,
+            last_total,
+            last_model,
+            last_service_tier,
+        )
+    finally:
+        local_connection.close()
 
 
 def _rollout_paths(codex_home: Path) -> list[Path]:
@@ -1359,6 +1514,7 @@ def collect_usage_history(
     try:
         connection = duckdb.connect(str(cache_path))
         connection.execute("SET force_compression = 'zstd'")
+        connection.execute("SET preserve_insertion_order = false")
     except duckdb.Error as error:
         if "connection" in locals():
             connection.close()
@@ -1368,6 +1524,7 @@ def collect_usage_history(
     full_scans = 0
     incremental_scans = 0
     discovered: set[str] = set()
+    scan_jobs: list[_RolloutScanJob] = []
     try:
         coverage_days = _ensure_usage_cache(
             connection, days=days, timezone_name=str(timezone)
@@ -1376,7 +1533,6 @@ def collect_usage_history(
         first_timestamp = datetime.combine(
             index_first_day, datetime.min.time(), timezone
         ).timestamp()
-        connection.execute("BEGIN TRANSACTION")
         for path in paths:
             match = THREAD_ID_PATTERN.search(path.name)
             if match is None:
@@ -1435,76 +1591,50 @@ def collect_usage_history(
                 and stat.st_size > state.parsed_bytes
                 and stat.st_size >= state.size
                 and state.parsed_bytes <= state.size
+                and (state.parsed_bytes > 0 or state.size == 0)
             )
             if can_append:
-                start_offset = state.parsed_bytes
-                previous_total = state.last_total
                 incremental_scans += 1
             else:
                 full_scans += 1
-                connection.execute(
-                    "DELETE FROM token_usage_events WHERE thread_id = ?", [thread_id]
+            scan_jobs.append(
+                _RolloutScanJob(
+                    path=path,
+                    thread_id=thread_id,
+                    stat=stat,
+                    state=state,
+                    can_append=can_append,
                 )
-            try:
-                if can_append:
-                    (
-                        events,
-                        parsed_bytes,
-                        last_total,
-                        last_model,
-                        last_service_tier,
-                    ) = _parse_rollout_usage(
-                        path,
-                        thread_id=thread_id,
-                        start_offset=start_offset,
-                        previous_total=previous_total,
-                        current_model=state.last_model,
-                        current_service_tier=state.last_service_tier,
-                        first_day=index_first_day,
-                        timezone=timezone,
-                    )
-                else:
-                    (
-                        events,
-                        parsed_bytes,
-                        last_total,
-                        last_model,
-                        last_service_tier,
-                    ) = _parse_rollout_usage_tail(
-                        path,
-                        thread_id=thread_id,
-                        first_day=index_first_day,
-                        timezone=timezone,
-                    )
-            except FileNotFoundError:
-                continue
-            _upsert_usage_events(connection, events)
-            current_stat = path.stat()
-            _write_rollout_state(
-                connection,
-                thread_id,
-                path,
-                current_stat,
-                parsed_bytes,
-                last_total,
-                last_model,
-                last_service_tier,
             )
+
+        if scan_jobs:
+            worker_count = min(
+                USAGE_SCAN_WORKERS,
+                os.cpu_count() or 1,
+                len(scan_jobs),
+            )
+            with ThreadPoolExecutor(max_workers=worker_count) as executor:
+                futures = [
+                    executor.submit(
+                        _index_rollout_job,
+                        connection,
+                        job,
+                        first_day=index_first_day,
+                        timezone=timezone,
+                    )
+                    for job in scan_jobs
+                ]
+                for future in futures:
+                    future.result()
 
         for (thread_id,) in connection.execute(
             "SELECT thread_id FROM rollout_files"
         ).fetchall():
             if thread_id not in discovered:
-                connection.execute(
-                    "DELETE FROM token_usage_events WHERE thread_id = ?", [thread_id]
-                )
-                connection.execute(
-                    "DELETE FROM rollout_files WHERE thread_id = ?", [thread_id]
-                )
+                _delete_rollout_state(connection, thread_id)
         connection.execute(
             "DELETE FROM token_usage_events WHERE usage_date < ?", [index_first_day]
         )
-        connection.execute("COMMIT")
 
         rows = connection.execute(
             """

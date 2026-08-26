@@ -6,6 +6,7 @@ import json
 import os
 import sys
 import tempfile
+import threading
 import unittest
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -650,6 +651,83 @@ class LocalUsageHistoryTests(unittest.TestCase):
                 },
             }
         )
+
+    def test_keeps_completed_rollouts_when_a_later_scan_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            codex_home = root / "codex"
+            active = codex_home / "sessions" / "2030" / "01" / "08"
+            active.mkdir(parents=True)
+            thread_ids = [
+                "00000000-0000-0000-0000-000000000001",
+                "00000000-0000-0000-0000-000000000002",
+            ]
+            for ordinal, thread_id in enumerate(thread_ids, start=1):
+                rollout = (
+                    active / f"rollout-2030-01-08T10-00-0{ordinal}-{thread_id}.jsonl"
+                )
+                rollout.write_text(
+                    self._token_count_line(
+                        "2030-01-08T10:00:00.000Z",
+                        ordinal=ordinal,
+                        total=(100, 50, 10, 110),
+                        last=(100, 50, 10, 110),
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                scan_now = datetime(2030, 1, 8, 12, tzinfo=UTC)
+                os.utime(rollout, (scan_now.timestamp(), scan_now.timestamp()))
+
+            original_parser = chatgpt_usage._parse_rollout_usage
+            first_completed = threading.Event()
+
+            def fail_second_rollout(path: Path, **kwargs):
+                if thread_ids[1] in path.name:
+                    self.assertTrue(first_completed.wait(timeout=5))
+                    raise OSError("simulated scan failure")
+                result = original_parser(path, **kwargs)
+                first_completed.set()
+                return result
+
+            cache_path = root / "cache" / "usage.duckdb"
+            with (
+                patch.object(
+                    chatgpt_usage,
+                    "_parse_rollout_usage",
+                    side_effect=fail_second_rollout,
+                ),
+                self.assertRaises(chatgpt_usage.UsageError),
+            ):
+                chatgpt_usage.collect_usage_history(
+                    codex_home,
+                    cache_path,
+                    now=scan_now,
+                )
+
+            connection = chatgpt_usage.duckdb.connect(str(cache_path))
+            try:
+                indexed_threads = connection.execute(
+                    "SELECT thread_id, parsed_bytes FROM rollout_files ORDER BY thread_id"
+                ).fetchall()
+                event_threads = connection.execute(
+                    "SELECT DISTINCT thread_id FROM token_usage_events ORDER BY thread_id"
+                ).fetchall()
+            finally:
+                connection.close()
+            self.assertGreater(indexed_threads[0][1], 0)
+            self.assertEqual(indexed_threads[0][0], thread_ids[0])
+            self.assertEqual(indexed_threads[1], (thread_ids[1], 0))
+            self.assertEqual(event_threads, [(thread_ids[0],)])
+
+            recovered = chatgpt_usage.collect_usage_history(
+                codex_home,
+                cache_path,
+                now=scan_now,
+            )
+
+            self.assertEqual(recovered.days[-1].total_tokens, 220)
+            self.assertEqual(recovered.scan, chatgpt_usage.ScanStats(2, 1, 1, 0))
 
     def test_incrementally_indexes_active_and_archived_rollouts(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
