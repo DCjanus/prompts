@@ -51,8 +51,8 @@ SVG_WIDTH = 1440
 IMAGE_SCALE = 2
 DEFAULT_IMAGE_WIDTH_RATIO = 1.0
 DEFAULT_HISTORY_DAYS = 7
-USAGE_CACHE_SCHEMA_VERSION = 5
-PRICING_UPDATED_AT = "2026-08-25"
+USAGE_CACHE_SCHEMA_VERSION = 6
+PRICING_UPDATED_AT = "2026-08-26"
 MODELS_DEV_URL = "https://models.dev/api.json"
 PRICING_CACHE_VERSION = 1
 PRICING_CACHE_TTL = timedelta(hours=24)
@@ -149,6 +149,8 @@ class ModelTokenUsage:
     reasoning_output_tokens: int
     total_tokens: int
     estimated_cost_usd: float | None
+    fast_tokens: int = 0
+    non_fast_tokens: int = 0
 
 
 @dataclass(frozen=True)
@@ -230,6 +232,7 @@ class _RolloutState:
     parsed_bytes: int
     last_total: tuple[int, int, int, int, int, int] | None
     last_model: str | None
+    last_service_tier: str
 
 
 @dataclass(frozen=True)
@@ -240,6 +243,7 @@ class _UsageEvent:
     event_key: str
     day: date
     model: str
+    service_tier: str
     usage: tuple[int, int, int, int, int, int]
 
 
@@ -518,39 +522,41 @@ MODEL_PRICING: dict[str, ModelPricing] = {
     ),
     "gpt-5.5-pro": ModelPricing(30.0, None, 180.0),
     "gpt-5.6-sol": ModelPricing(
+        4.0,
+        0.4,
+        20.0,
+        cache_write_per_million=5.0,
+        long_context_threshold=272_000,
+        long_input_per_million=8.0,
+        long_cached_input_per_million=0.8,
+        long_output_per_million=30.0,
+        long_cache_write_per_million=10.0,
+    ),
+    "gpt-5.6-terra": ModelPricing(
         2.0,
         0.2,
-        10.0,
+        12.0,
         cache_write_per_million=2.5,
         long_context_threshold=272_000,
         long_input_per_million=4.0,
         long_cached_input_per_million=0.4,
-        long_output_per_million=15.0,
+        long_output_per_million=18.0,
         long_cache_write_per_million=5.0,
     ),
-    "gpt-5.6-terra": ModelPricing(
-        1.0,
-        0.1,
-        6.0,
-        cache_write_per_million=1.25,
-        long_context_threshold=272_000,
-        long_input_per_million=2.0,
-        long_cached_input_per_million=0.2,
-        long_output_per_million=9.0,
-        long_cache_write_per_million=2.5,
-    ),
     "gpt-5.6-luna": ModelPricing(
-        0.1,
-        0.01,
-        0.6,
-        cache_write_per_million=0.125,
+        0.2,
+        0.02,
+        1.2,
+        cache_write_per_million=0.25,
         long_context_threshold=272_000,
-        long_input_per_million=0.2,
-        long_cached_input_per_million=0.02,
-        long_output_per_million=0.9,
-        long_cache_write_per_million=0.25,
+        long_input_per_million=0.4,
+        long_cached_input_per_million=0.04,
+        long_output_per_million=1.8,
+        long_cache_write_per_million=0.5,
     ),
 }
+
+FAST_PRICE_MULTIPLIERS = {"gpt-5.6-sol": 2.0}
 
 
 def _price_number(value: Any) -> float | None:
@@ -776,6 +782,18 @@ def _normalize_model(raw: str | None) -> str:
     return base if base in MODEL_PRICING else model
 
 
+def _normalize_service_tier(raw: str | None) -> str:
+    """把 Codex 的 service tier 归一化为稳定的用量维度。"""
+    if not raw:
+        return "standard"
+    tier = raw.strip().lower()
+    if tier in {"fast", "priority"}:
+        return "fast"
+    if tier in {"default", "auto", "standard"}:
+        return "standard"
+    return tier
+
+
 def estimate_api_cost(
     model: str,
     *,
@@ -783,9 +801,10 @@ def estimate_api_cost(
     cached_input_tokens: int,
     cache_write_input_tokens: int,
     output_tokens: int,
+    service_tier: str = "standard",
     prices: dict[str, ModelPricing] | None = None,
 ) -> float | None:
-    """按当前标准 API 单价估算一次用量的美元成本。"""
+    """按当前 API 单价估算单次请求的美元成本。"""
     catalog = MODEL_PRICING if prices is None else prices
     normalized = _normalize_model(model)
     candidates = [normalized]
@@ -848,12 +867,15 @@ def estimate_api_cost(
             else input_rate
         )
         output_rate = pricing.output_per_million
-    return (
+    cost = (
         uncached * input_rate
         + cached * cached_rate
         + cache_write * cache_write_rate
         + max(0, output_tokens) * output_rate
     ) / 1_000_000
+    if _normalize_service_tier(service_tier) == "fast":
+        cost *= FAST_PRICE_MULTIPLIERS.get(normalized, 1.0)
+    return cost
 
 
 def _usage_contribution(
@@ -900,19 +922,22 @@ def _create_usage_tables(connection: duckdb.DuckDBPyConnection) -> None:
             last_output BIGINT,
             last_reasoning_output BIGINT,
             last_total BIGINT,
-            last_model VARCHAR
+            last_model VARCHAR,
+            last_service_tier VARCHAR NOT NULL
         );
-        CREATE TABLE IF NOT EXISTS token_usage_daily (
+        CREATE TABLE IF NOT EXISTS token_usage_events (
             thread_id VARCHAR NOT NULL,
+            event_key VARCHAR NOT NULL,
             usage_date DATE NOT NULL,
             model VARCHAR NOT NULL,
+            service_tier VARCHAR NOT NULL,
             input_tokens BIGINT NOT NULL,
             cached_input_tokens BIGINT NOT NULL,
             cache_write_input_tokens BIGINT NOT NULL,
             output_tokens BIGINT NOT NULL,
             reasoning_output_tokens BIGINT NOT NULL,
             total_tokens BIGINT NOT NULL,
-            PRIMARY KEY (thread_id, usage_date, model)
+            PRIMARY KEY (thread_id, event_key)
         );
         """
     )
@@ -948,12 +973,13 @@ def _ensure_usage_cache(
     if needs_rebuild:
         coverage_days = days
         connection.execute("DROP TABLE rollout_files")
-        connection.execute("DROP TABLE token_usage_daily")
+        connection.execute("DROP TABLE IF EXISTS token_usage_daily")
+        connection.execute("DROP TABLE token_usage_events")
         _create_usage_tables(connection)
     elif needs_expansion:
         coverage_days = days
         connection.execute("DELETE FROM rollout_files")
-        connection.execute("DELETE FROM token_usage_daily")
+        connection.execute("DELETE FROM token_usage_events")
     if needs_rebuild or needs_expansion:
         connection.execute("DELETE FROM usage_cache_metadata")
         connection.executemany(
@@ -975,7 +1001,8 @@ def _read_rollout_state(
         """
         SELECT path, device, inode, size, mtime_ns, parsed_bytes,
                last_input, last_cached_input, last_cache_write_input,
-               last_output, last_reasoning_output, last_total, last_model
+               last_output, last_reasoning_output, last_total, last_model,
+               last_service_tier
         FROM rollout_files
         WHERE thread_id = ?
         """,
@@ -993,6 +1020,7 @@ def _read_rollout_state(
         parsed_bytes=int(row[5]),
         last_total=last_total,
         last_model=str(row[12]) if row[12] is not None else None,
+        last_service_tier=_normalize_service_tier(str(row[13])),
     )
 
 
@@ -1004,12 +1032,13 @@ def _write_rollout_state(
     parsed_bytes: int,
     last_total: tuple[int, int, int, int, int, int] | None,
     last_model: str | None,
+    last_service_tier: str,
 ) -> None:
     """持久化单个 Thread 的解析位点。"""
     values: tuple[int | None, ...] = last_total or (None,) * 6
     connection.execute(
         """
-        INSERT INTO rollout_files VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO rollout_files VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (thread_id) DO UPDATE SET
             path = excluded.path,
             device = excluded.device,
@@ -1023,7 +1052,8 @@ def _write_rollout_state(
             last_output = excluded.last_output,
             last_reasoning_output = excluded.last_reasoning_output,
             last_total = excluded.last_total,
-            last_model = excluded.last_model
+            last_model = excluded.last_model,
+            last_service_tier = excluded.last_service_tier
         """,
         [
             thread_id,
@@ -1035,6 +1065,7 @@ def _write_rollout_state(
             parsed_bytes,
             *values,
             last_model,
+            _normalize_service_tier(last_service_tier),
         ],
     )
 
@@ -1046,10 +1077,15 @@ def _parse_rollout_usage(
     start_offset: int,
     previous_total: tuple[int, int, int, int, int, int] | None,
     current_model: str | None,
+    current_service_tier: str,
     first_day: date,
     timezone: Any,
 ) -> tuple[
-    list[_UsageEvent], int, tuple[int, int, int, int, int, int] | None, str | None
+    list[_UsageEvent],
+    int,
+    tuple[int, int, int, int, int, int] | None,
+    str | None,
+    str,
 ]:
     """从指定字节位点解析 TokenCount 增量。"""
     events: list[_UsageEvent] = []
@@ -1065,6 +1101,10 @@ def _parse_rollout_usage(
                 parsed_bytes = line_start
                 break
             parsed_bytes = file.tell()
+            if b"thread_settings_applied" in line:
+                settings_model, settings_tier = _parse_thread_settings(line)
+                current_model = settings_model or current_model
+                current_service_tier = settings_tier or current_service_tier
             if b"turn_context" in line:
                 current_model = _parse_turn_context_model(line) or current_model
             if b"token_count" not in line:
@@ -1075,12 +1115,19 @@ def _parse_rollout_usage(
                 line_start=line_start,
                 previous_total=previous_total,
                 model=current_model,
+                service_tier=current_service_tier,
                 first_day=first_day,
                 timezone=timezone,
             )
             if event is not None:
                 events.append(event)
-    return events, parsed_bytes, previous_total, current_model
+    return (
+        events,
+        parsed_bytes,
+        previous_total,
+        current_model,
+        _normalize_service_tier(current_service_tier),
+    )
 
 
 def _parse_turn_context_model(line: bytes) -> str | None:
@@ -1096,6 +1143,31 @@ def _parse_turn_context_model(line: bytes) -> str | None:
     return _normalize_model(model) if isinstance(model, str) else None
 
 
+def _parse_thread_settings(line: bytes) -> tuple[str | None, str | None]:
+    """从 thread_settings_applied 记录提取模型和 service tier。"""
+    try:
+        item = json.loads(line)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None, None
+    payload = item.get("payload") if isinstance(item, dict) else None
+    if (
+        not isinstance(payload, dict)
+        or payload.get("type") != "thread_settings_applied"
+    ):
+        return None, None
+    settings = payload.get("thread_settings")
+    if not isinstance(settings, dict):
+        return None, None
+    model = settings.get("model")
+    service_tier = settings.get("service_tier")
+    return (
+        _normalize_model(model) if isinstance(model, str) else None,
+        _normalize_service_tier(service_tier)
+        if isinstance(service_tier, str)
+        else None,
+    )
+
+
 def _parse_usage_event(
     line: bytes,
     *,
@@ -1103,6 +1175,7 @@ def _parse_usage_event(
     line_start: int,
     previous_total: tuple[int, int, int, int, int, int] | None,
     model: str | None,
+    service_tier: str,
     first_day: date,
     timezone: Any,
 ) -> tuple[
@@ -1141,6 +1214,7 @@ def _parse_usage_event(
             event_key=event_key,
             day=timestamp.date(),
             model=normalized_model,
+            service_tier=_normalize_service_tier(service_tier),
             usage=contribution,
         ),
         current,
@@ -1154,13 +1228,17 @@ def _parse_rollout_usage_tail(
     first_day: date,
     timezone: Any,
 ) -> tuple[
-    list[_UsageEvent], int, tuple[int, int, int, int, int, int] | None, str | None
+    list[_UsageEvent],
+    int,
+    tuple[int, int, int, int, int, int] | None,
+    str | None,
+    str,
 ]:
     """从文件尾部反向定位时间窗口，只解析窗口内的 TokenCount。"""
     selected: list[tuple[int, bytes]] = []
     with path.open("rb") as file:
         if os.fstat(file.fileno()).st_size == 0:
-            return [], 0, None
+            return [], 0, None, None, "standard"
         with mmap.mmap(file.fileno(), 0, access=mmap.ACCESS_READ) as data:
             final_newline = data.rfind(b"\n")
             parsed_bytes = final_newline + 1
@@ -1179,20 +1257,27 @@ def _parse_rollout_usage_tail(
                     if timestamp is not None and timestamp.date() < first_day:
                         crossed_boundary = True
                 is_turn_context = b"turn_context" in prefix
+                is_thread_settings = b"thread_settings_applied" in prefix
                 if crossed_boundary:
-                    if is_turn_context:
+                    if is_turn_context or is_thread_settings:
                         selected.append((line_start, bytes(data[line_start:line_end])))
+                    if is_thread_settings:
                         break
                     position = line_start
                     continue
-                if b"token_count" in prefix or is_turn_context:
+                if b"token_count" in prefix or is_turn_context or is_thread_settings:
                     selected.append((line_start, bytes(data[line_start:line_end])))
                 position = line_start
 
     events: list[_UsageEvent] = []
     previous_total = None
     current_model = None
+    current_service_tier = "standard"
     for line_start, line in reversed(selected):
+        if b"thread_settings_applied" in line:
+            settings_model, settings_tier = _parse_thread_settings(line)
+            current_model = settings_model or current_model
+            current_service_tier = settings_tier or current_service_tier
         if b"turn_context" in line:
             current_model = _parse_turn_context_model(line) or current_model
         if b"token_count" not in line:
@@ -1203,44 +1288,43 @@ def _parse_rollout_usage_tail(
             line_start=line_start,
             previous_total=previous_total,
             model=current_model,
+            service_tier=current_service_tier,
             first_day=first_day,
             timezone=timezone,
         )
         if event is not None:
             events.append(event)
-    return events, parsed_bytes, previous_total, current_model
+    return (
+        events,
+        parsed_bytes,
+        previous_total,
+        current_model,
+        current_service_tier,
+    )
 
 
 def _upsert_usage_events(
     connection: duckdb.DuckDBPyConnection,
     events: list[_UsageEvent],
 ) -> None:
-    """按 Thread 和日期聚合后批量写入 Token 增量。"""
+    """按事件批量写入 Token 增量，保留逐请求定价所需维度。"""
     if not events:
         return
-    daily: dict[tuple[date, str], list[int]] = {}
-    for event in events:
-        key = (event.day, event.model)
-        totals = daily.setdefault(key, [0] * 6)
-        for index, value in enumerate(event.usage):
-            totals[index] += value
     connection.executemany(
         """
-        INSERT INTO token_usage_daily VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT (thread_id, usage_date, model) DO UPDATE SET
-            input_tokens = token_usage_daily.input_tokens + excluded.input_tokens,
-            cached_input_tokens = token_usage_daily.cached_input_tokens
-                + excluded.cached_input_tokens,
-            cache_write_input_tokens = token_usage_daily.cache_write_input_tokens
-                + excluded.cache_write_input_tokens,
-            output_tokens = token_usage_daily.output_tokens + excluded.output_tokens,
-            reasoning_output_tokens = token_usage_daily.reasoning_output_tokens
-                + excluded.reasoning_output_tokens,
-            total_tokens = token_usage_daily.total_tokens + excluded.total_tokens
+        INSERT INTO token_usage_events VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (thread_id, event_key) DO NOTHING
         """,
         [
-            (events[0].thread_id, usage_date, model, *usage)
-            for (usage_date, model), usage in daily.items()
+            (
+                event.thread_id,
+                event.event_key,
+                event.day,
+                event.model,
+                event.service_tier,
+                *event.usage,
+            )
+            for event in events
         ],
     )
 
@@ -1327,13 +1411,21 @@ def collect_usage_history(
                         state.parsed_bytes,
                         state.last_total,
                         state.last_model,
+                        state.last_service_tier,
                     )
                 continue
 
             if state is None and stat.st_mtime < first_timestamp:
                 cache_hits += 1
                 _write_rollout_state(
-                    connection, thread_id, path, stat, stat.st_size, None, None
+                    connection,
+                    thread_id,
+                    path,
+                    stat,
+                    stat.st_size,
+                    None,
+                    None,
+                    "standard",
                 )
                 continue
 
@@ -1351,27 +1443,38 @@ def collect_usage_history(
             else:
                 full_scans += 1
                 connection.execute(
-                    "DELETE FROM token_usage_daily WHERE thread_id = ?", [thread_id]
+                    "DELETE FROM token_usage_events WHERE thread_id = ?", [thread_id]
                 )
             try:
                 if can_append:
-                    events, parsed_bytes, last_total, last_model = _parse_rollout_usage(
+                    (
+                        events,
+                        parsed_bytes,
+                        last_total,
+                        last_model,
+                        last_service_tier,
+                    ) = _parse_rollout_usage(
                         path,
                         thread_id=thread_id,
                         start_offset=start_offset,
                         previous_total=previous_total,
                         current_model=state.last_model,
+                        current_service_tier=state.last_service_tier,
                         first_day=index_first_day,
                         timezone=timezone,
                     )
                 else:
-                    events, parsed_bytes, last_total, last_model = (
-                        _parse_rollout_usage_tail(
-                            path,
-                            thread_id=thread_id,
-                            first_day=index_first_day,
-                            timezone=timezone,
-                        )
+                    (
+                        events,
+                        parsed_bytes,
+                        last_total,
+                        last_model,
+                        last_service_tier,
+                    ) = _parse_rollout_usage_tail(
+                        path,
+                        thread_id=thread_id,
+                        first_day=index_first_day,
+                        timezone=timezone,
                     )
             except FileNotFoundError:
                 continue
@@ -1385,6 +1488,7 @@ def collect_usage_history(
                 parsed_bytes,
                 last_total,
                 last_model,
+                last_service_tier,
             )
 
         for (thread_id,) in connection.execute(
@@ -1392,13 +1496,13 @@ def collect_usage_history(
         ).fetchall():
             if thread_id not in discovered:
                 connection.execute(
-                    "DELETE FROM token_usage_daily WHERE thread_id = ?", [thread_id]
+                    "DELETE FROM token_usage_events WHERE thread_id = ?", [thread_id]
                 )
                 connection.execute(
                     "DELETE FROM rollout_files WHERE thread_id = ?", [thread_id]
                 )
         connection.execute(
-            "DELETE FROM token_usage_daily WHERE usage_date < ?", [index_first_day]
+            "DELETE FROM token_usage_events WHERE usage_date < ?", [index_first_day]
         )
         connection.execute("COMMIT")
 
@@ -1406,16 +1510,16 @@ def collect_usage_history(
             """
             SELECT usage_date,
                    model,
-                   SUM(input_tokens),
-                   SUM(cached_input_tokens),
-                   SUM(cache_write_input_tokens),
-                   SUM(output_tokens),
-                   SUM(reasoning_output_tokens),
-                   SUM(total_tokens)
-            FROM token_usage_daily
+                   service_tier,
+                   input_tokens,
+                   cached_input_tokens,
+                   cache_write_input_tokens,
+                   output_tokens,
+                   reasoning_output_tokens,
+                   total_tokens
+            FROM token_usage_events
             WHERE usage_date BETWEEN ? AND ?
-            GROUP BY usage_date, model
-            ORDER BY usage_date, model
+            ORDER BY usage_date, model, event_key
             """,
             [display_first_day, local_now.date()],
         ).fetchall()
@@ -1428,7 +1532,6 @@ def collect_usage_history(
     finally:
         connection.close()
 
-    models_by_day: dict[date, list[ModelTokenUsage]] = {}
     resolved_pricing = pricing_catalog or PricingCatalog(
         dict(MODEL_PRICING),
         PricingMetadata(
@@ -1437,25 +1540,47 @@ def collect_usage_history(
             False,
         ),
     )
+    totals_by_model: dict[tuple[date, str], list[int]] = {}
+    tier_tokens_by_model: dict[tuple[date, str], list[int]] = {}
+    costs_by_model: dict[tuple[date, str], float | None] = {}
     for row in rows:
+        key = (row[0], str(row[1]))
+        usage = [int(value) for value in row[3:9]]
+        totals = totals_by_model.setdefault(key, [0] * 6)
+        for index, value in enumerate(usage):
+            totals[index] += value
+        tier_tokens = tier_tokens_by_model.setdefault(key, [0, 0])
+        tier_index = 0 if _normalize_service_tier(str(row[2])) == "fast" else 1
+        tier_tokens[tier_index] += usage[-1]
         cost = estimate_api_cost(
             str(row[1]),
-            input_tokens=int(row[2]),
-            cached_input_tokens=int(row[3]),
-            cache_write_input_tokens=int(row[4]),
-            output_tokens=int(row[5]),
+            input_tokens=usage[0],
+            cached_input_tokens=usage[1],
+            cache_write_input_tokens=usage[2],
+            output_tokens=usage[3],
+            service_tier=str(row[2]),
             prices=resolved_pricing.prices,
         )
-        models_by_day.setdefault(row[0], []).append(
+        previous_cost = costs_by_model.get(key, 0.0)
+        costs_by_model[key] = (
+            None if cost is None or previous_cost is None else previous_cost + cost
+        )
+
+    models_by_day: dict[date, list[ModelTokenUsage]] = {}
+    for (usage_day, model), usage in sorted(totals_by_model.items()):
+        fast_tokens, non_fast_tokens = tier_tokens_by_model[(usage_day, model)]
+        models_by_day.setdefault(usage_day, []).append(
             ModelTokenUsage(
-                model=str(row[1]),
-                input_tokens=int(row[2]),
-                cached_input_tokens=int(row[3]),
-                cache_write_input_tokens=int(row[4]),
-                output_tokens=int(row[5]),
-                reasoning_output_tokens=int(row[6]),
-                total_tokens=int(row[7]),
-                estimated_cost_usd=cost,
+                model=model,
+                input_tokens=usage[0],
+                cached_input_tokens=usage[1],
+                cache_write_input_tokens=usage[2],
+                output_tokens=usage[3],
+                reasoning_output_tokens=usage[4],
+                total_tokens=usage[5],
+                estimated_cost_usd=costs_by_model[(usage_day, model)],
+                fast_tokens=fast_tokens,
+                non_fast_tokens=non_fast_tokens,
             )
         )
     usage_by_day = {}
@@ -1504,10 +1629,11 @@ def calculate_progress(window: UsageWindow, now: datetime) -> WindowProgress:
     remaining_seconds = max(0.0, window.resets_at - now.timestamp())
     duration_seconds = window.duration_minutes * 60
     time_remaining = max(0.0, min(100.0, remaining_seconds / duration_seconds * 100))
+    pace_delta = quota_remaining - time_remaining
     return WindowProgress(
         quota_remaining_percent=quota_remaining,
         time_remaining_percent=time_remaining,
-        pace_delta=quota_remaining - time_remaining,
+        pace_delta=pace_delta,
         remaining_seconds=remaining_seconds,
     )
 
@@ -1538,6 +1664,26 @@ def _remaining_text(seconds: float | None) -> str:
     if (minutes and not days) or not parts:
         parts.append(f"{minutes}分钟")
     return "".join(parts)
+
+
+def _catch_up_seconds(window: UsageWindow, progress: WindowProgress) -> float | None:
+    """返回暂停使用后额度进度与时间持平所需秒数。"""
+    if (
+        window.duration_minutes is None
+        or progress.pace_delta is None
+        or progress.pace_delta >= 0
+    ):
+        return None
+    return -progress.pace_delta / 100 * window.duration_minutes * 60
+
+
+def _catch_up_text(window: UsageWindow, progress: WindowProgress) -> str | None:
+    """格式化暂停使用后额度进度与时间持平的提示。"""
+    catch_up_seconds = _catch_up_seconds(window, progress)
+    if catch_up_seconds is None or catch_up_seconds <= 0:
+        return None
+    rounded_seconds = max(60, ceil(catch_up_seconds / 60) * 60)
+    return f"休息约{_remaining_text(rounded_seconds)}后持平"
 
 
 def _bar(percent: float, color: str) -> ProgressBar:
@@ -1689,6 +1835,8 @@ def render_usage(
             quota_summary.append_text(
                 _pace_text(progress.pace_delta, window.duration_minutes)
             )
+            if catch_up_text := _catch_up_text(window, progress):
+                quota_summary.append(f"\n{catch_up_text}", style="bright_red")
             quota_row: list[Any] = [
                 label,
                 "额度",
@@ -1965,6 +2113,7 @@ def _render_compact_usage_svg(
             relation, pace_color = _svg_relation(
                 progress.pace_delta, window.duration_minutes
             )
+            relation = _catch_up_text(window, progress) or relation
             track_x = margin + 190
             track_width = 650
             quota_x = track_x + track_width * progress.quota_remaining_percent / 100
@@ -2128,6 +2277,7 @@ def render_usage_svg(
             relation_text, pace_color = _svg_relation(
                 progress.pace_delta, window.duration_minutes
             )
+            relation_text = _catch_up_text(window, progress) or relation_text
             rail_x = panel_x + 112
             rail_width = panel_width - 176
             badge_width = min(220, panel_width * 0.55)
