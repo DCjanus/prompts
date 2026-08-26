@@ -69,7 +69,7 @@ notification_method = "bel"
   - [`script_deps.py`](scripts/script_deps.py)：检查或升级仓库内 PEP 723 / uv script 依赖声明，对比 PyPI 最新版本，并在 GitHub Actions 中报告依赖下限落后或声明不一致
   - [`upstream_skills.py`](scripts/upstream_skills.py)：根据 [`upstream-skills.toml`](upstream-skills.toml) 检查第三方 skill 的上游目录是否出现新 commit；优先使用 CI 的 `GITHUB_TOKEN`，本地回退到已登录的 `gh`，并在 stderr 输出凭据来源；发现变更或查询失败时返回非 0，并写入 GitHub Actions summary
 
-额度看板会结合 TTY 状态与 Ghostty、Kitty 等终端标识自动选择图片模式；图片渲染失败时自动回退到原有 Rich 文本界面。默认省略低使用频率的 Codex Spark 额度桶，`--verbose` 仍可查看服务端返回的完整额度与本地索引命中情况；额度消耗快于时间进度时，还会提示预计休息多久可以恢复持平。本地用量索引默认保存在系统缓存目录，DuckDB 数据使用 zstd 压缩；归档 rename 只更新路径，未变化的 Thread 不重扫，追加内容只解析新增字节。`--history-days` 可选择 1–365 天，默认 7 天；缓存覆盖范围只扩不缩，首次请求更长范围时补建一次，之后切回较短范围不会重复扫描。
+额度看板会结合 TTY 状态与 Ghostty、Kitty 等终端标识自动选择图片模式；图片渲染失败时自动回退到原有 Rich 文本界面。默认省略低使用频率的 Codex Spark 额度桶，`--verbose` 仍可查看服务端返回的完整额度与本地索引命中情况；额度消耗快于时间进度时，还会提示预计休息多久可以恢复持平。本地用量索引默认保存在系统缓存目录，DuckDB 数据使用 zstd 压缩；归档 rename 只更新路径，未变化的 Thread 不重扫，追加内容只解析新增字节。首次建索引时会在有界线程池中按 Thread 并行扫描，并按固定大小事件批次提交；中断后只重建未完成的 Thread，不会用一个覆盖全部历史的大事务占满内存。`--history-days` 可选择 1–365 天，默认 7 天；缓存覆盖范围只扩不缩，首次请求更长范围时补建一次，之后切回较短范围不会重复扫描。
 
 金额是根据本地 rollout 中记录的模型、service tier、普通输入、缓存命中、缓存写入和输出 Token，按当前 OpenAI API 单价计算出的等价成本；它用于比较用量价值，不代表 ChatGPT/Codex 订阅的实际账单。脚本优先从 [models.dev](https://models.dev/) 更新价格目录并缓存 24 小时，响应不完整或网络不可用时会依次使用过期缓存和内置价格，因此离线运行不会影响 Token 统计。每次展示时都会用当前价格重算已缓存的逐请求 Token 事实，价格更新不需要重新扫描 rollout；`priority` / Fast 请求在官方已公布价格时会应用对应费率，`--json` 同时区分 Fast 与非 Fast Token。单次请求输入超过 272K Token 时，对已公布长上下文价格的模型按整次请求的长上下文单价估算；未知模型不会套用猜测价格，JSON 输出会保留对应模型明细与未估价 Token 数。
 
