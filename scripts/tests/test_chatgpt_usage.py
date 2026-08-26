@@ -83,6 +83,20 @@ class ParseRateLimitsTests(unittest.TestCase):
         self.assertEqual(progress.quota_remaining_percent, 75)
         self.assertEqual(progress.time_remaining_percent, 50)
         self.assertEqual(progress.pace_delta, 25)
+        self.assertIsNone(chatgpt_usage._catch_up_seconds(window, progress))
+
+    def test_calculates_rest_time_until_usage_catches_up_with_time(self) -> None:
+        now = datetime(2030, 1, 1, tzinfo=UTC)
+        window = chatgpt_usage.UsageWindow(
+            used_percent=75,
+            duration_minutes=300,
+            resets_at=int(now.timestamp()) + 150 * 60,
+        )
+
+        progress = chatgpt_usage.calculate_progress(window, now)
+
+        self.assertEqual(progress.pace_delta, -25)
+        self.assertEqual(chatgpt_usage._catch_up_seconds(window, progress), 75 * 60)
 
 
 class RenderUsageTests(unittest.TestCase):
@@ -149,6 +163,26 @@ class RenderUsageTests(unittest.TestCase):
         self.assertIn("偏慢 +25.0pp", output)
         self.assertEqual(output.count("偏慢 +25.0pp"), 1)
         self.assertIn("重置", output)
+
+    def test_fast_usage_shows_rest_time_until_pace_is_even(self) -> None:
+        fast_bucket = chatgpt_usage.LimitBucket(
+            limit_id="codex_internal",
+            name="Codex",
+            plan_type="pro",
+            windows=(
+                chatgpt_usage.UsageWindow(
+                    used_percent=75,
+                    duration_minutes=300,
+                    resets_at=int(self.now.timestamp()) + 150 * 60,
+                ),
+            ),
+        )
+
+        chatgpt_usage.render_usage([fast_bucket], self.now, verbose=False)
+        svg = chatgpt_usage.render_usage_svg([fast_bucket], self.now, verbose=False)
+
+        self.assertIn("休息约1小时15分钟后持平", self.output.getvalue())
+        self.assertIn("休息约1小时15分钟后持平", svg)
 
     def test_default_output_hides_spark_bucket_but_verbose_keeps_it(self) -> None:
         spark = chatgpt_usage.LimitBucket(
@@ -249,8 +283,18 @@ class RenderUsageTests(unittest.TestCase):
             output_tokens=10_000,
         )
 
-        self.assertAlmostEqual(short, 0.000_297)
-        self.assertAlmostEqual(long, 0.68)
+        fast = chatgpt_usage.estimate_api_cost(
+            "gpt-5.6-sol",
+            input_tokens=100,
+            cached_input_tokens=60,
+            cache_write_input_tokens=10,
+            output_tokens=20,
+            service_tier="priority",
+        )
+
+        self.assertAlmostEqual(short, 0.000_594)
+        self.assertAlmostEqual(long, 1.36)
+        self.assertAlmostEqual(fast, short * 2)
         self.assertEqual(
             chatgpt_usage.estimate_api_cost(
                 "gpt-free-cache",
@@ -557,6 +601,22 @@ class LocalUsageHistoryTests(unittest.TestCase):
             }
         )
 
+    @staticmethod
+    def _thread_settings_line(timestamp: str, model: str, service_tier: str) -> str:
+        return json.dumps(
+            {
+                "timestamp": timestamp,
+                "type": "event_msg",
+                "payload": {
+                    "type": "thread_settings_applied",
+                    "thread_settings": {
+                        "model": model,
+                        "service_tier": service_tier,
+                    },
+                },
+            }
+        )
+
     def _token_count_line(
         self,
         timestamp: str,
@@ -751,7 +811,7 @@ class LocalUsageHistoryTests(unittest.TestCase):
             columns = {
                 row[1]
                 for row in connection.execute(
-                    "PRAGMA table_info('token_usage_daily')"
+                    "PRAGMA table_info('token_usage_events')"
                 ).fetchall()
             }
             version = connection.execute(
@@ -759,6 +819,8 @@ class LocalUsageHistoryTests(unittest.TestCase):
             ).fetchone()[0]
             connection.close()
             self.assertIn("model", columns)
+            self.assertIn("service_tier", columns)
+            self.assertIn("event_key", columns)
             self.assertNotIn("estimated_cost_usd", columns)
             self.assertEqual(version, str(chatgpt_usage.USAGE_CACHE_SCHEMA_VERSION))
 
@@ -814,6 +876,70 @@ class LocalUsageHistoryTests(unittest.TestCase):
             self.assertEqual(first.estimated_cost_usd, 3)
             self.assertEqual(repriced.estimated_cost_usd, 7)
             self.assertEqual(repriced.scan, chatgpt_usage.ScanStats(1, 1, 0, 0))
+
+    def test_prices_fast_and_long_context_per_request(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            codex_home = root / "codex"
+            active = codex_home / "sessions" / "2030" / "01" / "08"
+            active.mkdir(parents=True)
+            thread_id = "00000000-0000-0000-0000-000000000789"
+            rollout = active / f"rollout-2030-01-08T10-00-00-{thread_id}.jsonl"
+            rollout.write_text(
+                "\n".join(
+                    [
+                        self._thread_settings_line(
+                            "2030-01-08T09:59:00.000Z",
+                            "gpt-5.6-sol",
+                            "priority",
+                        ),
+                        self._token_count_line(
+                            "2030-01-08T10:00:00.000Z",
+                            ordinal=1,
+                            total=(200_000, 0, 0, 200_000),
+                            last=(200_000, 0, 0, 200_000),
+                        ),
+                        self._token_count_line(
+                            "2030-01-08T10:05:00.000Z",
+                            ordinal=2,
+                            total=(400_000, 0, 0, 400_000),
+                            last=(200_000, 0, 0, 200_000),
+                        ),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            now = datetime(2030, 1, 8, 12, tzinfo=UTC)
+            os.utime(rollout, (now.timestamp(), now.timestamp()))
+            pricing = chatgpt_usage.PricingCatalog(
+                prices={
+                    "gpt-5.6-sol": chatgpt_usage.ModelPricing(
+                        1,
+                        0.1,
+                        2,
+                        long_context_threshold=272_000,
+                        long_input_per_million=10,
+                        long_cached_input_per_million=1,
+                        long_output_per_million=20,
+                    )
+                },
+                metadata=chatgpt_usage.PricingMetadata(
+                    source="test", fetched_at=now, stale=False
+                ),
+            )
+
+            history = chatgpt_usage.collect_usage_history(
+                codex_home,
+                root / "cache" / "usage.duckdb",
+                now=now,
+                pricing_catalog=pricing,
+            )
+
+            model = history.days[-1].models[0]
+            self.assertAlmostEqual(model.estimated_cost_usd or 0, 0.8)
+            self.assertEqual(model.fast_tokens, 400_000)
+            self.assertEqual(model.non_fast_tokens, 0)
 
 
 class AppServerTests(unittest.TestCase):
