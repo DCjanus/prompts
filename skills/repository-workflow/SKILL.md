@@ -89,8 +89,10 @@ git status -sb
 1. 完整读取 [change-requests.md](references/change-requests.md)；PR/MR 标题同时读取 [commit-messages.md](references/commit-messages.md)。
 2. 根据平台同时使用 `github-cli` 或 `gitlab-cli` 完成模板检查、资源读取和实际写入。
 3. 创建或更新前核对平台当前内容与最终本地状态；独立 Issue 按 reference 中的例外处理。
-4. 多行正文先写入临时 Markdown 文件，再通过平台命令的 file 参数提交，不在 shell 中拼接。
-5. 写入后回读标题、正文、状态和必要的元数据，确认平台结果与预期一致。
+4. 起草 PR/MR 正文时默认不添加 `Validation`。它不是测试清单：只有 reviewer 无法从最终 diff 和平台 CI/checks 直接获得、且会实质影响风险判断的最终行为证据才能保留。普通检查命令、测试数量和 CI 状态只在任务交付回复中汇报。具体筛选规则和正反例见 [change-requests.md](references/change-requests.md)。
+5. 多行正文先写入临时 Markdown 文件，再通过平台命令的 file 参数提交，不在 shell 中拼接。
+6. 写入平台前重新通读完整正文并按最终净变化复核；删除实现过程、普通验证流水账和其它不符合 reference 的内容。若 `Validation` 没有合格证据，删除整个章节。
+7. 写入后回读标题、正文、状态和必要的元数据，确认平台结果与预期一致。
 
 ## 最终可合并门禁
 
