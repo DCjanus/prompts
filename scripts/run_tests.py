@@ -12,13 +12,13 @@
 #     "kittytgp>=0.0.2",
 #     "markdown-it-py>=4.2.0",
 #     "openai-codex>=0.147.0",
-#     "pydantic>=2.13.4",
+#     "pydantic>=2.13.5",
 #     "pytest>=9.1.1",
 #     "pyyaml>=6.0.3",
 #     "resvg-py>=0.5.0",
 #     "rich>=15.0.0",
 #     "tomli-w>=1.2.0",
-#     "typer>=0.27.1",
+#     "typer>=0.27.2",
 # ]
 # ///
 

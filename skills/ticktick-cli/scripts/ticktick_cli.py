@@ -3,8 +3,8 @@
 # requires-python = ">=3.14"
 # dependencies = [
 #     "httpxyz>=0.31.2",
-#     "typer>=0.27.1",
-#     "pydantic>=2.13.4",
+#     "typer>=0.27.2",
+#     "pydantic>=2.13.5",
 #     "rich>=15.0.0",
 # ]
 # ///

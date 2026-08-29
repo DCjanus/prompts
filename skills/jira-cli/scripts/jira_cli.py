@@ -3,10 +3,10 @@
 # requires-python = ">=3.11"
 # dependencies = [
 #     "httpx2>=2.12.0",
-#     "pydantic>=2.13.4",
+#     "pydantic>=2.13.5",
 #     "rich>=15.0.0",
 #     "tomli-w>=1.2.0",
-#     "typer>=0.27.1",
+#     "typer>=0.27.2",
 # ]
 # ///
 """Controlled Jira Server/Data Center command-line client."""
