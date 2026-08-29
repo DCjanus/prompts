@@ -3,6 +3,12 @@ name: fetch-url
 description: 获取并提取链接正文（默认 Markdown）；内置 X/Twitter URL 处理，提升受限页面的抓取成功率。
 ---
 
+## 工具选择
+
+- GitHub repo、issue、PR、comment、release、workflow 等资源 URL 优先使用 `github-cli`。
+- 如果 `gh` 或 GitHub API 能取得任务所需内容，不要同时调用 `fetch-url`。
+- 仅当 `github-cli` 无法取得所需页面内容，或目标并非其支持的 GitHub 资源时，才使用本 skill 回退。
+
 在当前文件所在目录运行：`./scripts/fetch_url.py URL`（仅支持 `http` / `https`）。  
 说明：必须直接当作可执行文件执行。
 
