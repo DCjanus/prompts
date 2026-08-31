@@ -1,6 +1,7 @@
 - tracing: 结构化的应用级诊断/追踪框架，适合异步系统的日志与链路诊断。
 - tracing-subscriber: `tracing` 的订阅器实现与组合工具，适合将 tracing 事件输出到日志/外部系统。
 - blake3: 通用 hash 场景的默认算法选择，适用于数据校验、内容寻址、去重和缓存键等用途；支持任意长度输出与并行 hash；不适用于用户密码存储与校验等场景。
+- fastcrypto ECMH: 当 Rust 场景确实需要顺序无关、保留重复次数且可增量增删/分片合并的多重集合摘要时，可评估 `fastcrypto::hash::EllipticCurveMultisetHash`；使用前必须读取 `references/multiset-hashing.md`，不能把最终 digest 当作可组合状态，也不能把该实现格式直接当作稳定的跨语言协议。
 - password-auth / argon2: 用户密码存储与校验优先使用高层 `password-auth`，并保存 PHC 格式字符串；需要自定义参数或进行基于密码的密钥派生时使用 RustCrypto 的 `argon2` crate，默认选择 Argon2id；用于密钥派生时保留重新派生所需的 salt 和参数，不直接持久化派生密钥。
 - jiff: 自己控制的新应用默认优先选择的日期与时间库，尤其适合 IANA 时区、DST、日历跨度、当地时间歧义处理，以及需要保留时区标识的序列化场景。若选用版本尚未达到 1.0，用于公共 library API 时需额外评估稳定性；性能敏感路径应按实际 workload 做 benchmark。
 - chrono: 不作为新项目的默认日期与时间库；当既有项目已稳定使用、上下游公共 API 依赖 Chrono，或实测性能更合适时继续使用，不因软弃用信号本身而进行无收益的紧急迁移。
