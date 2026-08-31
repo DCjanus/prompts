@@ -95,7 +95,7 @@ notification_method = "bel"
 | [`confluence-cli`](skills/confluence-cli/SKILL.md) | 查询、检索与阅读 Confluence 文档/页面。 |
 | [`jira-cli`](skills/jira-cli/SKILL.md) | 通过内置 Python CLI 查询和管理 Jira Issue、Saved Filter、流转与评论。 |
 | [`uv-cli-creator`](skills/uv-cli-creator/SKILL.md) | 创建或修改基于 PEP 723、由 `uv run --script` 管理的单文件 Python CLI，并在环境支持时提供直接执行入口。 |
-| [`dcjanus-preferences`](skills/dcjanus-preferences/SKILL.md) | 记录 DCjanus 的跨语言技术选型、Protobuf 契约以及 Python/Rust/Go 第三方库偏好，适用于存储、分析、压缩、归档、协议设计、依赖选择与技术方案对比。 |
+| [`dcjanus-preferences`](skills/dcjanus-preferences/SKILL.md) | 记录 DCjanus 的跨语言技术选型、哈希与无序集合摘要、Protobuf 契约以及 Python/Rust/Go 第三方库偏好，适用于存储、分析、压缩、归档、协议设计、依赖选择与技术方案对比。 |
 | [`domain-modeling`](skills/domain-modeling/SKILL.md) | 构建并持续校准领域模型，明确领域术语与边界，并在必要时记录重要架构决策。 |
 | [`fetch-url`](skills/fetch-url/SKILL.md) | 获取并提取链接正文（默认 Markdown）；内置 X/Twitter URL 处理，提升受限页面的抓取成功率。 |
 | [`review-fix-loop`](skills/review-fix-loop/SKILL.md) | 用三个相互隔离的干净 subagent 并行做代码审查，由主 agent 判断审查意见价值、修复有效问题并提交推送，直到同一批三个 reviewer 都没有有价值审查意见；仅在显式调用时启用。 |
