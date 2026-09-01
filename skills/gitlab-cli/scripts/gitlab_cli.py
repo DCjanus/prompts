@@ -241,7 +241,7 @@ def run_glab_api(
         ) from exc
 
     if not isinstance(parsed, dict):
-        raise RuntimeError("unexpected API response shape")
+        raise TypeError("unexpected API response shape")
     return parsed
 
 
@@ -343,7 +343,7 @@ def print_resource_result(resource_name: str, payload: dict[str, object]) -> Non
 def ci_lint(
     path: Path = typer.Argument(Path(".gitlab-ci.yml"), help="要校验的 CI 配置文件。"),
     cwd: Path = typer.Option(
-        Path.cwd(),
+        Path(),
         "--cwd",
         resolve_path=True,
         file_okay=False,
@@ -428,7 +428,7 @@ def mr_create(
     title: str = typer.Option(..., "--title", help="MR 标题。"),
     target_branch: str = typer.Option(..., "--target-branch", help="目标分支。"),
     cwd: Path = typer.Option(
-        Path.cwd(),
+        Path(),
         "--cwd",
         resolve_path=True,
         file_okay=False,
@@ -506,7 +506,7 @@ def mr_create(
 def mr_update(
     iid: int = typer.Argument(..., help="要更新的 MR IID。"),
     cwd: Path = typer.Option(
-        Path.cwd(),
+        Path(),
         "--cwd",
         resolve_path=True,
         file_okay=False,
@@ -580,7 +580,7 @@ def mr_update(
 def issue_create(
     title: str = typer.Option(..., "--title", help="Issue 标题。"),
     cwd: Path = typer.Option(
-        Path.cwd(),
+        Path(),
         "--cwd",
         resolve_path=True,
         file_okay=False,
@@ -644,7 +644,7 @@ def issue_create(
 def issue_update(
     iid: int = typer.Argument(..., help="要更新的 Issue IID。"),
     cwd: Path = typer.Option(
-        Path.cwd(),
+        Path(),
         "--cwd",
         resolve_path=True,
         file_okay=False,

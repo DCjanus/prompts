@@ -105,7 +105,7 @@ def run_glab_api(
     except json.JSONDecodeError as exc:
         raise RuntimeError("glab api did not return valid JSON") from exc
     if not isinstance(parsed, dict):
-        raise RuntimeError("unexpected API response shape")
+        raise TypeError("unexpected API response shape")
     return parsed
 
 
@@ -169,7 +169,7 @@ def main(
         ..., "--project", help="GitLab project id 或 group/project。"
     ),
     cwd: Path = typer.Option(
-        Path.cwd(),
+        Path(),
         "--cwd",
         resolve_path=True,
         file_okay=False,

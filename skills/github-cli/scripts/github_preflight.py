@@ -19,7 +19,6 @@ import typer
 import yaml
 from rich.console import Console
 
-
 app = typer.Typer(
     add_completion=False, help="输出中文 GitHub issue/PR 创建前静态检查摘要"
 )

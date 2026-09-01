@@ -4,19 +4,18 @@ import base64
 import hashlib
 import json
 import os
-import socket
 import secrets
+import socket
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 import webbrowser
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Any
-
 
 DEFAULT_SCOPE = "tasks:read tasks:write"
 ENV_TOKEN_FILE = "TICKTICK_TOKEN_FILE"
@@ -173,7 +172,7 @@ def discover_endpoints(auth_base_url: str) -> AuthEndpoints:
 
 
 def default_client_name() -> str:
-    today = date.today().isoformat()
+    today = datetime.now().astimezone().date().isoformat()
     hostname = socket.gethostname().strip().split(".")[0]
     if not hostname:
         return f"ticktick-cli ({today})"

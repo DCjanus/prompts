@@ -14,21 +14,21 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 import re
-from typing import Any, Literal
+from pathlib import Path
 from time import monotonic
+from typing import Any, Literal
 from urllib.error import URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
+import trafilatura
 import typer
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
 from rich.console import Console
 from rich.panel import Panel
-import trafilatura
 
 APP = typer.Typer(add_completion=False)
 CONSOLE = Console()
@@ -573,42 +573,41 @@ def fetch(
                         "[green]Using FxTwitter API markdown path[/green]",
                         highlight=False,
                     )
-        if output_format == "markdown":
-            if content is None:
-                if fetch_strategy == "auto":
-                    content = fetch_agent_markdown(
-                        url, timeout_ms=timeout_ms, verbose=verbose
-                    )
-                    if content is None:
-                        content = fetch_jina_reader_markdown(
-                            url,
-                            timeout_ms=timeout_ms,
-                            verbose=verbose,
-                        )
-                elif fetch_strategy == "agent":
-                    content = fetch_agent_markdown(
-                        url, timeout_ms=timeout_ms, verbose=verbose
-                    )
-                    if content is None:
-                        raise ValueError(
-                            "Markdown negotiation did not return usable content. "
-                            "Try --fetch-strategy jina or --fetch-strategy browser."
-                        )
-                elif fetch_strategy == "jina":
+        if output_format == "markdown" and content is None:
+            if fetch_strategy == "auto":
+                content = fetch_agent_markdown(
+                    url, timeout_ms=timeout_ms, verbose=verbose
+                )
+                if content is None:
                     content = fetch_jina_reader_markdown(
-                        url, timeout_ms=timeout_ms, verbose=verbose
+                        url,
+                        timeout_ms=timeout_ms,
+                        verbose=verbose,
                     )
-                    if content is None:
-                        raise ValueError(
-                            "Jina Reader did not return usable content. "
-                            f"If this is rate limiting, configure {JINA_API_KEY_ENV} or try "
-                            "--fetch-strategy browser."
-                        )
-                elif fetch_strategy == "browser" and verbose:
-                    CONSOLE.print(
-                        "[cyan]Skipping non-browser markdown readers[/cyan]",
-                        highlight=False,
+            elif fetch_strategy == "agent":
+                content = fetch_agent_markdown(
+                    url, timeout_ms=timeout_ms, verbose=verbose
+                )
+                if content is None:
+                    raise ValueError(
+                        "Markdown negotiation did not return usable content. "
+                        "Try --fetch-strategy jina or --fetch-strategy browser."
                     )
+            elif fetch_strategy == "jina":
+                content = fetch_jina_reader_markdown(
+                    url, timeout_ms=timeout_ms, verbose=verbose
+                )
+                if content is None:
+                    raise ValueError(
+                        "Jina Reader did not return usable content. "
+                        f"If this is rate limiting, configure {JINA_API_KEY_ENV} or try "
+                        "--fetch-strategy browser."
+                    )
+            elif fetch_strategy == "browser" and verbose:
+                CONSOLE.print(
+                    "[cyan]Skipping non-browser markdown readers[/cyan]",
+                    highlight=False,
+                )
         if content is None:
             html = render_html(
                 url,

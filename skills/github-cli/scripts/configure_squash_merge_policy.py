@@ -96,7 +96,7 @@ def run_gh_api(
     except json.JSONDecodeError as exc:
         raise RuntimeError("gh api did not return valid JSON") from exc
     if not isinstance(parsed, dict):
-        raise RuntimeError("unexpected API response shape")
+        raise TypeError("unexpected API response shape")
     return parsed
 
 
@@ -161,7 +161,7 @@ def main(
         ..., "--repo", help="GitHub repository，格式 owner/repo。"
     ),
     cwd: Path = typer.Option(
-        Path.cwd(),
+        Path(),
         "--cwd",
         resolve_path=True,
         file_okay=False,

@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import os
 import tempfile
-import tomllib
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
 import tomli_w
+import tomllib
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 DEFAULT_CONFIG_PATH = Path("~/.config/jira-cli/config.toml").expanduser()

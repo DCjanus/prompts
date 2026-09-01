@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import base64
-from pathlib import Path
 import time
+from pathlib import Path
 from typing import Any
 
 import httpxyz
@@ -59,7 +59,7 @@ class ConfluenceApiClient:
     def _build_headers(config: ConfluenceConfig) -> dict[str, str]:
         headers = {"Accept": "application/json"}
         if config.username:
-            raw = f"{config.username}:{config.token}".encode("utf-8")
+            raw = f"{config.username}:{config.token}".encode()
             headers["Authorization"] = f"Basic {base64.b64encode(raw).decode('utf-8')}"
         else:
             headers["Authorization"] = f"Bearer {config.token}"
