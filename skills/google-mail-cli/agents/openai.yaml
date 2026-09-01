@@ -1,0 +1,4 @@
+interface:
+  display_name: "Google Mail CLI"
+  short_description: "通过 Gmail API 安全读取、整理和发送邮件"
+  default_prompt: "Use $google-mail-cli to inspect my inbox and prepare a reply draft."
