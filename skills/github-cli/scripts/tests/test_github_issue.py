@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 
-
 SCRIPT_PATH = Path(__file__).resolve().parents[1] / "github_issue.py"
 SPEC = importlib.util.spec_from_file_location("github_issue", SCRIPT_PATH)
 assert SPEC is not None

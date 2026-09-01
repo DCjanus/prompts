@@ -4,7 +4,6 @@ import importlib.util
 import json
 from pathlib import Path
 
-
 SCRIPT_PATH = Path(__file__).resolve().parents[1] / "configure_squash_merge_policy.py"
 SPEC = importlib.util.spec_from_file_location(
     "configure_squash_merge_policy", SCRIPT_PATH

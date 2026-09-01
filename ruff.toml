@@ -1,0 +1,5 @@
+[lint]
+external = ["E402", "N802", "S310"]
+
+[lint.flake8-bugbear]
+extend-immutable-calls = ["typer.Argument", "typer.Option"]

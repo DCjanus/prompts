@@ -3,7 +3,6 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
-
 SCRIPT_PATH = Path(__file__).resolve().parents[1] / "gitlab_cli.py"
 SPEC = importlib.util.spec_from_file_location("gitlab_cli", SCRIPT_PATH)
 assert SPEC is not None

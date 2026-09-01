@@ -14,8 +14,6 @@
 """面向 Codex skill 的 Gmail API 命令行工具。"""
 
 # Typer 以 Option(...) 作为声明式参数元数据，B008 在这里不适用。
-# ruff: noqa: B008
-
 from __future__ import annotations
 
 import base64

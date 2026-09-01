@@ -14,11 +14,12 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 import typer
 from google.auth.exceptions import GoogleAuthError, RefreshError
@@ -127,7 +128,40 @@ def load_json_arg(raw: str, option_name: str) -> Any:
 def ensure_2d_values(value: Any, option_name: str) -> list[list[Any]]:
     if not isinstance(value, list) or any(not isinstance(row, list) for row in value):
         raise CliError(f'{option_name} 必须是二维 JSON 数组，例如 [["A", "B"]]。')
+    for row_index, row in enumerate(value):
+        for column_index, cell in enumerate(row):
+            if not isinstance(cell, (str, int, float, bool, type(None))):
+                raise CliError(
+                    f"{option_name}[{row_index}][{column_index}] 必须是 "
+                    "string、number、boolean 或 null，不能直接写入 JSON 对象或数组。"
+                )
+            if isinstance(cell, float) and not math.isfinite(cell):
+                raise CliError(
+                    f"{option_name}[{row_index}][{column_index}] 必须是有限数值。"
+                )
     return value
+
+
+def spreadsheet_create_body(
+    title: str, sheet_titles: list[str], frozen_row_count: int
+) -> dict[str, Any]:
+    """构造新建 Spreadsheet 请求并校验工作表名称。"""
+
+    normalized_title = title.strip()
+    if not normalized_title:
+        raise CliError("--title 不能为空。")
+    normalized_sheets = [item.strip() for item in sheet_titles]
+    if not normalized_sheets or any(not item for item in normalized_sheets):
+        raise CliError("--sheet-title 至少需要一个非空名称。")
+    if len(set(normalized_sheets)) != len(normalized_sheets):
+        raise CliError("--sheet-title 不能重复。")
+    sheets = []
+    for sheet_title in normalized_sheets:
+        properties: dict[str, Any] = {"title": sheet_title}
+        if frozen_row_count:
+            properties["gridProperties"] = {"frozenRowCount": frozen_row_count}
+        sheets.append({"properties": properties})
+    return {"properties": {"title": normalized_title}, "sheets": sheets}
 
 
 def ensure_batch_updates(value: Any, option_name: str) -> list[dict[str, Any]]:
@@ -458,6 +492,36 @@ def spreadsheet_get(
     except HttpError as exc:
         raise handle_http_error(exc) from exc
     render_output(ctx, payload, "Spreadsheet")
+
+
+@spreadsheet_app.command("create", help="新建 spreadsheet 和初始工作表。")
+def spreadsheet_create(
+    ctx: typer.Context,
+    title: Annotated[str, typer.Option("--title", help="Spreadsheet 标题。")],
+    sheet_titles: Annotated[
+        list[str] | None,
+        typer.Option("--sheet-title", help="可重复；指定初始工作表名称。"),
+    ] = None,
+    frozen_row_count: Annotated[
+        int,
+        typer.Option(
+            "--frozen-row-count",
+            min=0,
+            help="每个初始工作表冻结的顶部行数。",
+        ),
+    ] = 0,
+) -> None:
+    body = spreadsheet_create_body(title, sheet_titles or ["Sheet1"], frozen_row_count)
+    try:
+        payload = (
+            get_service()
+            .spreadsheets()
+            .create(body=body, fields="spreadsheetId,spreadsheetUrl")
+            .execute()
+        )
+    except HttpError as exc:
+        raise handle_http_error(exc) from exc
+    render_output(ctx, payload, "Spreadsheet created")
 
 
 @values_app.command("get", help="读取一个 A1 range 的值。")

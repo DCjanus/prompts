@@ -1,11 +1,11 @@
 ---
 name: google-sheets-cli
-description: 使用 Python CLI 与 Google Sheets API 交互以读取、更新、批量写入、追加或清空 Google Sheets 在线表格；适用于需要通过 OAuth 授权操作 Google Workspace 表格的场景。
+description: 使用 Python CLI 与 Google Sheets API 交互以新建、读取、更新、批量写入、追加或清空 Google Sheets 在线表格；适用于需要通过 OAuth 授权操作 Google Workspace 表格的场景。
 ---
 
 # google-sheets-cli
 
-通过本 skill 调用 Google Sheets API。适合读取和编辑 Google Sheets 在线文档中的单元格值。
+通过本 skill 调用 Google Sheets API。适合新建、读取和编辑 Google Sheets 在线文档。
 
 ## 执行约定
 
@@ -33,17 +33,22 @@ OAuth 通常只需要配置一次；日常任务不要把认证细节加载进�
 常用命令族：
 
 - `auth login|doctor|logout|paths`
-- `spreadsheet get`
+- `spreadsheet create|get`
 - `values get|update|batch-update|append|clear|update-rich-text`
 
 示例：
 
 ```bash
+./scripts/gsheets_cli.py --json spreadsheet create \
+  --title "审计结果" --sheet-title "问题" --sheet-title "说明" \
+  --frozen-row-count 1
 ./scripts/gsheets_cli.py --json spreadsheet get --spreadsheet-id <spreadsheet-id>
 ./scripts/gsheets_cli.py --json values get --spreadsheet-id <spreadsheet-id> --range "Sheet1!A1:D20"
 ./scripts/gsheets_cli.py --json values update --spreadsheet-id <spreadsheet-id> --range "Sheet1!B2" --values-json '[["DONE"]]'
 ./scripts/gsheets_cli.py --json values append --spreadsheet-id <spreadsheet-id> --range "Sheet1!A:D" --values-json '[["a","b","c","d"]]'
 ```
+
+`values update|batch-update|append` 的每个单元格必须是 JSON 标量：string、number、boolean 或 null。Mongo Extended JSON 等对象值需先转换为字符串或拆成独立列；CLI 会在请求前报告具体的行列位置，避免收到难以定位的 Google API 400。
 
 批量写入：
 

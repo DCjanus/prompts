@@ -17,7 +17,7 @@ import json
 import os
 import random
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Self
 
 import typer
 from pydantic import BaseModel
@@ -96,7 +96,7 @@ class TampermonkeyBridge:
         self.next_message_id = 1
         self.ping_task: asyncio.Task[None] | None = None
 
-    async def __aenter__(self) -> TampermonkeyBridge:
+    async def __aenter__(self) -> Self:
         await self.start()
         return self
 
@@ -163,7 +163,7 @@ class TampermonkeyBridge:
                     future.set_result(response if isinstance(response, dict) else data)
         except ConnectionClosed:
             pass
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - 隔离单个 WebSocket 连接错误
             console.print(f"[red]连接处理失败：{exc}[/red]")
         finally:
             if self.connection is websocket:
@@ -182,7 +182,7 @@ class TampermonkeyBridge:
         text = raw_message.decode() if isinstance(raw_message, bytes) else raw_message
         parsed = json.loads(text)
         if not isinstance(parsed, dict):
-            raise ValueError("message must be a JSON object")
+            raise TypeError("message must be a JSON object")
         return parsed
 
     async def command(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -238,9 +238,9 @@ class SocketServer:
             line = await reader.readline()
             request_data = json.loads(line.decode() or "{}")
             if not isinstance(request_data, dict):
-                raise ValueError("request must be a JSON object")
+                raise TypeError("request must be a JSON object")
             response = await self.route(request_data)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - 将控制面错误转换为 JSON 响应
             response = {"ok": False, "error": str(exc)}
 
         writer.write((json.dumps(response, ensure_ascii=False) + "\n").encode())
@@ -302,7 +302,7 @@ async def socket_request(
     await writer.wait_closed()
     response = json.loads(line.decode() or "{}")
     if not isinstance(response, dict):
-        raise RuntimeError("serve returned a non-object response")
+        raise TypeError("serve returned a non-object response")
     return response
 
 
@@ -332,7 +332,7 @@ def command_via_socket(
         raise RuntimeError(str(response.get("error") or response))
     command_response = response.get("response")
     if not isinstance(command_response, dict):
-        raise RuntimeError("serve returned an invalid command response")
+        raise TypeError("serve returned an invalid command response")
     return command_response
 
 

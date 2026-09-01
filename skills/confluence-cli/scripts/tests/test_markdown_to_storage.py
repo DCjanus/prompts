@@ -3,8 +3,8 @@ import struct
 import sys
 import tempfile
 import types
-from pathlib import Path
 import unittest
+from pathlib import Path
 
 
 def install_test_stubs():

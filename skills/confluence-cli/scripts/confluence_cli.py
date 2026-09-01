@@ -20,13 +20,14 @@ import struct
 import sys
 import urllib.parse
 import urllib.request
+from collections.abc import Callable
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
+import typer
 from markdown_it import MarkdownIt
 from markdown_it.token import Token
-import typer
 from pydantic import BaseModel
 from rich.console import Console
 from rich.table import Table
@@ -551,7 +552,7 @@ def validate_token_attributes(token: Token) -> dict[str, str]:
 def normalize_table_cell_style(style: str) -> str:
     """只允许 Markdown table alignment 生成的安全 text-align style。"""
     match = re.fullmatch(
-        r"\s*text-align\s*:\s*(left|center|right)\s*;?\s*", style, re.I
+        r"\s*text-align\s*:\s*(left|center|right)\s*;?\s*", style, re.IGNORECASE
     )
     if not match:
         raise ApiError(f"Unsupported Markdown table cell style: {style}")
@@ -894,7 +895,7 @@ def upload_attachments(
 def build_auth_headers(state: AppState) -> dict[str, str]:
     """构造 Confluence API 认证头。"""
     if state.username:
-        raw = f"{state.username}:{state.token}".encode("utf-8")
+        raw = f"{state.username}:{state.token}".encode()
         encoded = base64.b64encode(raw).decode("utf-8")
         return {"Authorization": f"Basic {encoded}"}
     return {"Authorization": f"Bearer {state.token}"}
@@ -1209,13 +1210,15 @@ def download_attachments(
         target_url = f"{state.base_url.rstrip('/')}{download_link}"
         target_path = output_dir / title
         request = urllib.request.Request(target_url, headers=headers)
-        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
-            with target_path.open("wb") as f:
-                while True:
-                    chunk = response.read(1024 * 1024)
-                    if not chunk:
-                        break
-                    f.write(chunk)
+        with (
+            urllib.request.urlopen(request, timeout=timeout_seconds) as response,
+            target_path.open("wb") as f,
+        ):
+            while True:
+                chunk = response.read(1024 * 1024)
+                if not chunk:
+                    break
+                f.write(chunk)
         downloaded.append(title)
     summary = {
         "output_dir": str(output_dir),
@@ -1373,7 +1376,7 @@ def main_entry() -> None:
     except ApiError as exc:
         console.print(f"[red]Error:[/red] {exc}")
         raise typer.Exit(code=1) from exc
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         console.print(f"[red]Unhandled error:[/red] {exc}")
         raise typer.Exit(code=1) from exc
 
