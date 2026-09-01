@@ -5,7 +5,6 @@ from pathlib import Path
 
 import pytest
 
-
 SCRIPT_PATH = Path(__file__).resolve().parents[1] / "gsheets_cli.py"
 
 
@@ -37,6 +36,44 @@ def test_values_json_must_be_2d_array():
         cli.ensure_2d_values(["not-a-row"], "--values-json")
 
     assert cli.ensure_2d_values([["ok"]], "--values-json") == [["ok"]]
+
+
+def test_values_json_cells_must_be_scalars():
+    cli = load_cli_module()
+
+    with pytest.raises(cli.CliError, match=r"\[0\]\[1\].*JSON 对象或数组"):
+        cli.ensure_2d_values([["ok", {"$date": "2026-09-01"}]], "--values-json")
+
+
+def test_spreadsheet_create_body_uses_grid_properties_for_frozen_rows():
+    cli = load_cli_module()
+
+    body = cli.spreadsheet_create_body(" Audit ", ["Issues", "Notes"], 1)
+
+    assert body == {
+        "properties": {"title": "Audit"},
+        "sheets": [
+            {
+                "properties": {
+                    "title": "Issues",
+                    "gridProperties": {"frozenRowCount": 1},
+                }
+            },
+            {
+                "properties": {
+                    "title": "Notes",
+                    "gridProperties": {"frozenRowCount": 1},
+                }
+            },
+        ],
+    }
+
+
+def test_spreadsheet_create_body_rejects_duplicate_sheet_titles():
+    cli = load_cli_module()
+
+    with pytest.raises(cli.CliError, match="不能重复"):
+        cli.spreadsheet_create_body("Audit", ["Issues", "Issues"], 0)
 
 
 def test_batch_updates_validate_range_and_values():
