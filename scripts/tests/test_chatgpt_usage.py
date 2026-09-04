@@ -24,6 +24,30 @@ SPEC.loader.exec_module(chatgpt_usage)
 
 
 class ParseRateLimitsTests(unittest.TestCase):
+    def test_parses_available_reset_credits_and_keeps_nearest_three_expirations(
+        self,
+    ) -> None:
+        result = {
+            "rateLimitResetCredits": {
+                "availableCount": 4,
+                "credits": [
+                    {"status": "available", "expiresAt": 2_000_000_400},
+                    {"status": "used", "expiresAt": 2_000_000_050},
+                    {"status": "available", "expiresAt": 2_000_000_300},
+                    {"status": "available", "expiresAt": 2_000_000_100},
+                    {"status": "available", "expiresAt": 2_000_000_200},
+                ],
+            }
+        }
+
+        reset_credits = chatgpt_usage.parse_reset_credits(result)
+
+        self.assertEqual(reset_credits.available_count, 4)
+        self.assertEqual(
+            reset_credits.next_expirations_at,
+            (2_000_000_100, 2_000_000_200, 2_000_000_300),
+        )
+
     def test_parses_all_buckets_without_duplicating_top_level_bucket(self) -> None:
         result = {
             "rateLimits": {
@@ -155,6 +179,62 @@ class RenderUsageTests(unittest.TestCase):
         self.assertIn("时间", output)
         self.assertIn("偏慢 +25.0pp", output)
         self.assertNotIn("codex_internal", output)
+
+    def test_outputs_reset_credit_count_and_next_expirations_everywhere(self) -> None:
+        reset_credits = chatgpt_usage.ResetCredits(
+            available_count=2,
+            next_expirations_at=(
+                int(datetime(2030, 1, 2, 12, tzinfo=UTC).timestamp()),
+                int(datetime(2030, 1, 3, 18, 30, tzinfo=UTC).timestamp()),
+            ),
+        )
+
+        chatgpt_usage.render_usage(
+            self.buckets,
+            self.now,
+            reset_credits=reset_credits,
+            verbose=False,
+        )
+        svg = chatgpt_usage.render_usage_svg(
+            self.buckets,
+            self.now,
+            reset_credits=reset_credits,
+            verbose=False,
+        )
+        report = chatgpt_usage._json_report(
+            self.buckets,
+            self.now,
+            reset_credits=reset_credits,
+        )
+
+        output = self.output.getvalue()
+        self.assertIn("Bank Reset", output)
+        self.assertIn("● Bank Reset", output)
+        self.assertIn("剩余 2 次", output)
+        first_expiration = chatgpt_usage._reset_expiration_text(
+            reset_credits.next_expirations_at[0]
+        )
+        second_expiration = chatgpt_usage._reset_expiration_text(
+            reset_credits.next_expirations_at[1]
+        )
+        self.assertIn(first_expiration, output)
+        self.assertIn(second_expiration, output)
+        self.assertIn('data-role="reset-credits"', svg)
+        self.assertNotIn('data-role="reset-credits" filter=', svg)
+        reset_markup = svg.split('data-role="reset-credits"', 1)[1].split("</g>", 1)[0]
+        self.assertIn("<circle", reset_markup)
+        self.assertNotIn('text-anchor="end"', reset_markup)
+        self.assertIn("剩余 2 次", svg)
+        self.assertIn(first_expiration, svg)
+        self.assertIn(second_expiration, svg)
+        self.assertEqual(report["reset_credits"]["available_count"], 2)
+        self.assertEqual(
+            report["reset_credits"]["next_expirations_at"],
+            [
+                datetime.fromtimestamp(expires_at).astimezone().isoformat()
+                for expires_at in reset_credits.next_expirations_at
+            ],
+        )
 
     def test_verbose_output_restores_diagnostic_details(self) -> None:
         chatgpt_usage.render_usage(self.buckets, self.now, verbose=True)
