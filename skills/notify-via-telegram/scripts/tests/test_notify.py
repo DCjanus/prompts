@@ -6,6 +6,7 @@ import secrets
 import sys
 from pathlib import Path
 
+import pytest
 import tomllib
 from typer.testing import CliRunner
 
@@ -16,6 +17,12 @@ notify = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
 sys.modules[SPEC.name] = notify
 SPEC.loader.exec_module(notify)
+
+
+@pytest.fixture(autouse=True)
+def clear_codex_context_ids(monkeypatch) -> None:
+    monkeypatch.delenv("CODEX_THREAD_ID", raising=False)
+    monkeypatch.delenv("CODEX_SESSION_ID", raising=False)
 
 
 def test_config_set_accepts_negative_chat_id(tmp_path: Path) -> None:
@@ -71,6 +78,95 @@ def test_render_notification_blocks_create_clear_visual_hierarchy() -> None:
             "text": ["✅ 已完成", " · ", "157 > 0", " · ", "prompts"],
         },
     ]
+
+
+def test_json_preview_links_subagent_notification_to_root_thread(monkeypatch) -> None:
+    root_thread_id = "01a06b36-0123-7850-9299-04b3f86609d8"
+    child_thread_id = "01a06b65-a6b1-7672-8959-961d8d130f66"
+    monkeypatch.setenv("CODEX_SESSION_ID", root_thread_id)
+    monkeypatch.setenv("CODEX_THREAD_ID", child_thread_id)
+
+    result = CliRunner().invoke(
+        notify.app,
+        [
+            "--json",
+            "preview",
+            "--status",
+            "success",
+            "--title",
+            "任务完成",
+            "--summary",
+            "已经完成。",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["rich_message"]["blocks"][-1] == {
+        "type": "footer",
+        "text": [
+            "✅ 已完成",
+            " · 打开 Codex 会话：",
+            (
+                "https://codex-thread-bridge.dcjanus.workers.dev/codex/open-thread/"
+                f"{root_thread_id}"
+            ),
+        ],
+    }
+
+
+def test_plain_preview_links_fork_to_its_new_root_thread(monkeypatch) -> None:
+    forked_thread_id = "01a06c1a-a61c-7c84-a701-2b5c2aca2225"
+    monkeypatch.setenv("CODEX_SESSION_ID", forked_thread_id)
+    monkeypatch.setenv("CODEX_THREAD_ID", forked_thread_id)
+
+    result = CliRunner().invoke(
+        notify.app,
+        [
+            "preview",
+            "--status",
+            "success",
+            "--title",
+            "任务完成",
+            "--summary",
+            "已经完成。",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert result.output.endswith(
+        "https://codex-thread-bridge.dcjanus.workers.dev/codex/open-thread/"
+        f"{forked_thread_id}\n"
+    )
+
+
+@pytest.mark.parametrize("session_id", [None, "", "not-a-thread-id"])
+def test_plain_preview_omits_codex_link_without_valid_session_id(
+    monkeypatch, session_id: str | None
+) -> None:
+    if session_id is None:
+        monkeypatch.delenv("CODEX_SESSION_ID", raising=False)
+    else:
+        monkeypatch.setenv("CODEX_SESSION_ID", session_id)
+
+    result = CliRunner().invoke(
+        notify.app,
+        [
+            "preview",
+            "--status",
+            "success",
+            "--title",
+            "任务完成",
+            "--summary",
+            "已经完成。",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert (
+        "codex-thread-bridge.dcjanus.workers.dev/codex/open-thread/"
+        not in result.output
+    )
 
 
 def test_send_uses_structured_rich_message_payload(monkeypatch, tmp_path: Path) -> None:

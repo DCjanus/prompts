@@ -85,7 +85,7 @@ Agent 调用时使用 `--json`，并把全局参数放在子命令前。
   --summary "最终结果的一句话摘要"
 ```
 
-脚本统一生成 Telegram Rich Message 的显式 `blocks`：任务标题使用小号 heading，最终结论放入 blockquote；仅在提供 `action` 时增加高亮的“需要你处理”段落；最后用单行 footer 紧凑显示状态、验证和上下文。不要添加泛化通知标题、分隔线或逐字段 Emoji。所有输入字段都作为纯文本 RichText 传递；不要自行添加 Telegram HTML、Markdown 或 RichText 结构。
+脚本统一生成 Telegram Rich Message 的显式 `blocks`：任务标题使用小号 heading，最终结论放入 blockquote；仅在提供 `action` 时增加高亮的“需要你处理”段落；最后用单行 footer 紧凑显示状态、验证和上下文。Codex 运行时提供合法的 `CODEX_SESSION_ID` 时，footer 末尾还会自动添加“打开 Codex 会话：”和完整 HTTPS URL。该链接经过配套 Cloudflare Worker 转为 `codex://threads/<session-id>`，绕过 Telegram 不支持自定义 URL 协议的问题。完整 URL 必须作为普通文本交由 Telegram 自动识别，不要改成隐藏目标的 URL 文字或按钮：Telegram 客户端会对这两种 inline link 强制弹出“Open this link?”确认。Codex 把 `CODEX_SESSION_ID` 定义为当前 agent tree 的根 thread ID，所以 subagent 通知返回根 Agent，普通 fork 成为新根后则指向 fork 出的新 thread。变量缺失或格式无效时省略链接，不要回退到 subagent 自己的 `CODEX_THREAD_ID`。不要添加泛化通知标题、分隔线或逐字段 Emoji。所有命令行输入字段都作为纯文本 RichText 传递；不要自行添加 Telegram HTML、Markdown 或 RichText 结构。
 
 `preview --json` 返回与发送请求一致的 `rich_message` 对象，可在不读取配置、不访问 Telegram 的情况下检查内容块。格式能力与字段定义以 Telegram 官方的 [Rich Messages](https://core.telegram.org/bots/features#rich-messages) 和 [Bot API](https://core.telegram.org/bots/api#sendrichmessage) 文档为准。
 
@@ -109,3 +109,15 @@ Agent 调用时使用 `--json`，并把全局参数放在子命令前。
 - 配置缺失时，告诉用户应执行哪些配置命令；不要替用户猜测 Token 或 Chat ID。
 
 发送成功后读取 JSON 中的 `message_id`。发送失败时，把通知失败与原任务结果分开报告，不要因此改变原任务的最终状态。
+
+## 深链 bridge
+
+配套 Worker 位于 [worker](worker)，生产地址为 `https://codex-thread-bridge.dcjanus.workers.dev`。它只接受 `/codex/open-thread/<UUID>`，并直接返回指向对应 `codex://threads/<UUID>` 的 `302`；无效路径返回 `404`，因此不能被用作任意 URL 的开放重定向器。重定向响应允许浏览器缓存 1 天，以减少同一链接重复点击产生的 Worker 请求。Cloudflare Static Assets 的重定向规则不允许 `codex://` 目标，因此该 bridge 必须执行一段最小 Worker 脚本；每个未命中浏览器缓存的点击会产生一次 Worker 请求。
+
+在本 skill 目录下执行以下命令可验证和部署 Worker：
+
+```bash
+node --test worker/test/index.test.mjs
+wrangler deploy --dry-run --config worker/wrangler.jsonc
+wrangler deploy --config worker/wrangler.jsonc
+```

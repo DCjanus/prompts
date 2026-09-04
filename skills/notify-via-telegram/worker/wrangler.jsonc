@@ -1,0 +1,11 @@
+{
+	"$schema": "https://raw.githubusercontent.com/cloudflare/workers-sdk/main/packages/wrangler/config-schema.json",
+	"name": "codex-thread-bridge",
+	"main": "src/index.mjs",
+	"compatibility_date": "2026-09-04",
+	"workers_dev": true,
+	"preview_urls": false,
+	"observability": {
+		"enabled": true
+	}
+}
