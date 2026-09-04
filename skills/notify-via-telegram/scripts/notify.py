@@ -32,7 +32,9 @@ from rich.table import Table
 
 CONFIG_ENV = "NOTIFY_VIA_TELEGRAM_CONFIG"
 CODEX_SESSION_ID_ENV = "CODEX_SESSION_ID"
-CODEX_THREAD_URL_PREFIX = "codex://threads/"
+CODEX_THREAD_BRIDGE_URL_PREFIX = (
+    "https://codex-thread-bridge.dcjanus.workers.dev/codex/open-thread/"
+)
 DEFAULT_TIMEOUT_SECONDS = 10.0
 TELEGRAM_API_BASE = "https://api.telegram.org"
 
@@ -134,7 +136,7 @@ def notification_from_options(
 
 
 def current_codex_root_thread_url() -> str | None:
-    """从 Codex 根 session ID 构造当前 agent tree 的桌面端深链。"""
+    """从 Codex 根 session ID 构造 Telegram 可点击的 HTTPS bridge 链接。"""
 
     thread_id = os.environ.get(CODEX_SESSION_ID_ENV, "").strip()
     if not thread_id:
@@ -146,7 +148,7 @@ def current_codex_root_thread_url() -> str | None:
         return None
     if canonical_thread_id != thread_id.lower():
         return None
-    return f"{CODEX_THREAD_URL_PREFIX}{canonical_thread_id}"
+    return f"{CODEX_THREAD_BRIDGE_URL_PREFIX}{canonical_thread_id}"
 
 
 def render_notification_blocks(notification: Notification) -> list[dict[str, Any]]:
@@ -184,12 +186,8 @@ def render_notification_blocks(notification: Notification) -> list[dict[str, Any
     if notification.codex_thread_url:
         footer.extend(
             [
-                " · ",
-                {
-                    "type": "url",
-                    "text": notification.codex_thread_url,
-                    "url": notification.codex_thread_url,
-                },
+                " · 打开 Codex 会话：",
+                notification.codex_thread_url,
             ]
         )
     blocks.append({"type": "footer", "text": footer})
@@ -452,7 +450,7 @@ def preview_message(
             "",
         )
         return
-    console.print(render_notification_plain(notification), markup=False)
+    console.print(render_notification_plain(notification), markup=False, soft_wrap=True)
 
 
 @config_app.command("path")

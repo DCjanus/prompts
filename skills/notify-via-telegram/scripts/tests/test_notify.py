@@ -106,12 +106,11 @@ def test_json_preview_links_subagent_notification_to_root_thread(monkeypatch) ->
         "type": "footer",
         "text": [
             "✅ 已完成",
-            " · ",
-            {
-                "type": "url",
-                "text": f"codex://threads/{root_thread_id}",
-                "url": f"codex://threads/{root_thread_id}",
-            },
+            " · 打开 Codex 会话：",
+            (
+                "https://codex-thread-bridge.dcjanus.workers.dev/codex/open-thread/"
+                f"{root_thread_id}"
+            ),
         ],
     }
 
@@ -135,7 +134,10 @@ def test_plain_preview_links_fork_to_its_new_root_thread(monkeypatch) -> None:
     )
 
     assert result.exit_code == 0, result.output
-    assert result.output.endswith(f"codex://threads/{forked_thread_id}\n")
+    assert result.output.endswith(
+        "https://codex-thread-bridge.dcjanus.workers.dev/codex/open-thread/"
+        f"{forked_thread_id}\n"
+    )
 
 
 @pytest.mark.parametrize("session_id", [None, "", "not-a-thread-id"])
@@ -161,7 +163,10 @@ def test_plain_preview_omits_codex_link_without_valid_session_id(
     )
 
     assert result.exit_code == 0, result.output
-    assert "codex://threads/" not in result.output
+    assert (
+        "codex-thread-bridge.dcjanus.workers.dev/codex/open-thread/"
+        not in result.output
+    )
 
 
 def test_send_uses_structured_rich_message_payload(monkeypatch, tmp_path: Path) -> None:
