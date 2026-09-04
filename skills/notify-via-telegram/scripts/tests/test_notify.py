@@ -102,17 +102,27 @@ def test_json_preview_links_subagent_notification_to_root_thread(monkeypatch) ->
 
     assert result.exit_code == 0, result.output
     payload = json.loads(result.output)
-    assert payload["rich_message"]["blocks"][-1] == {
-        "type": "footer",
-        "text": [
-            "✅ 已完成",
-            " · 打开 Codex 会话：",
-            (
-                "https://codex-thread-bridge.dcjanus.workers.dev/codex/open-thread/"
-                f"{root_thread_id}"
-            ),
-        ],
-    }
+    assert payload["rich_message"]["blocks"][-3:] == [
+        {
+            "type": "footer",
+            "text": ["✅ 已完成"],
+        },
+        {
+            "type": "paragraph",
+            "text": "\u00a0",
+        },
+        {
+            "type": "paragraph",
+            "text": [
+                {"type": "bold", "text": "↗ 打开 Codex 会话"},
+                "\n",
+                (
+                    "https://codex-thread-bridge.dcjanus.workers.dev/"
+                    f"codex/open-thread/{root_thread_id}"
+                ),
+            ],
+        },
+    ]
 
 
 def test_plain_preview_links_fork_to_its_new_root_thread(monkeypatch) -> None:
