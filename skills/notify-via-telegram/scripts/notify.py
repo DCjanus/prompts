@@ -183,14 +183,19 @@ def render_notification_blocks(notification: Notification) -> list[dict[str, Any
         footer.extend([" · ", notification.verification])
     if notification.context:
         footer.extend([" · ", notification.context])
-    if notification.codex_thread_url:
-        footer.extend(
-            [
-                " · 打开 Codex 会话：",
-                notification.codex_thread_url,
-            ]
-        )
     blocks.append({"type": "footer", "text": footer})
+    if notification.codex_thread_url:
+        blocks.append({"type": "paragraph", "text": "\u00a0"})
+        blocks.append(
+            {
+                "type": "paragraph",
+                "text": [
+                    {"type": "bold", "text": "↗ 打开 Codex 会话"},
+                    "\n",
+                    notification.codex_thread_url,
+                ],
+            }
+        )
     return blocks
 
 
@@ -211,9 +216,9 @@ def render_notification_plain(notification: Notification) -> str:
         footer.append(notification.verification)
     if notification.context:
         footer.append(notification.context)
-    if notification.codex_thread_url:
-        footer.append(notification.codex_thread_url)
     lines.extend(["", " · ".join(footer)])
+    if notification.codex_thread_url:
+        lines.extend(["", "↗ 打开 Codex 会话", notification.codex_thread_url])
     return "\n".join(lines)
 
 
