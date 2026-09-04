@@ -85,7 +85,7 @@ Agent 调用时使用 `--json`，并把全局参数放在子命令前。
   --summary "最终结果的一句话摘要"
 ```
 
-脚本统一生成 Telegram Rich Message 的显式 `blocks`：任务标题使用小号 heading，最终结论放入 blockquote；仅在提供 `action` 时增加高亮的“需要你处理”段落；最后用单行 footer 紧凑显示状态、验证和上下文。Codex 运行时提供合法的 `CODEX_SESSION_ID` 时，footer 末尾还会自动添加“打开 Codex 会话：”和完整 HTTPS URL。该链接经过配套 Cloudflare Worker 转为 `codex://threads/<session-id>`，绕过 Telegram 不支持自定义 URL 协议的问题。完整 URL 必须作为普通文本交由 Telegram 自动识别，不要改成隐藏目标的 URL 文字或按钮：Telegram 客户端会对这两种 inline link 强制弹出“Open this link?”确认。Codex 把 `CODEX_SESSION_ID` 定义为当前 agent tree 的根 thread ID，所以 subagent 通知返回根 Agent，普通 fork 成为新根后则指向 fork 出的新 thread。变量缺失或格式无效时省略链接，不要回退到 subagent 自己的 `CODEX_THREAD_ID`。不要添加泛化通知标题、分隔线或逐字段 Emoji。所有命令行输入字段都作为纯文本 RichText 传递；不要自行添加 Telegram HTML、Markdown 或 RichText 结构。
+脚本统一生成 Telegram Rich Message 的显式 `blocks`：任务标题使用小号 heading，最终结论放入 blockquote；仅在提供 `action` 时增加高亮的“需要你处理”段落；用单行 footer 紧凑显示状态、验证和上下文。Codex 运行时提供合法的 `CODEX_SESSION_ID` 时，在 footer 后留出一个空行，再增加独立的两行会话入口：第一行加粗显示“↗ 打开 Codex 会话”，第二行展示完整 HTTPS URL，使长链接与结果元数据保持清晰的视觉分层。该链接经过配套 Cloudflare Worker 转为 `codex://threads/<session-id>`，绕过 Telegram 不支持自定义 URL 协议的问题。完整 URL 必须作为普通文本交由 Telegram 自动识别，不要改成隐藏目标的 URL 文字或按钮：Telegram 客户端会对这两种 inline link 强制弹出“Open this link?”确认。Codex 把 `CODEX_SESSION_ID` 定义为当前 agent tree 的根 thread ID，所以 subagent 通知返回根 Agent，普通 fork 成为新根后则指向 fork 出的新 thread。变量缺失或格式无效时省略链接，不要回退到 subagent 自己的 `CODEX_THREAD_ID`。不要添加泛化通知标题、分隔线或逐字段 Emoji。所有命令行输入字段都作为纯文本 RichText 传递；不要自行添加 Telegram HTML、Markdown 或 RichText 结构。
 
 `preview --json` 返回与发送请求一致的 `rich_message` 对象，可在不读取配置、不访问 Telegram 的情况下检查内容块。格式能力与字段定义以 Telegram 官方的 [Rich Messages](https://core.telegram.org/bots/features#rich-messages) 和 [Bot API](https://core.telegram.org/bots/api#sendrichmessage) 文档为准。
 
