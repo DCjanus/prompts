@@ -8,7 +8,7 @@
 #     "google-auth-httplib2>=0.4.2",
 #     "google-auth-oauthlib>=1.4.1",
 #     "httpx2>=2.12.0",
-#     "httpxyz>=0.31.2",
+#     "httpxyz>=0.42.0",
 #     "kittytgp>=0.0.2",
 #     "markdown-it-py>=4.2.0",
 #     "openai-codex>=0.147.0",

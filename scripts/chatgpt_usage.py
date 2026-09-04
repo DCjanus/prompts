@@ -95,6 +95,14 @@ class LimitBucket:
 
 
 @dataclass(frozen=True)
+class ResetCredits:
+    """描述可用的 Bank Reset 次数与最近到期时间。"""
+
+    available_count: int
+    next_expirations_at: tuple[int, ...]
+
+
+@dataclass(frozen=True)
 class WindowProgress:
     """记录额度与时间的可比较剩余进度。"""
 
@@ -440,6 +448,34 @@ def parse_rate_limits(result: dict[str, Any]) -> list[LimitBucket]:
     if not buckets:
         raise UsageError("额度响应中没有可展示的额度桶")
     return buckets
+
+
+def parse_reset_credits(result: dict[str, Any]) -> ResetCredits | None:
+    """解析可用的 Bank Reset，并保留最近三个到期时间。"""
+    value = result.get("rateLimitResetCredits")
+    if not isinstance(value, dict):
+        return None
+
+    credits = value.get("credits")
+    expirations = (
+        sorted(
+            credit["expiresAt"]
+            for credit in credits
+            if isinstance(credit, dict)
+            and credit.get("status") == "available"
+            and isinstance(credit.get("expiresAt"), int)
+            and not isinstance(credit["expiresAt"], bool)
+        )
+        if isinstance(credits, list)
+        else []
+    )
+    available_count = value.get("availableCount")
+    if not isinstance(available_count, int) or isinstance(available_count, bool):
+        available_count = len(expirations)
+    return ResetCredits(
+        available_count=max(0, available_count),
+        next_expirations_at=tuple(expirations[:3]),
+    )
 
 
 def default_codex_home() -> Path:
@@ -1883,6 +1919,28 @@ def _format_cost(estimated_cost_usd: float, unpriced_tokens: int) -> str:
     return f"≈${estimated_cost_usd:.2f}"
 
 
+def _reset_expiration_text(expires_at: int) -> str:
+    """把 Bank Reset 到期时间格式化为本地时间。"""
+    return datetime.fromtimestamp(expires_at).astimezone().strftime("%m-%d %H:%M")
+
+
+def _render_reset_credits(reset_credits: ResetCredits) -> None:
+    """用低调的辅助文字展示 Bank Reset 信息。"""
+    expirations = " · ".join(
+        f"{index}: {_reset_expiration_text(expires_at)}"
+        for index, expires_at in enumerate(reset_credits.next_expirations_at, start=1)
+    )
+    detail = f" · 到期 {expirations}" if expirations else ""
+    line = Text()
+    line.append("● ", style="bright_magenta")
+    line.append("Bank Reset", style="bold")
+    line.append(
+        f" · 剩余 {reset_credits.available_count} 次{detail}",
+        style="dim",
+    )
+    console.print(line)
+
+
 def _render_usage_history(history: UsageHistory, *, verbose: bool) -> None:
     """用 Rich 展示按天 Token 用量与缓存命中率。"""
     table = Table(box=None, padding=(0, 1), show_header=True)
@@ -1938,6 +1996,7 @@ def render_usage(
     now: datetime,
     *,
     history: UsageHistory | None = None,
+    reset_credits: ResetCredits | None = None,
     verbose: bool,
 ) -> None:
     """用 Rich 渲染订阅与额度进度。"""
@@ -2009,6 +2068,8 @@ def render_usage(
                 padding=(0, 1),
             )
         )
+    if reset_credits is not None:
+        _render_reset_credits(reset_credits)
 
 
 def _svg_text(value: object) -> str:
@@ -2167,18 +2228,42 @@ def _usage_history_height(day_count: int) -> int:
     return 76 + rows * 140 + max(0, rows - 1) * 10
 
 
+def _svg_reset_credits(
+    reset_credits: ResetCredits,
+    *,
+    x: float,
+    y: float,
+) -> str:
+    """生成位于看板底部的 Bank Reset 辅助文字。"""
+    expirations = " · ".join(
+        f"{index}: {_reset_expiration_text(expires_at)}"
+        for index, expires_at in enumerate(reset_credits.next_expirations_at, start=1)
+    )
+    detail = f" · 到期 {expirations}" if expirations else ""
+    return f'''<g data-role="reset-credits">
+  <circle cx="{x + 6}" cy="{y + 13}" r="5" fill="#ff79c6" fill-opacity="0.8"/>
+  <text x="{x + 20}" y="{y + 18}" fill="#aebaff" font-size="13" font-weight="700">Bank Reset</text>
+  <text x="{x + 102}" y="{y + 18}" class="muted" font-size="13">· 剩余 {reset_credits.available_count} 次{_svg_text(detail)}</text>
+</g>'''
+
+
 def _render_compact_usage_svg(
-    buckets: list[LimitBucket], now: datetime, history: UsageHistory
+    buckets: list[LimitBucket],
+    now: datetime,
+    history: UsageHistory,
+    reset_credits: ResetCredits | None,
 ) -> str:
     """渲染以每日用量为主、额度摘要为辅的默认看板。"""
     margin = 48
     header_height = 86
     card_gap = 20
     history_height = _usage_history_height(len(history.days))
+    reset_height = 24 if reset_credits is not None else 0
     quota_heights = [70 + 56 * max(1, len(bucket.windows)) for bucket in buckets]
     height = (
         header_height
         + history_height
+        + (card_gap + reset_height if reset_credits is not None else 0)
         + card_gap
         + sum(quota_heights)
         + card_gap * max(0, len(quota_heights) - 1)
@@ -2268,6 +2353,14 @@ def _render_compact_usage_svg(
                 ]
             )
         y += quota_height + card_gap
+    if reset_credits is not None:
+        parts.append(
+            _svg_reset_credits(
+                reset_credits,
+                x=margin,
+                y=y,
+            )
+        )
     parts.append("</svg>\n")
     return "\n".join(parts)
 
@@ -2277,12 +2370,13 @@ def render_usage_svg(
     now: datetime,
     *,
     history: UsageHistory | None = None,
+    reset_credits: ResetCredits | None = None,
     verbose: bool,
 ) -> str:
     """把额度看板渲染为共享刻度对比 SVG。"""
     buckets = _visible_buckets(buckets, verbose=verbose)
     if history is not None and not verbose:
-        return _render_compact_usage_svg(buckets, now, history)
+        return _render_compact_usage_svg(buckets, now, history, reset_credits)
     margin = 48
     card_gap = 24
     panel_gap = 18
@@ -2316,7 +2410,10 @@ def render_usage_svg(
             + 18
         )
     bucket_content_height = (
-        header_height + sum(row_heights) + card_gap * max(0, len(bucket_rows) - 1)
+        header_height
+        + (24 + card_gap if reset_credits is not None else 0)
+        + sum(row_heights)
+        + card_gap * max(0, len(bucket_rows) - 1)
     )
     history_height = (
         _usage_history_height(len(history.days)) if history is not None else 0
@@ -2361,6 +2458,15 @@ def render_usage_svg(
             bucket_layouts.append((bucket, bucket_x, y, bucket_width, row_height))
             bucket_x += bucket_width + card_gap
         y += row_height + card_gap
+
+    if reset_credits is not None:
+        parts.append(
+            _svg_reset_credits(
+                reset_credits,
+                x=margin,
+                y=y,
+            )
+        )
 
     for bucket, bucket_x, y, bucket_width, bucket_height in bucket_layouts:
         accent = "#8be9fd" if bucket.limit_id == "codex" else "#bd93f9"
@@ -2461,11 +2567,18 @@ def render_usage_image(
     now: datetime,
     *,
     history: UsageHistory | None = None,
+    reset_credits: ResetCredits | None = None,
     columns: int | None,
     verbose: bool,
 ) -> None:
     """生成 SVG、栅格化，并通过 Kitty 协议展示。"""
-    svg = render_usage_svg(buckets, now, history=history, verbose=verbose)
+    svg = render_usage_svg(
+        buckets,
+        now,
+        history=history,
+        reset_credits=reset_credits,
+        verbose=verbose,
+    )
     png = svg_to_png(svg)
     render_png(png, cols=columns)
 
@@ -2504,6 +2617,7 @@ def _json_report(
     buckets: list[LimitBucket],
     now: datetime,
     history: UsageHistory | None = None,
+    reset_credits: ResetCredits | None = None,
 ) -> dict[str, Any]:
     """构造稳定的机器可读结果。"""
     rows: list[dict[str, Any]] = []
@@ -2549,6 +2663,17 @@ def _json_report(
     return {
         "fetched_at": now.isoformat(),
         "buckets": rows,
+        "reset_credits": (
+            {
+                "available_count": reset_credits.available_count,
+                "next_expirations_at": [
+                    datetime.fromtimestamp(expires_at).astimezone().isoformat()
+                    for expires_at in reset_credits.next_expirations_at
+                ],
+            }
+            if reset_credits is not None
+            else None
+        ),
         "local_usage": local_usage,
     }
 
@@ -2626,6 +2751,7 @@ def main(
     try:
         result = fetch_rate_limits(resolved, timeout)
         buckets = parse_rate_limits(result)
+        reset_credits = parse_reset_credits(result)
     except UsageError as error:
         error_console.print(f"[bold red]错误：[/]{error}")
         error_console.print("请先确认 Codex CLI 已使用 ChatGPT 账号登录。", style="dim")
@@ -2656,7 +2782,13 @@ def main(
     if save_svg is not None:
         try:
             save_svg.write_text(
-                render_usage_svg(buckets, now, history=history, verbose=verbose),
+                render_usage_svg(
+                    buckets,
+                    now,
+                    history=history,
+                    reset_credits=reset_credits,
+                    verbose=verbose,
+                ),
                 encoding="utf-8",
             )
         except OSError as error:
@@ -2665,7 +2797,14 @@ def main(
     if json_output:
         print(
             json.dumps(
-                _json_report(buckets, now, history), ensure_ascii=False, indent=2
+                _json_report(
+                    buckets,
+                    now,
+                    history,
+                    reset_credits=reset_credits,
+                ),
+                ensure_ascii=False,
+                indent=2,
             )
         )
     elif use_image:
@@ -2677,6 +2816,7 @@ def main(
                 buckets,
                 now,
                 history=history,
+                reset_credits=reset_credits,
                 columns=columns,
                 verbose=verbose,
             )
@@ -2685,9 +2825,21 @@ def main(
                 error_console.print(f"[bold red]错误：[/]无法展示图片：{error}")
                 raise typer.Exit(1) from error
             error_console.print(f"[yellow]图片模式不可用，已回退到文本：[/]{error}")
-            render_usage(buckets, now, history=history, verbose=verbose)
+            render_usage(
+                buckets,
+                now,
+                history=history,
+                reset_credits=reset_credits,
+                verbose=verbose,
+            )
     else:
-        render_usage(buckets, now, history=history, verbose=verbose)
+        render_usage(
+            buckets,
+            now,
+            history=history,
+            reset_credits=reset_credits,
+            verbose=verbose,
+        )
 
 
 if __name__ == "__main__":
