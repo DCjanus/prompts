@@ -20,6 +20,7 @@ import tempfile
 from enum import Enum
 from pathlib import Path
 from typing import Annotated, Any
+from uuid import UUID
 
 import httpx2
 import tomli_w
@@ -30,6 +31,8 @@ from rich.console import Console
 from rich.table import Table
 
 CONFIG_ENV = "NOTIFY_VIA_TELEGRAM_CONFIG"
+CODEX_SESSION_ID_ENV = "CODEX_SESSION_ID"
+CODEX_THREAD_URL_PREFIX = "codex://threads/"
 DEFAULT_TIMEOUT_SECONDS = 10.0
 TELEGRAM_API_BASE = "https://api.telegram.org"
 
@@ -82,6 +85,7 @@ class Notification(BaseModel):
     verification: str | None = Field(default=None, min_length=1, max_length=200)
     action: str | None = Field(default=None, min_length=1, max_length=200)
     context: str | None = Field(default=None, min_length=1, max_length=80)
+    codex_thread_url: str | None = None
 
     @field_validator(
         "title", "summary", "verification", "action", "context", mode="before"
@@ -119,6 +123,7 @@ def notification_from_options(
             verification=verification,
             action=action,
             context=context,
+            codex_thread_url=current_codex_root_thread_url(),
         )
     except ValidationError as exc:
         details = ", ".join(
@@ -126,6 +131,22 @@ def notification_from_options(
             for error in exc.errors(include_input=False)
         )
         abort(f"通知内容无效：{details}")
+
+
+def current_codex_root_thread_url() -> str | None:
+    """从 Codex 根 session ID 构造当前 agent tree 的桌面端深链。"""
+
+    thread_id = os.environ.get(CODEX_SESSION_ID_ENV, "").strip()
+    if not thread_id:
+        return None
+
+    try:
+        canonical_thread_id = str(UUID(thread_id))
+    except ValueError:
+        return None
+    if canonical_thread_id != thread_id.lower():
+        return None
+    return f"{CODEX_THREAD_URL_PREFIX}{canonical_thread_id}"
 
 
 def render_notification_blocks(notification: Notification) -> list[dict[str, Any]]:
@@ -160,6 +181,17 @@ def render_notification_blocks(notification: Notification) -> list[dict[str, Any
         footer.extend([" · ", notification.verification])
     if notification.context:
         footer.extend([" · ", notification.context])
+    if notification.codex_thread_url:
+        footer.extend(
+            [
+                " · ",
+                {
+                    "type": "url",
+                    "text": notification.codex_thread_url,
+                    "url": notification.codex_thread_url,
+                },
+            ]
+        )
     blocks.append({"type": "footer", "text": footer})
     return blocks
 
@@ -181,6 +213,8 @@ def render_notification_plain(notification: Notification) -> str:
         footer.append(notification.verification)
     if notification.context:
         footer.append(notification.context)
+    if notification.codex_thread_url:
+        footer.append(notification.codex_thread_url)
     lines.extend(["", " · ".join(footer)])
     return "\n".join(lines)
 
