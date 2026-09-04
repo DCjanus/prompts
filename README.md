@@ -99,6 +99,7 @@ notification_method = "bel"
 | [`domain-modeling`](skills/domain-modeling/SKILL.md) | 构建并持续校准领域模型，明确领域术语与边界，并在必要时记录重要架构决策。 |
 | [`fetch-url`](skills/fetch-url/SKILL.md) | 获取并提取链接正文（默认 Markdown）；内置 X/Twitter URL 处理，提升受限页面的抓取成功率。 |
 | [`google-mail-cli`](skills/google-mail-cli/SKILL.md) | 使用 Gmail API 搜索和读取邮件、整理标签、管理草稿、发送邮件及配置过滤规则。 |
+| [`google-calendar-cli`](skills/google-calendar-cli/SKILL.md) | 使用 Google Calendar API 查看日历和事件、查询空闲忙碌时间，以及创建、更新或删除事件。 |
 | [`review-fix-loop`](skills/review-fix-loop/SKILL.md) | 用三个相互隔离的干净 subagent 并行做代码审查，由主 agent 判断审查意见价值、修复有效问题并提交推送，直到同一批三个 reviewer 都没有有价值审查意见；仅在显式调用时启用。 |
 | [`repository-workflow`](skills/repository-workflow/SKILL.md) | 处理从本地 Git 变更到 GitHub/GitLab 协作发布的完整流程，包括语义化提交、Issue/PR/MR 文案与 inline review reply。 |
 | [`github-cli`](skills/github-cli/SKILL.md) | GitHub CLI 使用指引，面向 GitHub 资源交互（如 repo、issue、PR、comment、release、workflow） |
