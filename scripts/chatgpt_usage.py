@@ -2000,6 +2000,7 @@ def render_usage(
     verbose: bool,
 ) -> None:
     """用 Rich 渲染订阅与额度进度。"""
+    console.print(f"当前时间：{now.astimezone():%Y-%m-%d %H:%M:%S %Z}", style="dim")
     if history is not None:
         _render_usage_history(history, verbose=verbose)
     for bucket in _visible_buckets(buckets, verbose=verbose):
@@ -2255,7 +2256,7 @@ def _render_compact_usage_svg(
 ) -> str:
     """渲染以每日用量为主、额度摘要为辅的默认看板。"""
     margin = 48
-    header_height = 86
+    header_height = 90
     card_gap = 20
     history_height = _usage_history_height(len(history.days))
     reset_height = 24 if reset_credits is not None else 0
@@ -2287,6 +2288,7 @@ def _render_compact_usage_svg(
     .muted {{ fill: #7f8aa3; }}
   </style>
   <text x="{margin}" y="55" fill="#f8f8f2" font-size="32" font-weight="750">ChatGPT Usage</text>
+  <text x="{margin}" y="76" class="muted" font-size="14">当前时间：{_svg_text(now.astimezone().strftime("%Y-%m-%d %H:%M:%S %Z"))}</text>
   <rect x="{SVG_WIDTH - margin - 300}" y="22" width="300" height="40" rx="20" fill="{summary_color}" fill-opacity="0.13"/>
   <circle cx="{SVG_WIDTH - margin - 276}" cy="42" r="6" fill="{summary_color}"/>
   <text x="{SVG_WIDTH - margin - 258}" y="48" fill="{summary_color}" font-size="16" font-weight="700">{_svg_text(summary)}</text>'''
@@ -2441,6 +2443,7 @@ def render_usage_svg(
     .muted {{ fill: #7f8aa3; }}
   </style>
   <text x="{margin}" y="64" fill="#f8f8f2" font-size="38" font-weight="750">ChatGPT Usage</text>
+  <text x="{margin}" y="92" class="muted" font-size="16">当前时间：{_svg_text(now.astimezone().strftime("%Y-%m-%d %H:%M:%S %Z"))}</text>
   <rect x="{SVG_WIDTH - margin - 354}" y="30" width="354" height="48" rx="24" fill="{summary_color}" fill-opacity="0.13"/>
   <circle cx="{SVG_WIDTH - margin - 326}" cy="54" r="7" fill="{summary_color}"/>
   <text x="{SVG_WIDTH - margin - 306}" y="61" fill="{summary_color}" font-size="19" font-weight="700">{_svg_text(summary)}</text>'''
