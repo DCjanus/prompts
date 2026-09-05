@@ -2,7 +2,7 @@
 
 目前仓库只保留与 Codex 直接相关的提示词与技能说明：早期为 Cursor 准备的内容已经删除，若需要历史记录可参考 [deprecated/cursor](https://github.com/DCjanus/prompts/releases/tag/deprecated%2Fcursor) 归档。
 
-提示词维护参考 OpenAI 的 [GPT-6 Astra 提示词建议](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-6-astra#prompting-best-practices)、[AGENTS.md 加载规则](https://developers.openai.com/codex/guides/agents-md)与 [skills 编写指南](https://developers.openai.com/codex/skills)。技能编写也可参考 Claude 官方的 [技能创作最佳实践](https://platform.claude.com/docs/zh-CN/agents-and-tools/agent-skills/best-practices) 文档。
+提示词维护参考 OpenAI 官方的 [GPT-6 Astra 提示词建议](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-6-astra#prompting-best-practices)和 [AGENTS.md 加载规则](https://developers.openai.com/codex/guides/agents-md)。技能编写遵循 OpenAI 官方的 [skills 编写指南](https://developers.openai.com/codex/skills)。
 
 ## 使用方式
 
