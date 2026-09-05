@@ -1,0 +1,21 @@
+{
+  "name": "dcjanus",
+  "version": "0.1.0",
+  "description": "DCjanus 的个人 Codex 工作流、偏好和 CLI skills。",
+  "author": {
+    "name": "DCjanus",
+    "email": "DCjanus@dcjanus.com"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "DCjanus",
+    "shortDescription": "个人工作流、偏好和 CLI skills",
+    "longDescription": "通过 Git marketplace 在多台电脑上安装和更新 DCjanus 的个人 Codex skills。外部服务凭据由各台电脑单独配置。",
+    "developerName": "DCjanus",
+    "category": "Productivity",
+    "capabilities": ["Read", "Write"],
+    "defaultPrompt": "使用 DCjanus 的个人工作流协助处理当前任务。"
+  },
+  "repository": "https://github.com/DCjanus/prompts",
+  "homepage": "https://github.com/DCjanus/prompts"
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Jira CLI"
+  short_description: "通过内置 Python CLI 查询和管理 Jira 工作项与过滤器"
+  default_prompt: "Use $dcjanus:jira-cli to inspect Jira Server issues and saved filters or perform controlled issue updates through the bundled Python CLI."

@@ -1,0 +1,20 @@
+{
+  "name": "dcjanus-plugins",
+  "interface": {
+    "displayName": "DCjanus Plugins"
+  },
+  "plugins": [
+    {
+      "name": "dcjanus",
+      "source": {
+        "source": "local",
+        "path": "./plugins/dcjanus"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

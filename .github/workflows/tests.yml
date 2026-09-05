@@ -38,6 +38,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6.0.3
+      - name: Install Codex CLI for plugin integration tests
+        run: npm install --global @openai/codex
       - name: Setup uv
         uses: astral-sh/setup-uv@v8.2.0
         with:
