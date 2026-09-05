@@ -2,9 +2,18 @@
 
 目前仓库只保留与 Codex 直接相关的提示词与技能说明：早期为 Cursor 准备的内容已经删除，若需要历史记录可参考 [deprecated/cursor](https://github.com/DCjanus/prompts/releases/tag/deprecated%2Fcursor) 归档。
 
-技能编写可参考 Claude 官方的 [技能创作最佳实践](https://platform.claude.com/docs/zh-CN/agents-and-tools/agent-skills/best-practices) 文档。
+提示词维护参考 OpenAI 的 [GPT-6 Astra 提示词建议](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-6-astra#prompting-best-practices)、[AGENTS.md 加载规则](https://developers.openai.com/codex/guides/agents-md)与 [skills 编写指南](https://developers.openai.com/codex/skills)。技能编写也可参考 Claude 官方的 [技能创作最佳实践](https://platform.claude.com/docs/zh-CN/agents-and-tools/agent-skills/best-practices) 文档。
 
 ## 使用方式
+
+本仓库是本机个人提示词的受管来源，不是目标业务项目的规则目录。当前安装方式：
+
+- `~/.codex/AGENTS.md` 软链接到本仓库的 [AGENTS.md](AGENTS.md)，提供跨项目的个人默认。
+- `~/.codex/skills` 软链接到本仓库的 [skills](skills)；`~/.agents/skills` 保持为独立目录，容纳其它工具管理的技能，避免自动写入污染本仓库。
+- 全局文件只保留个人偏好、工作边界和短路由；操作步骤放入相应 skill，按任务加载，项目的明确约定优先。
+- 调用 skill 脚本时，从实际加载的 SKILL.md 定位资源，目标项目单独通过参数指定；不要假设当前目录就是本仓库。
+
+审阅 worktree 或 PR 时，既有软链接仍指向原 checkout。仅修改 worktree 不会切换本机生效版本；采用变更时需同时更新全局文件及其引用的 skills，并在新会话中核对加载结果。仓库根目录也有 AGENTS.md，因此在本仓库工作时可能同时加载全局和项目两份约定。
 
 我当前在 fish 里使用两条 Codex alias（定义在 `~/.config/fish/config.fish`）：
 
@@ -57,11 +66,11 @@ notification_method = "bel"
 
 ## 运行前提
 
-本仓库内的所有脚本与 skills 默认假设当前环境已安装最新版 [`uv`](https://github.com/astral-sh/uv)。
+本仓库内的脚本与 skills 默认假设本机已安装 [`uv`](https://github.com/astral-sh/uv)。远端服务器或容器的工具单独核实，沿用目标项目的工具链，不从本机安装情况推断远端环境。
 
 ## 仓库结构
 
-- [`AGENTS.md`](AGENTS.md)：Codex 中所有代理共享的基础约束与工作流
+- [`AGENTS.md`](AGENTS.md)：本机跨项目的个人默认、工作边界和按需 skill 路由
 - [`skills/`](skills)：按功能分类的技能库，详情见下方技能列表
 - [`scripts/`](scripts)：放置 uv script 模式的工具脚本（规范见 [SKILL.md（uv-cli-creator）](skills/uv-cli-creator/SKILL.md)）
   - [`chatgpt_usage.py`](scripts/chatgpt_usage.py)：复用本机 Codex CLI 的 ChatGPT 登录态，展示 Codex 额度窗口，并通过 DuckDB 增量索引活跃与已归档 Thread，统计最近 7 天 Token 用量、每日输入缓存命中率和按当前标准 API 单价折算的美元成本；自动在支持 Kitty 图片协议的终端中展示图片看板，其它环境回退到紧凑 Rich 输出
@@ -95,6 +104,8 @@ notification_method = "bel"
 | [`confluence-cli`](skills/confluence-cli/SKILL.md) | 查询、检索与阅读 Confluence 文档/页面。 |
 | [`jira-cli`](skills/jira-cli/SKILL.md) | 通过内置 Python CLI 查询和管理 Jira Issue、Saved Filter、流转与评论。 |
 | [`uv-cli-creator`](skills/uv-cli-creator/SKILL.md) | 创建或修改基于 PEP 723、由 `uv run --script` 管理的单文件 Python CLI，并在环境支持时提供直接执行入口。 |
+| [`python-execution`](skills/python-execution/SKILL.md) | 临时 Python 脚本、目标执行环境和 Python 格式/lint 检查。 |
+| [`dependency-management`](skills/dependency-management/SKILL.md) | 按项目工具链管理依赖与项目版本，核对 manifest 和锁文件的变更范围。 |
 | [`dcjanus-preferences`](skills/dcjanus-preferences/SKILL.md) | 记录 DCjanus 的跨语言技术选型、哈希与无序集合摘要、Protobuf 契约以及 Python/Rust/Go 第三方库偏好，适用于存储、分析、压缩、归档、协议设计、依赖选择与技术方案对比。 |
 | [`domain-modeling`](skills/domain-modeling/SKILL.md) | 构建并持续校准领域模型，明确领域术语与边界，并在必要时记录重要架构决策。 |
 | [`fetch-url`](skills/fetch-url/SKILL.md) | 获取并提取链接正文（默认 Markdown）；内置 X/Twitter URL 处理，提升受限页面的抓取成功率。 |

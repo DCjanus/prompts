@@ -9,7 +9,7 @@ description: 使用 GitHub CLI 与 GitHub 资源交互；适用于 repo、issue�
 
 本 skill 只负责 GitHub 资源读取与平台操作，不定义标题、正文或 inline review reply 的文案。
 
-说明：以下脚本调用均以当前 `SKILL.md` 所在文件夹为 workdir。
+以下脚本调用均以实际加载的本 skill 目录为 workdir；从可用技能目录定位，不假设目标项目含有 `skills/`，也不硬编码安装路径。目标仓库通过相应参数单独指定。
 
 脚本调用方式（必须直接当作可执行命令运行，不要用 `uv run python` 或 `python`）：
 
@@ -53,8 +53,8 @@ description: 使用 GitHub CLI 与 GitHub 资源交互；适用于 repo、issue�
 在创建 Issue 或 PR 前，先检查对应的 GitHub 模板、表单和当前资源状态。
 
 1. 优先运行本 skill 的创建前扫描脚本，输出中文摘要和“已检查”清单：
-   - Issue：`cd /Users/dcjanus/Code/prompts/skills/github-cli && ./scripts/github_preflight.py --mode issue --repo <repo>`
-   - PR：`cd /Users/dcjanus/Code/prompts/skills/github-cli && ./scripts/github_preflight.py --mode pr --repo <repo>`
+   - Issue：`./scripts/github_preflight.py --mode issue --repo <目标仓库绝对路径>`
+   - PR：`./scripts/github_preflight.py --mode pr --repo <目标仓库绝对路径>`
 2. 根据脚本输出读取候选模板和 workflow；脚本已检查的项目不要重复机械检查，除非输出显示有候选 enforcement 或你需要确认细节。
 3. 对 Issue Form 模板，注意 `labels:`、必填字段和 checkbox；再用 `./scripts/github_issue.py inspect` 读取远端默认分支上的实际模板，避免本地 checkout 过期。
 4. 在正式创建前检查当前代码、分支与提交状态是否和准备提交到平台上的内容一致，避免创建出与现状不符的 Issue 或 PR。

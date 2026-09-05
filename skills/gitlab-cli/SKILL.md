@@ -7,12 +7,12 @@ description: 使用 GitLab CLI（glab）与 GitLab 资源交互；适用于 proj
 
 ## 使用约定
 
-说明：以下脚本调用均以当前 `SKILL.md` 所在文件夹为 workdir。
+以下脚本调用均以实际加载的本 skill 目录为 workdir；从可用技能目录定位，不假设目标项目含有 `skills/`，也不硬编码安装路径。目标仓库通过 `--cwd` 单独指定。
 
 脚本调用方式（必须直接当作可执行命令运行，不要用 `uv run python` 或 `python`）：
 
 ```bash
-cd skills/gitlab-cli && ./scripts/gitlab_cli.py --help
+./scripts/gitlab_cli.py --help
 ```
 
 错误示例：

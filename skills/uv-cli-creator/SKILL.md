@@ -1,6 +1,6 @@
 ---
 name: uv-cli-creator
-description: 创建或修改基于 PEP 723、由 `uv run --script` 管理的单文件 Python CLI；当需要把重复命令封装成 `scripts/` 工具、让脚本在支持 `env -S` 的 Unix 环境中直接执行，或统一这类脚本约定时使用。
+description: 创建或修改基于 PEP 723、由 uv run --script 管理的可复用单文件 Python CLI。一次性分析脚本和一般执行环境问题使用 python-execution。
 ---
 
 ## 设计目标
@@ -57,18 +57,18 @@ uv run --script scripts/foo.py --help
 如果某个 skill 会调用这个脚本，下面这段模板应直接写进那个 skill 自己的 `SKILL.md`，作为调用约定保留下来：
 
 ````markdown
-说明：以下脚本调用均以当前 `SKILL.md` 所在文件夹为 workdir。
+从可用技能目录定位本 SKILL.md，并将其所在目录设为执行工具的 workdir；以下路径相对该目录，不假设目标项目含有 skills/。目标项目和输入文件通过绝对路径参数单独传入。
 
 脚本调用方式（支持 `env -S` 时直接执行；不要用 `uv run python` 或 `python`）：
 
 ```bash
-cd skills/<skill-name> && ./scripts/<tool>.py --help
+./scripts/<tool>.py --help
 ```
 
 不支持 `env -S` 时使用：
 
 ```bash
-cd skills/<skill-name> && uv run --script scripts/<tool>.py --help
+uv run --script scripts/<tool>.py --help
 ```
 
 错误示例：
