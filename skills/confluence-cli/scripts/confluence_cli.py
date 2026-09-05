@@ -2,7 +2,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#     "httpxyz>=0.42.0",
+#     "httpxyz>=0.42.1",
 #     "markdown-it-py>=4.2.0",
 #     "pydantic>=2.13.5",
 #     "rich>=15.0.0",

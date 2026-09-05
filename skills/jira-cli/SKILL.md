@@ -12,7 +12,6 @@ description: 通过内置 Python CLI 直接调用 Jira Server/Data Center REST A
 默认配置文件为 `~/.config/jira-cli/config.toml`。使用 `config set` 创建或修改配置：
 
 ```bash
-cd skills/jira-cli
 ./scripts/jira_cli.py config set --default-project SATOS
 ./scripts/jira_cli.py config set --server https://jira.example --prompt-token
 ./scripts/jira_cli.py config show
@@ -37,10 +36,9 @@ cd skills/jira-cli
 
 ## 调用约定
 
-从 skill 目录直接执行；全局选项放在子命令之前：
+全局选项放在子命令之前：
 
 ```bash
-./scripts/jira_cli.py --help
 ./scripts/jira_cli.py --json user me
 ./scripts/jira_cli.py --json issue get SATOS-261728
 ```

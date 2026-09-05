@@ -17,6 +17,7 @@ import json
 import math
 import os
 import re
+import tempfile
 from enum import Enum
 from pathlib import Path
 from typing import Annotated, Any
@@ -90,9 +91,8 @@ def missing_client_secret_message(path: Path) -> str:
 
 处理方式：
 1. 先阅读 {AUTH_DOC}，创建 Google OAuth Desktop app client。
-2. 把下载的 JSON 保存为：{path}
-3. 设置权限：chmod 700 {path.parent} && chmod 600 {path}
-4. 运行：./scripts/gsheets_cli.py auth login
+2. 运行：./scripts/gsheets_cli.py auth import-client <下载的 JSON 路径>
+3. 运行：./scripts/gsheets_cli.py auth login
 
 该 JSON 应包含 installed.client_id 和 installed.client_secret 字段。"""
 
@@ -110,6 +110,60 @@ def ensure_client_secret_exists() -> Path:
     if not path.exists():
         raise CliError(missing_client_secret_message(path))
     return path
+
+
+def import_client_secret(source: Path, *, overwrite: bool = False) -> Path:
+    """校验 Desktop client JSON 并以私有权限原子导入，保留源文件和 token。"""
+    try:
+        content = source.expanduser().read_bytes()
+        payload = json.loads(content.decode("utf-8-sig"))
+    except (OSError, ValueError, UnicodeError):
+        raise CliError("无法读取 client JSON，请提供可读的 UTF-8 JSON 文件。") from None
+    installed = payload.get("installed") if isinstance(payload, dict) else None
+    required = ("client_id", "client_secret", "auth_uri", "token_uri")
+    if (
+        not isinstance(installed, dict)
+        or "web" in payload
+        or any(
+            not isinstance(installed.get(key), str) or not installed[key].strip()
+            for key in required
+        )
+    ):
+        raise CliError(
+            "需要 Google OAuth Desktop app JSON，installed 中须包含非空字符串 "
+            "client_id、client_secret、auth_uri 和 token_uri。"
+        )
+
+    target = client_secret_path()
+    temporary: Path | None = None
+    try:
+        if target.parent.is_symlink() or target.is_symlink():
+            raise CliError("凭据目录或目标文件是软链接，拒绝导入。")
+        if target.exists() and not overwrite:
+            raise CliError("client secret 已存在；确认替换时使用 --overwrite。")
+        target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        target.parent.chmod(0o700)
+        with tempfile.NamedTemporaryFile(
+            dir=target.parent, prefix=".client-secret-", delete=False
+        ) as stream:
+            temporary = Path(stream.name)
+            os.fchmod(stream.fileno(), 0o600)
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+        if overwrite:
+            os.replace(temporary, target)
+        else:
+            # 原子拒绝覆盖检查后才出现的文件。
+            os.link(temporary, target)
+    except FileExistsError:
+        raise CliError("client secret 已存在；确认替换时使用 --overwrite。") from None
+    except OSError:
+        raise CliError("导入失败，请检查凭据目录的权限和可用空间。") from None
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+    return target
 
 
 def load_json_arg(raw: str, option_name: str) -> Any:
@@ -421,6 +475,19 @@ def auth_paths(ctx: typer.Context) -> None:
     render_output(ctx, payload, "Credential paths")
 
 
+@auth_app.command("import-client", help="导入下载的 Desktop client JSON，不执行登录。")
+def auth_import_client(
+    ctx: typer.Context,
+    source: Annotated[Path, typer.Argument(help="下载的 Google OAuth Desktop JSON。")],
+    overwrite: Annotated[
+        bool, typer.Option("--overwrite", help="替换已有 client secret，保留 token。")
+    ] = False,
+) -> None:
+    """导入凭据，仅输出保存路径。"""
+    path = import_client_secret(source, overwrite=overwrite)
+    render_output(ctx, {"status": "ok", "client_secret": str(path)}, "Import client")
+
+
 @auth_app.command("doctor", help="检查本地凭据与 token 状态。")
 def auth_doctor(ctx: typer.Context) -> None:
     payload: dict[str, Any] = credential_paths_payload()
@@ -481,14 +548,23 @@ def spreadsheet_get(
     ctx: typer.Context,
     spreadsheet_id: str = typer.Option(..., "--spreadsheet-id"),
     include_grid_data: bool = typer.Option(False, "--include-grid-data"),
+    ranges: list[str] | None = typer.Option(
+        None, "--range", help="可重复；仅返回指定 A1 范围。"
+    ),
+    fields: str | None = typer.Option(
+        None, "--fields", help="原生字段掩码；指定后由它决定是否返回 grid data。"
+    ),
 ) -> None:
+    options: dict[str, Any] = {
+        "spreadsheetId": spreadsheet_id,
+        "includeGridData": include_grid_data,
+    }
+    if ranges:
+        options["ranges"] = ranges
+    if fields is not None:
+        options["fields"] = fields
     try:
-        payload = (
-            get_service()
-            .spreadsheets()
-            .get(spreadsheetId=spreadsheet_id, includeGridData=include_grid_data)
-            .execute()
-        )
+        payload = get_service().spreadsheets().get(**options).execute()
     except HttpError as exc:
         raise handle_http_error(exc) from exc
     render_output(ctx, payload, "Spreadsheet")

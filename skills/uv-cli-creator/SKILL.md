@@ -1,6 +1,6 @@
 ---
 name: uv-cli-creator
-description: 创建或修改基于 PEP 723、由 `uv run --script` 管理的单文件 Python CLI；当需要把重复命令封装成 `scripts/` 工具、让脚本在支持 `env -S` 的 Unix 环境中直接执行，或统一这类脚本约定时使用。
+description: 创建或修改基于 PEP 723、由 uv run --script 管理的可复用单文件 Python CLI。一次性分析脚本和一般执行环境问题使用 python-execution。
 ---
 
 ## 设计目标
@@ -12,72 +12,13 @@ description: 创建或修改基于 PEP 723、由 `uv run --script` 管理的单�
 - 方便修改和版本控制
 - 始终可以通过 `uv run --script` 执行；环境支持时也可以像可执行文件一样直接执行
 
-## 怎么实现
+## 初始化与维护
 
-入口脚本的基本流程：
+新脚本使用 [init_cli.py](scripts/init_cli.py) 初始化：传入目标路径，按需用 `--dependency`（可重复）添加依赖、用 `--python` 指定 Python 版本。未指定版本时沿用 uv 的解释器发现规则，由 uv 自动填写最低版本要求，不额外筛选最新版。脚本自动完成 PEP 723 初始化、shebang 和执行权限设置，拒绝覆盖已有文件。
 
-```bash
-uv init --script scripts/foo.py
-uv add --script scripts/foo.py <package>
-```
+为 skill 创建的入口放在该 skill 的 `scripts/` 目录下；初始化后直接编写业务逻辑。后续依赖通过 `uv add --script` / `uv remove --script` 管理，不手工编辑依赖块。
 
-`uv init --script` 不会生成 shebang。需要直接执行时，在 PEP 723 metadata 前添加：
-
-```python
-#!/usr/bin/env -S uv run --script
-#
-# /// script
-```
-
-然后设置执行权限并验证两种入口：
-
-```bash
-chmod +x scripts/foo.py
-./scripts/foo.py --help
-uv run --script scripts/foo.py --help
-```
-
-`env -S` 不是 POSIX 标准；不支持它的 Unix 环境以及 Windows 应使用 `uv run --script scripts/foo.py`。
-
-依赖管理规则：
-
-- 添加依赖：`uv add --script scripts/foo.py <package>`
-- 移除依赖：`uv remove --script scripts/foo.py <package>`
-- 不手工编辑头部 `/// script` 依赖块
-
-调用规则：
-
-- 入口脚本放在对应 skill 的 `scripts/` 目录下
-- 支持 `env -S` 的 Unix 环境优先直接执行：`./scripts/foo.py`
-- 其它环境使用：`uv run --script scripts/foo.py`
-- 不要在 skill 文档里把入口脚本写成 `python ...` 或 `uv run python ...`
-
-## 给其他 skill 用时
-
-如果某个 skill 会调用这个脚本，下面这段模板应直接写进那个 skill 自己的 `SKILL.md`，作为调用约定保留下来：
-
-````markdown
-说明：以下脚本调用均以当前 `SKILL.md` 所在文件夹为 workdir。
-
-脚本调用方式（支持 `env -S` 时直接执行；不要用 `uv run python` 或 `python`）：
-
-```bash
-cd skills/<skill-name> && ./scripts/<tool>.py --help
-```
-
-不支持 `env -S` 时使用：
-
-```bash
-cd skills/<skill-name> && uv run --script scripts/<tool>.py --help
-```
-
-错误示例：
-
-```bash
-uv run python skills/<skill-name>/scripts/<tool>.py --help
-python skills/<skill-name>/scripts/<tool>.py --help
-```
-````
+不支持 `env -S` 的 Unix 环境以及 Windows 使用 `uv run --script` 执行。
 
 ## 细节偏好
 
@@ -96,7 +37,6 @@ python skills/<skill-name>/scripts/<tool>.py --help
 
 ## 验证
 
-- `./scripts/foo.py --help`
-- `uv run --script scripts/foo.py --help`
+- 验证脚本模式；提供可执行入口时，同时验证该入口。
 - `uvx ruff check <path>`
 - `uvx ruff format --check <path>`

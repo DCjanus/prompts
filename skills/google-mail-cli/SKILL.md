@@ -9,19 +9,6 @@ description: 使用 Python CLI 与 Gmail API 交互以搜索和读取邮件、�
 
 ## 执行约定
 
-以下命令均以当前 `SKILL.md` 所在文件夹为 workdir。支持 `env -S` 时直接执行：
-
-```bash
-cd skills/google-mail-cli && ./scripts/google_mail_cli.py --json messages search --query "is:unread newer_than:7d"
-```
-
-不支持 `env -S` 时使用：
-
-```bash
-cd skills/google-mail-cli && uv run --script scripts/google_mail_cli.py --json messages search --query "is:unread newer_than:7d"
-```
-
-- 不要用 `uv run python` 或 `python` 调用脚本。
 - 给 Agent 解析的输出一律加 `--json`，且全局参数必须放在子命令前。
 - 参数不确定时先运行 `./scripts/google_mail_cli.py <command> --help`。
 - 写操作只在用户明确要求时执行；范围或资源 ID 不确定时先读。

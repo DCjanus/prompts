@@ -9,17 +9,8 @@ description: 使用 Python CLI 与 Google Sheets API 交互以新建、读取、
 
 ## 执行约定
 
-先进入 skill 目录，再直接执行脚本：
-
-```bash
-cd skills/google-sheets-cli
-./scripts/gsheets_cli.py --json values get --spreadsheet-id <spreadsheet-id> --range "Sheet1!A1:D20"
-```
-
-- 不要用 `uv run python` 或 `python` 调用脚本；脚本自身带 uv shebang。
 - 给 Agent 解析的输出一律加 `--json`，并且全局参数必须放在子命令前。
 - 写操作会真实修改在线表格；范围不确定时先读目标 range。
-- 参数不确定时先查 `./scripts/gsheets_cli.py <command> --help`。
 
 ## 认证
 
@@ -32,7 +23,7 @@ OAuth 通常只需要配置一次；日常任务不要把认证细节加载进�
 
 常用命令族：
 
-- `auth login|doctor|logout|paths`
+- `auth import-client|login|doctor|logout|paths`
 - `spreadsheet create|get`
 - `values get|update|batch-update|append|clear|update-rich-text`
 
@@ -74,47 +65,18 @@ OAuth 通常只需要配置一次；日常任务不要把认证细节加载进�
 
 ## 读取格式与 table 元数据
 
-需要确认在线表格的列结构、table 范围、filter、banded row 样式、dropdown 选项、列宽、日期格式等信息时，优先走只读流程：
+`spreadsheet get` 默认只返回 metadata，可查看 sheet id、标题、filter、banded ranges 和 table 列定义；只读单元格内容用 `values get --range`。
 
-1. 先读 spreadsheet metadata，不带 grid data：
-
-```bash
-./scripts/gsheets_cli.py --json spreadsheet get --spreadsheet-id <spreadsheet-id>
-```
-
-metadata 通常足够看到 sheet id、sheet title、`basicFilter`、`bandedRanges`、`tables[].range`、`tables[].columnProperties`，包括 table dropdown 列的选项。
-
-2. 只读单元格内容时，用 `values get` 限定 A1 range：
+需要单元格格式、下拉校验、列宽或行高时，通过 `--range`（可重复）和 `--fields` 限定返回内容，避免拉取大型 workbook 的全量 grid data：
 
 ```bash
-./scripts/gsheets_cli.py --json values get \
+./scripts/gsheets_cli.py --json spreadsheet get \
   --spreadsheet-id <spreadsheet-id> \
-  --range "Sheet1!A1:H40"
+  --range "'Sheet1'!A1:H5" \
+  --fields 'sheets(properties(sheetId,title),data(columnMetadata,rowMetadata,rowData(values(formattedValue,effectiveFormat,dataValidation))))'
 ```
 
-3. 避免直接对大型 workbook 使用 `spreadsheet get --include-grid-data`；它会拉取全量 grid data，可能很慢。需要读取单元格 `effectiveFormat`、列宽、行高、日期格式等精细格式时，复用本 CLI 的 OAuth token，通过 Sheets API 原生 `spreadsheets.get` 指定 `ranges` 和 `fields` 做窄范围只读查询：
-
-```bash
-uv run --with google-api-python-client --with google-auth-httplib2 --with google-auth-oauthlib python - <<'PY'
-from pathlib import Path
-from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
-
-spreadsheet_id = "<spreadsheet-id>"
-creds = Credentials.from_authorized_user_file(
-    str(Path.home() / ".config/google-sheets-cli/token.json"),
-    ["https://www.googleapis.com/auth/spreadsheets"],
-)
-service = build("sheets", "v4", credentials=creds)
-resp = service.spreadsheets().get(
-    spreadsheetId=spreadsheet_id,
-    ranges=["'Sheet1'!A1:H5"],
-    includeGridData=True,
-    fields="sheets(properties(sheetId,title),data(columnMetadata,rowData(values(formattedValue,effectiveFormat,dataValidation))))",
-).execute()
-print(resp)
-PY
-```
+`--fields` 使用 [Sheets API 字段掩码](https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets/get)，指定后由掩码决定是否返回 grid data，`--include-grid-data` 不再生效。
 
 ## 更新 table / dropdown 的注意事项
 

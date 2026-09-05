@@ -32,7 +32,6 @@ $XDG_CONFIG_HOME/google-mail-cli/token.json
 然后执行：
 
 ```bash
-cd skills/google-mail-cli
 ./scripts/google_mail_cli.py auth login
 ./scripts/google_mail_cli.py --json auth doctor
 ```

@@ -9,25 +9,6 @@ description: 使用 Python CLI 与 Google Calendar API 交互以查看日历和�
 
 ## 执行约定
 
-以下命令均以当前 `SKILL.md` 所在文件夹为 workdir。支持 `env -S` 时直接执行：
-
-```bash
-cd skills/google-calendar-cli && ./scripts/google_calendar_cli.py --json events list \
-  --calendar-id primary \
-  --time-min '2026-09-04T00:00:00+08:00' \
-  --time-max '2026-09-05T00:00:00+08:00'
-```
-
-不支持 `env -S` 时使用：
-
-```bash
-cd skills/google-calendar-cli && uv run --script scripts/google_calendar_cli.py --json events list \
-  --calendar-id primary \
-  --time-min '2026-09-04T00:00:00+08:00' \
-  --time-max '2026-09-05T00:00:00+08:00'
-```
-
-- 不要用 `uv run python` 或 `python` 调用脚本。
 - 给 Agent 解析的输出一律加 `--json`，且全局参数必须放在子命令前。
 - 参数不确定时先运行 `./scripts/google_calendar_cli.py <command> --help`。
 - 写操作只在用户明确要求时执行；范围、日历 ID 或事件 ID 不确定时先读。

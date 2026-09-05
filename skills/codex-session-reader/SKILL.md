@@ -7,17 +7,6 @@ description: 读取 Codex 的单个 session/thread；当已知 thread id 且需�
 
 默认输出全部 turns；如只想看局部，可用 `--turns` 传 0-based、接近 Python 的切片表达式。
 
-## Quick start
-
-```bash
-cd skills/codex-session-reader
-./scripts/codex_session_reader.py read <thread-id>
-```
-
-## 环境注意事项
-
-- 脚本使用 `uv --script` 管理运行依赖。
-
 ## 何时使用
 
 - 用户要求查看某个 Codex thread/session。

@@ -5,7 +5,7 @@ description: 处理从本地 Git 变更到 GitHub/GitLab 协作发布的完整�
 
 # Repository Workflow
 
-统一管理仓库变更的准备、记录和发布。GitHub/GitLab 的资源读取与平台写入仍交给 [SKILL.md](../github-cli/SKILL.md) / [SKILL.md](../gitlab-cli/SKILL.md)。
+统一管理仓库变更的准备、记录和发布，优先使用非交互命令。GitHub/GitLab 的资源读取与平台写入仍交给 [SKILL.md](../github-cli/SKILL.md) / [SKILL.md](../gitlab-cli/SKILL.md)。
 
 ## 路由
 
@@ -34,21 +34,12 @@ description: 处理从本地 Git 变更到 GitHub/GitLab 协作发布的完整�
 
 1. 完整读取 [commit-messages.md](references/commit-messages.md)，并根据最终待提交内容生成 message。
 2. 把结构化提交描述写入仓库外的临时 YAML 文件。默认只写 `subject` 和 `paths`；仅当标题与 diff 无法充分解释必要的动机、约束或影响时才添加 `body`，不要机械生成提交正文。需要正文时也不要在 shell 参数中拼接多行文本。YAML 格式与正文判断标准见 [commit-messages.md](references/commit-messages.md)。
-3. 从本 skill 目录运行提交脚本，并显式传入目标仓库。提交成功后不再需要临时 YAML
+3. 使用提交脚本并显式传入目标仓库。提交成功后不再需要临时 YAML
    时，在同一次 shell 调用中用 `&& rm -- <明确路径>` 清理；提交失败时保留文件，
-   不要使用 `;` 无条件删除，也不要用变量、通配符或目录作为清理目标。支持 `env -S`
-   时直接执行；不要使用 `python` 或 `uv run python`：
+   不要使用 `;` 无条件删除，也不要用变量、通配符或目录作为清理目标：
 
 ```bash
 ./scripts/commit_from_yaml.py /tmp/commit.yaml --repo /path/to/repository \
-  && rm -- /tmp/commit.yaml
-```
-
-不支持 `env -S` 时使用：
-
-```bash
-uv run --script scripts/commit_from_yaml.py \
-  /tmp/commit.yaml --repo /path/to/repository \
   && rm -- /tmp/commit.yaml
 ```
 
@@ -91,7 +82,7 @@ git status -sb
 3. 创建或更新前核对平台当前内容与最终本地状态；独立 Issue 按 reference 中的例外处理。
 4. 起草 PR/MR 正文时默认不添加 `Validation`。它不是测试清单：只有 reviewer 无法从最终 diff 和平台 CI/checks 直接获得、且会实质影响风险判断的最终行为证据才能保留。普通检查命令、测试数量和 CI 状态只在任务交付回复中汇报。具体筛选规则和正反例见 [change-requests.md](references/change-requests.md)。
 5. 多行正文先写入临时 Markdown 文件，再通过平台命令的 file 参数提交，不在 shell 中拼接。
-6. 写入平台前重新通读完整正文并按最终净变化复核；删除实现过程、普通验证流水账和其它不符合 reference 的内容。若 `Validation` 没有合格证据，删除整个章节。
+6. 写入平台前重新通读完整正文并按最终净变化复核；删除实现过程、普通验证流水账和其它不符合 reference 的内容。若 `Validation` 没有合格证据，删除整个章节。PR/MR 正文中的所有 Markdown 章节标题须为英文，保留正文内容原有语言。
 7. 写入后回读标题、正文、状态和必要的元数据，确认平台结果与预期一致。
 
 ## 最终可合并门禁
