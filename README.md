@@ -1,18 +1,37 @@
 # prompts
 
-我在本机 Codex 中使用的个人提示词、skills 和工具脚本，按日常需要维护。
+DCjanus 的个人 Codex plugin，包含工作流、偏好和 CLI skills，通过 Git marketplace 在多台电脑上安装和更新。
 
-- [AGENTS.md](AGENTS.md)：跨项目的个人默认、工作边界和按需 skill 路由。
-- [skills](skills)：各技能的用途、触发条件和约定见其 SKILL.md。
-- [scripts](scripts)：额度查看、测试与维护工具。
+- [dcjanus](plugins/dcjanus)：plugin 及其 skills、脚本和第三方许可。
+- [marketplace.json](.agents/plugins/marketplace.json)：`dcjanus-plugins` marketplace。
+- [AGENTS.md](AGENTS.md)：独立维护的全局个人约定，不由 plugin 自动加载。
 
-## 本机安装
+## 安装与更新
 
-- `~/.codex/AGENTS.md` 软链接到本仓库的 [AGENTS.md](AGENTS.md)。
-- `~/.codex/skills` 软链接到本仓库的 [skills](skills)。
-- `~/.agents/skills` 保持独立，容纳其它工具管理的技能。
+每台电脑需要支持 plugin 命令的 Codex CLI（已验证 `0.153.4`）、Git 和 [uv](https://github.com/astral-sh/uv)。首次安装：
 
-本机脚本依赖 [uv](https://github.com/astral-sh/uv)；远端环境单独核实，项目明确约定优先。修改 worktree 不会切换既有软链接指向的生效版本。
+```bash
+codex plugin marketplace add DCjanus/prompts --ref master
+codex plugin add dcjanus@dcjanus-plugins
+```
+
+Codex app-server 启动时会尝试刷新配置的 Git marketplace 及已安装插件；本仓库不安装定时任务。合并 PR 后希望立即更新时运行：
+
+```bash
+codex plugin marketplace upgrade dcjanus-plugins --json
+```
+
+检查输出中的 `errors`，更新后用新任务验证。内容更新不要求每次修改 plugin 版本号；不要直接编辑安装缓存。外部服务凭据和所需工具仍由各台电脑独立配置。
+
+日常可直接描述需求，由 Codex 选择相关 skill；显式调用使用 `$dcjanus:github-cli` 等完整名称，也可在技能选择器中搜索短名称后选中。
+
+## 从软链接迁移
+
+**BREAKING CHANGE：**原 `skills/` 迁至 [skills](plugins/dcjanus/skills)，显式 `$<skill>` 调用改为 `$dcjanus:<skill>`。原来直接调用脚本的路径也需随目录调整。
+
+确认 plugin 安装成功后，移除仅指向本仓库旧 `skills/` 的 `~/.codex/skills` 软链接，避免重复发现。不要删除真实目录或其它来源的 skills；`~/.agents/skills` 保持独立。现有 `~/.codex/AGENTS.md` 及其软链接保留，新电脑按需单独配置全局约定。
+
+开发时修改 Git checkout 并创建 PR；使用 [run_tests.py](scripts/run_tests.py) 运行脚本测试。安装 Codex CLI 后，它还会在独立临时配置中验证完整插件安装和同版本 Git 更新，不修改日常安装。
 
 ## 工具入口
 
@@ -27,5 +46,5 @@
 
 ## 第三方来源与许可
 
-- [grill-me](skills/grill-me/SKILL.md)：改编自 Matt Pocock 的 [grilling](https://github.com/mattpocock/skills/blob/85f83d3fde1d3a90d5c9a657f6998c79a6c37308/skills/productivity/grilling/SKILL.md)，按 [MIT License](licenses/grill-me/LICENSE) 使用。
-- [domain-modeling](skills/domain-modeling/SKILL.md)：翻译自 Matt Pocock 的 [domain-modeling](https://github.com/mattpocock/skills/blob/321658273cb1d20b76026717d027d505790106d4/skills/engineering/domain-modeling/SKILL.md)，按 [MIT License](licenses/domain-modeling/LICENSE) 使用。
+- [grill-me](plugins/dcjanus/skills/grill-me/SKILL.md)：改编自 Matt Pocock 的 [grilling](https://github.com/mattpocock/skills/blob/85f83d3fde1d3a90d5c9a657f6998c79a6c37308/skills/productivity/grilling/SKILL.md)，按 [MIT License](plugins/dcjanus/licenses/grill-me/LICENSE) 使用。
+- [domain-modeling](plugins/dcjanus/skills/domain-modeling/SKILL.md)：翻译自 Matt Pocock 的 [domain-modeling](https://github.com/mattpocock/skills/blob/321658273cb1d20b76026717d027d505790106d4/skills/engineering/domain-modeling/SKILL.md)，按 [MIT License](plugins/dcjanus/licenses/domain-modeling/LICENSE) 使用。

@@ -32,7 +32,7 @@ from pathlib import Path
 import pytest
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
-TEST_ROOTS = (REPOSITORY_ROOT / "scripts", REPOSITORY_ROOT / "skills")
+TEST_ROOTS = (REPOSITORY_ROOT / "scripts", REPOSITORY_ROOT / "plugins")
 
 
 def main() -> int:

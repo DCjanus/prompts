@@ -246,7 +246,7 @@ def fetch_jina_reader_markdown(url: str, timeout_ms: int, verbose: bool) -> str 
     api_key = os.getenv(JINA_API_KEY_ENV, "").strip()
     headers = {
         "Accept": "text/markdown, text/plain;q=0.9, */*;q=0.1",
-        "User-Agent": "fetch-url/1.0 (+https://github.com/DCjanus/prompts/tree/master/skills/fetch-url)",
+        "User-Agent": "fetch-url/1.0 (+https://github.com/DCjanus/prompts/tree/master/plugins/dcjanus/skills/fetch-url)",
     }
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
@@ -332,7 +332,7 @@ def fetch_fxtwitter_status(
         api_url,
         headers={
             "Accept": "application/json",
-            "User-Agent": "fetch-url/1.0 (+https://github.com/DCjanus/prompts/tree/master/skills/fetch-url)",
+            "User-Agent": "fetch-url/1.0 (+https://github.com/DCjanus/prompts/tree/master/plugins/dcjanus/skills/fetch-url)",
         },
     )
     try:
