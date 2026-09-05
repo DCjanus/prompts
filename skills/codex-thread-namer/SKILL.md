@@ -30,7 +30,6 @@ description: 为当前 Codex thread 设置名称；仅当用户手动调用或�
 8. 用户选择后，调用脚本设置当前 thread 名称：
 
    ```bash
-   cd /Users/dcjanus/Code/prompts/skills/codex-thread-namer
    ./scripts/set_current_thread_name.py "Project: 标题"
    ```
 

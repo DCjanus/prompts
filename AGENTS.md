@@ -25,7 +25,7 @@
 
 ## 按需工作流
 
-仅在任务相关时使用以下 skills，从可用技能目录定位实际 SKILL.md；脚本和 references 相对该 skill 目录解析，目标项目单独指定。
+仅在任务相关时使用以下 skills。
 
 - Git 提交与协作交付：repository-workflow；GitHub/GitLab 交互：对应平台 skill。
 - 临时 Python、执行环境与 Python 检查：python-execution；可复用单文件 CLI：uv-cli-creator。

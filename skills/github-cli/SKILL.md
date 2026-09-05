@@ -9,15 +9,6 @@ description: 使用 GitHub CLI 与 GitHub 资源交互；适用于 repo、issue�
 
 本 skill 只负责 GitHub 资源读取与平台操作，不定义标题、正文或 inline review reply 的文案。
 
-以下脚本调用均以实际加载的本 skill 目录为 workdir；从可用技能目录定位，不假设目标项目含有 `skills/`，也不硬编码安装路径。目标仓库通过相应参数单独指定。
-
-脚本调用方式（必须直接当作可执行命令运行，不要用 `uv run python` 或 `python`）：
-
-```bash
-./scripts/github_issue.py --help
-./scripts/github_preflight.py --help
-```
-
 ## 临时输入文件清理
 
 - 如果输入文件由 Agent 为当前单次操作临时创建，且成功后不再复用，在同一次 shell

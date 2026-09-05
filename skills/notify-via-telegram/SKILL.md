@@ -19,20 +19,6 @@ description: 在用户明确要求后，通过本地安全配置发送当前长�
 
 ## 执行约定
 
-说明：以下脚本调用均以当前 `SKILL.md` 所在文件夹为 workdir。
-
-脚本调用方式（支持 `env -S` 时直接执行；不要用 `uv run python` 或 `python`）：
-
-```bash
-cd skills/notify-via-telegram && ./scripts/notify.py --help
-```
-
-不支持 `env -S` 时使用：
-
-```bash
-cd skills/notify-via-telegram && uv run --script scripts/notify.py --help
-```
-
 Agent 调用时使用 `--json`，并把全局参数放在子命令前。
 
 ## 通知格式

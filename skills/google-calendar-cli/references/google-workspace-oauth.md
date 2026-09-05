@@ -35,7 +35,6 @@ CLI 创建配置目录时设置权限为 `0700`，并以临时文件加原子替
 然后执行：
 
 ```bash
-cd skills/google-calendar-cli
 ./scripts/google_calendar_cli.py auth login
 ./scripts/google_calendar_cli.py --json auth doctor
 ```

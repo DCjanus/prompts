@@ -9,14 +9,6 @@ description: 使用 Python CLI 与 Dida365 Open API 交互以管理滴答清单�
 
 ## 执行约定
 
-先进入 skill 目录，再直接执行脚本：
-
-```bash
-cd skills/ticktick-cli
-./scripts/ticktick_cli.py --json project list
-```
-
-- 不要用 `uv run python` 或 `python` 调用脚本；脚本自身带 uv shebang。
 - 给 Agent 解析的输出一律加 `--json`，并且全局参数必须放在子命令前。
 - 删除项目或任务前先确认用户意图；`delete` 会真实删除远端数据。
 - 参数不确定时先查 `./scripts/ticktick_cli.py <command> --help`。

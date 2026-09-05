@@ -9,14 +9,6 @@ description: 使用 Python CLI 与 Google Sheets API 交互以新建、读取、
 
 ## 执行约定
 
-先进入 skill 目录，再直接执行脚本：
-
-```bash
-cd skills/google-sheets-cli
-./scripts/gsheets_cli.py --json values get --spreadsheet-id <spreadsheet-id> --range "Sheet1!A1:D20"
-```
-
-- 不要用 `uv run python` 或 `python` 调用脚本；脚本自身带 uv shebang。
 - 给 Agent 解析的输出一律加 `--json`，并且全局参数必须放在子命令前。
 - 写操作会真实修改在线表格；范围不确定时先读目标 range。
 - 参数不确定时先查 `./scripts/gsheets_cli.py <command> --help`。

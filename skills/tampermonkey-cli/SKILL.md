@@ -5,24 +5,6 @@ description: 通过 Tampermonkey Editors 管理浏览器里的 Tampermonkey user
 
 通过 Tampermonkey Editors 的本地 WebSocket 协议管理浏览器里的 userscript。
 
-## 调用约定
-
-说明：以下脚本调用均以当前 `SKILL.md` 所在文件夹为 workdir。
-
-脚本调用方式必须直接当作可执行命令运行，不要用 `uv run python` 或 `python`：
-
-```bash
-cd skills/tampermonkey-cli
-./scripts/tampermonkey.py --help
-```
-
-错误示例：
-
-```bash
-uv run python skills/tampermonkey-cli/scripts/tampermonkey.py --help
-python skills/tampermonkey-cli/scripts/tampermonkey.py --help
-```
-
 ## 工作流
 
 1. 确认浏览器已安装 Tampermonkey 和 Tampermonkey Editors。

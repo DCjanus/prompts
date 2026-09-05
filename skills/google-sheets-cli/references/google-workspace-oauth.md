@@ -14,7 +14,6 @@
 脚本报认证错误时，先运行：
 
 ```bash
-cd skills/google-sheets-cli
 ./scripts/gsheets_cli.py --json auth doctor
 ```
 
@@ -105,7 +104,6 @@ $XDG_CONFIG_HOME/google-sheets-cli/client_secret.json
 9. 登录并生成本地 token：
 
 ```bash
-cd skills/google-sheets-cli
 ./scripts/gsheets_cli.py auth login
 ```
 

@@ -7,21 +7,6 @@ description: 使用 GitLab CLI（glab）与 GitLab 资源交互；适用于 proj
 
 ## 使用约定
 
-以下脚本调用均以实际加载的本 skill 目录为 workdir；从可用技能目录定位，不假设目标项目含有 `skills/`，也不硬编码安装路径。目标仓库通过 `--cwd` 单独指定。
-
-脚本调用方式（必须直接当作可执行命令运行，不要用 `uv run python` 或 `python`）：
-
-```bash
-./scripts/gitlab_cli.py --help
-```
-
-错误示例：
-
-```bash
-uv run python skills/gitlab-cli/scripts/gitlab_cli.py --help
-python skills/gitlab-cli/scripts/gitlab_cli.py --help
-```
-
 - 目标 GitLab 仓库不是当前目录时，用 `--cwd <repo>` 指定实际执行目录。
 - 自建实例需要覆盖默认 host 时，用 `--hostname <host>`。
 - 不在目标仓库里、或当前目录不是 GitLab 仓库时，用 `--project <id|group/project>` 显式指定项目。
