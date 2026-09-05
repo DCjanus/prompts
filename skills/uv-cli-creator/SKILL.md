@@ -12,38 +12,13 @@ description: 创建或修改基于 PEP 723、由 uv run --script 管理的可复
 - 方便修改和版本控制
 - 始终可以通过 `uv run --script` 执行；环境支持时也可以像可执行文件一样直接执行
 
-## 怎么实现
+## 初始化与维护
 
-入口脚本的基本流程：
+新脚本使用 [init_cli.py](scripts/init_cli.py) 初始化：传入目标路径，按需用 `--dependency`（可重复）添加依赖、用 `--python` 指定 Python 版本；脚本自动完成 PEP 723 初始化、shebang 和执行权限设置，拒绝覆盖已有文件。
 
-```bash
-uv init --script scripts/foo.py
-uv add --script scripts/foo.py <package>
-```
+为 skill 创建的入口放在该 skill 的 `scripts/` 目录下；初始化后直接编写业务逻辑。后续依赖通过 `uv add --script` / `uv remove --script` 管理，不手工编辑依赖块。
 
-`uv init --script` 不会生成 shebang。需要直接执行时，在 PEP 723 metadata 前添加：
-
-```python
-#!/usr/bin/env -S uv run --script
-#
-# /// script
-```
-
-然后设置执行权限：
-
-```bash
-chmod +x scripts/foo.py
-```
-
-`env -S` 不是 POSIX 标准；不支持它的 Unix 环境以及 Windows 应使用 `uv run --script scripts/foo.py`。
-
-依赖管理规则：
-
-- 添加依赖：`uv add --script scripts/foo.py <package>`
-- 移除依赖：`uv remove --script scripts/foo.py <package>`
-- 不手工编辑头部 `/// script` 依赖块
-
-入口脚本放在对应 skill 的 `scripts/` 目录下。
+不支持 `env -S` 的 Unix 环境以及 Windows 使用 `uv run --script` 执行。
 
 ## 细节偏好
 
