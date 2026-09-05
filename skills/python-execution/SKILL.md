@@ -16,18 +16,19 @@ description: 编写或运行 PEP 723 临时 Python 脚本、处理 Python 执行
 - 多步结构化数据处理、复杂循环或转义逻辑优先写成临时 Python，避免拼成复杂 shell；简单命令不必改写。
 - 用目标执行环境的临时目录保存脚本和中间文件，默认不写入目标仓库。通过参数传入输入、输出和目标项目路径，避免依赖启动 Codex 时的 cwd。
 - 临时脚本也采用 PEP 723，将 Python 要求和依赖声明保存在脚本头部，统一使用 `uv run --script <临时脚本路径> ...`。不通过运行时 `--with` 参数补充依赖，方便之后直接复用脚本。
-- 用 `uv init --script <临时脚本路径>` 初始化脚本；标准库脚本保留工具生成的空依赖列表，外部依赖用 `uv add --script <临时脚本路径> <包>...` 添加，移除时使用 `uv remove --script`，不手工编辑依赖块。
+- 一次性脚本可以直接生成或修改 PEP 723 头部，依赖只写包名（如 `"httpx"`），默认不写版本约束、不生成锁文件，也不预先查询最新版本号；只用标准库时写 `dependencies = []`。无需先运行 `uv init` 或 `uv add`。
+- 无版本约束时，由 uv 按运行环境和依赖关系解析可用版本，默认优先最新版本；缓存或已有环境可能被复用，不要求每次运行都刷新。确有兼容性需求时再添加必要的版本约束。
 - 独立分析使用脚本声明的环境，不依赖启动目录下的项目依赖；需要调用项目代码时遵守项目已有入口与环境约定。
 - 执行结束且不再需要时，清理自己创建的临时文件。保留用户文件、交付物和仍需复用的诊断材料。
 - 需要面向用户的稳定参数、输出契约或可执行入口时，使用 [SKILL.md](../uv-cli-creator/SKILL.md) 定义 CLI；仅采用 PEP 723 不需要额外加载 CLI 创作流程。
 
-```bash
-uv init --script /tmp/example.py
-uv add --script /tmp/example.py <package>
-uv run --script /tmp/example.py
+```python
+# /// script
+# dependencies = ["httpx", "rich"]
+# ///
 ```
 
-只用标准库时省略添加依赖这一步；脚本逻辑直接编辑，依赖由 uv 管理。
+依赖字符串遵循 [Python 依赖声明规范](https://packaging.python.org/en/latest/specifications/dependency-specifiers/)；不限制版本时省略版本部分，不写 `=*` 或 `==*`。长期维护的脚本按 [SKILL.md](../dependency-management/SKILL.md) 使用包管理工具更新依赖。
 
 ## 检查
 
