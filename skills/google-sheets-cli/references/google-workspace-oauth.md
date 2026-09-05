@@ -86,20 +86,13 @@ https://www.googleapis.com/auth/spreadsheets
    - Application type：`Desktop app`
    - Name：建议 `Codex Google Sheets CLI Desktop`
 7. 下载 OAuth client JSON。
-8. 保存到 XDG 配置目录：
+8. 导入下载的文件：
 
 ```bash
-mkdir -p ~/.config/google-sheets-cli
-chmod 700 ~/.config/google-sheets-cli
-cp /path/to/downloaded-client-secret.json ~/.config/google-sheets-cli/client_secret.json
-chmod 600 ~/.config/google-sheets-cli/client_secret.json
+./scripts/gsheets_cli.py auth import-client /path/to/downloaded-client-secret.json
 ```
 
-如果设置了 `XDG_CONFIG_HOME`，保存到：
-
-```text
-$XDG_CONFIG_HOME/google-sheets-cli/client_secret.json
-```
+命令校验 Desktop client 格式，自动保存到 `${XDG_CONFIG_HOME:-~/.config}/google-sheets-cli/client_secret.json`，设置目录 `0700`、文件 `0600`，并原子写入。已有文件默认拒绝覆盖，确认替换时加 `--overwrite`；凭据目录或目标文件为软链接时拒绝导入。源文件与 token 保留，导入不会登录或联网。更换 OAuth client 后需重新执行 `auth login`。
 
 9. 登录并生成本地 token：
 
@@ -123,7 +116,7 @@ $XDG_CONFIG_HOME/google-sheets-cli/client_secret.json
 
 1. 按本文创建 `Desktop app` OAuth Client。
 2. 下载 OAuth client JSON。
-3. 保存到脚本提示的 `client_secret.json` 路径。
+3. 用 `auth import-client <下载的 JSON 路径>` 导入。
 4. 重新运行：
 
 ```bash
