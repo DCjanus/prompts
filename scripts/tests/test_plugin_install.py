@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -11,6 +13,60 @@ from pathlib import Path
 import pytest
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+
+
+async def list_skills_from_app_server(cwd, environment, *, expected_update=None):
+    """读取实际技能目录，不创建任务或调用模型。"""
+    process = await asyncio.create_subprocess_exec(
+        "codex",
+        "app-server",
+        cwd=cwd,
+        env=environment,
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.DEVNULL,
+    )
+
+    async def request(identifier, method, params):
+        message = {"id": identifier, "method": method, "params": params}
+        process.stdin.write((json.dumps(message) + "\n").encode())
+        await process.stdin.drain()
+
+        async def response():
+            while line := await process.stdout.readline():
+                payload = json.loads(line)
+                if payload.get("id") == identifier:
+                    assert "error" not in payload, payload
+                    return payload["result"]
+            raise AssertionError("app-server 在返回结果前退出")
+
+        return await asyncio.wait_for(response(), timeout=30)
+
+    try:
+        await request(
+            1, "initialize", {"clientInfo": {"name": "plugin-test", "version": "1"}}
+        )
+        process.stdin.write(b'{"method":"initialized"}\n')
+        await process.stdin.drain()
+        if expected_update is not None:
+            path, content = expected_update
+
+            async def wait_for_update():
+                while not path.exists() or path.read_bytes() != content:
+                    await asyncio.sleep(0.05)
+
+            await asyncio.wait_for(wait_for_update(), timeout=30)
+        return await request(
+            2, "skills/list", {"cwds": [str(cwd)], "forceReload": True}
+        )
+    finally:
+        if process.returncode is None:
+            process.terminate()
+            try:
+                await asyncio.wait_for(process.wait(), timeout=10)
+            except TimeoutError:
+                process.kill()
+                await process.wait()
 
 
 @pytest.mark.skipif(shutil.which("codex") is None, reason="需要 Codex CLI；CI 会安装")
@@ -32,11 +88,11 @@ def test_git_marketplace_installs_complete_plugin_and_updates_same_version(tmp_p
     config_home.mkdir()
     # 用本地 Git 仓库模拟远端，不访问 GitHub 或使用用户的 Codex 配置。
     environment = dict(os.environ)
+    git_config = tmp_path / "gitconfig"
     environment.update(
         CODEX_HOME=str(config_home),
-        GIT_CONFIG_COUNT="1",
-        GIT_CONFIG_KEY_0=f"url.{source.as_uri()}.insteadOf",
-        GIT_CONFIG_VALUE_0="https://example.invalid/plugin-install-test.git",
+        GIT_CONFIG_GLOBAL=str(git_config),
+        GIT_CONFIG_NOSYSTEM="1",
     )
 
     def run(*command):
@@ -69,6 +125,15 @@ def test_git_marketplace_installs_complete_plugin_and_updates_same_version(tmp_p
             "Update plugin fixture",
         )
 
+    # 自动刷新会移除命令级 GIT_CONFIG_COUNT；使用隔离的全局配置模拟 Git 远端。
+    run(
+        "git",
+        "config",
+        "--file",
+        str(git_config),
+        f"url.{source.as_uri()}.insteadOf",
+        "https://example.invalid/plugin-install-test.git",
+    )
     run("git", "-C", str(source), "init", "-b", "master")
     commit()
     run(
@@ -100,6 +165,23 @@ def test_git_marketplace_installs_complete_plugin_and_updates_same_version(tmp_p
         ).read_bytes()
     assert (cache / "licenses/grill-me/LICENSE").is_file()
     assert (cache / "licenses/domain-modeling/LICENSE").is_file()
+    listing = asyncio.run(list_skills_from_app_server(tmp_path, environment))
+    discovered = [
+        skill
+        for item in listing["data"]
+        for skill in item["skills"]
+        if Path(skill["path"]).is_relative_to(cache)
+    ]
+    names = {skill["name"] for skill in discovered}
+    assert names == {f"{entry['name']}:{path.parent.name}" for path in expected}
+    assert len(discovered) == len(names)
+    for skill in discovered:
+        assert skill["enabled"]
+        prompt = (skill.get("interface") or {}).get("defaultPrompt") or ""
+        for mentioned in re.findall(r"\$([\w:-]+)", prompt):
+            assert mentioned in names, (
+                f"{skill['name']} 默认提示词引用未注册技能：{mentioned}"
+            )
     run(
         "uv",
         "run",
@@ -121,3 +203,17 @@ def test_git_marketplace_installs_complete_plugin_and_updates_same_version(tmp_p
     assert (cache / "skills" / changed).read_bytes() == (
         packaged_skills / changed
     ).read_bytes()
+    # 再产生一个同版本提交，仅启动 app-server，验证日常自动刷新路径。
+    with (packaged_skills / changed).open("a") as stream:
+        stream.write("\nApp-server startup update marker.\n")
+    commit()
+    asyncio.run(
+        list_skills_from_app_server(
+            tmp_path,
+            environment,
+            expected_update=(
+                cache / "skills" / changed,
+                (packaged_skills / changed).read_bytes(),
+            ),
+        )
+    )

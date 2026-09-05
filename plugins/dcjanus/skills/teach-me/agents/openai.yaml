@@ -1,7 +1,7 @@
 interface:
   display_name: "Teach Me"
   short_description: "自顶向下逐层讲解复杂主题，每轮只展开一个概念并等待追问"
-  default_prompt: "使用 $teach-me 自顶向下教我理解这个主题，每轮只展开一个概念。"
+  default_prompt: "使用 $dcjanus:teach-me 自顶向下教我理解这个主题，每轮只展开一个概念。"
 
 policy:
   allow_implicit_invocation: false

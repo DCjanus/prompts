@@ -1,4 +1,4 @@
 interface:
   display_name: "Google Calendar CLI"
   short_description: "通过 Google Calendar API 安全管理日程"
-  default_prompt: "Use $google-calendar-cli to inspect my schedule and create an event after I confirm the details."
+  default_prompt: "Use $dcjanus:google-calendar-cli to inspect my schedule and create an event after I confirm the details."

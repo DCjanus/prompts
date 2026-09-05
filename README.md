@@ -4,7 +4,7 @@ DCjanus 的个人 Codex plugin，包含工作流、偏好和 CLI skills，通过
 
 - [dcjanus](plugins/dcjanus)：plugin 及其 skills、脚本和第三方许可。
 - [marketplace.json](.agents/plugins/marketplace.json)：`dcjanus-plugins` marketplace。
-- [AGENTS.md](AGENTS.md)：独立维护的全局个人约定，不由 plugin 自动加载。
+- [AGENTS.md](AGENTS.md)：独立维护的全局个人约定，不由 plugin 自动加载，新电脑按需单独配置。
 
 ## 安装与更新
 
@@ -23,15 +23,11 @@ codex plugin marketplace upgrade dcjanus-plugins --json
 
 检查输出中的 `errors`，更新后用新任务验证。内容更新不要求每次修改 plugin 版本号；不要直接编辑安装缓存。外部服务凭据和所需工具仍由各台电脑独立配置。
 
-日常可直接描述需求，由 Codex 选择相关 skill；显式调用使用 `$dcjanus:github-cli` 等完整名称，也可在技能选择器中搜索短名称后选中。
+支持自动触发的 skill 可由 Codex 按需求选择；显式调用使用 `$dcjanus:github-cli` 等完整名称，也可在技能选择器中搜索短名称后选中。
 
-## 从软链接迁移
+## 开发
 
-**BREAKING CHANGE：**原 `skills/` 迁至 [skills](plugins/dcjanus/skills)，显式 `$<skill>` 调用改为 `$dcjanus:<skill>`。原来直接调用脚本的路径也需随目录调整。
-
-确认 plugin 安装成功后，移除仅指向本仓库旧 `skills/` 的 `~/.codex/skills` 软链接，避免重复发现。不要删除真实目录或其它来源的 skills；`~/.agents/skills` 保持独立。现有 `~/.codex/AGENTS.md` 及其软链接保留，新电脑按需单独配置全局约定。
-
-开发时修改 Git checkout 并创建 PR；使用 [run_tests.py](scripts/run_tests.py) 运行脚本测试。安装 Codex CLI 后，它还会在独立临时配置中验证完整插件安装和同版本 Git 更新，不修改日常安装。
+开发时修改 Git checkout 并创建 PR；使用 [run_tests.py](scripts/run_tests.py) 运行脚本测试。安装 Codex CLI 后，它还会在独立临时配置中验证插件安装、技能发现与调用入口，以及同版本 Git 更新，不修改日常安装。
 
 ## 工具入口
 
