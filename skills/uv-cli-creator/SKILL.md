@@ -14,7 +14,7 @@ description: 创建或修改基于 PEP 723、由 uv run --script 管理的可复
 
 ## 初始化与维护
 
-新脚本使用 [init_cli.py](scripts/init_cli.py) 初始化：传入目标路径，按需用 `--dependency`（可重复）添加依赖、用 `--python` 指定 Python 版本；脚本自动完成 PEP 723 初始化、shebang 和执行权限设置，拒绝覆盖已有文件。
+新脚本使用 [init_cli.py](scripts/init_cli.py) 初始化：传入目标路径，按需用 `--dependency`（可重复）添加依赖、用 `--python` 指定 Python 版本。未指定版本时沿用 uv 的解释器发现规则，由 uv 自动填写最低版本要求，不额外筛选最新版。脚本自动完成 PEP 723 初始化、shebang 和执行权限设置，拒绝覆盖已有文件。
 
 为 skill 创建的入口放在该 skill 的 `scripts/` 目录下；初始化后直接编写业务逻辑。后续依赖通过 `uv add --script` / `uv remove --script` 管理，不手工编辑依赖块。
 
