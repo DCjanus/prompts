@@ -1,6 +1,6 @@
 ---
 name: python-execution
-description: 编写或运行临时 Python 脚本、处理 Python 执行环境，以及选择 Python 格式与 lint 检查方式时使用。已有 CLI 按其自身入口运行；创建可复用单文件 CLI 使用 uv-cli-creator。
+description: 编写或运行 PEP 723 临时 Python 脚本、处理 Python 执行环境，以及选择 Python 格式与 lint 检查方式时使用。已有 CLI 按其自身入口运行；创建具有稳定接口的单文件 CLI 使用 uv-cli-creator。
 ---
 
 # Python 执行与检查
@@ -15,10 +15,19 @@ description: 编写或运行临时 Python 脚本、处理 Python 执行环境，
 
 - 多步结构化数据处理、复杂循环或转义逻辑优先写成临时 Python，避免拼成复杂 shell；简单命令不必改写。
 - 用目标执行环境的临时目录保存脚本和中间文件，默认不写入目标仓库。通过参数传入输入、输出和目标项目路径，避免依赖启动 Codex 时的 cwd。
-- 只依赖标准库时使用 `uv run python <临时脚本路径> ...`；需要外部依赖时使用 `uv run --with <包> python <临时脚本路径> ...`，多个依赖重复 `--with`。
-- 在已有 uv 项目中，按任务是否需要该项目环境决定执行目录；独立分析从临时目录运行，避免无意同步项目环境。
+- 临时脚本也采用 PEP 723，将 Python 要求和依赖声明保存在脚本头部，统一使用 `uv run --script <临时脚本路径> ...`。不通过运行时 `--with` 参数补充依赖，方便之后直接复用脚本。
+- 用 `uv init --script <临时脚本路径>` 初始化脚本；标准库脚本保留工具生成的空依赖列表，外部依赖用 `uv add --script <临时脚本路径> <包>...` 添加，移除时使用 `uv remove --script`，不手工编辑依赖块。
+- 独立分析使用脚本声明的环境，不依赖启动目录下的项目依赖；需要调用项目代码时遵守项目已有入口与环境约定。
 - 执行结束且不再需要时，清理自己创建的临时文件。保留用户文件、交付物和仍需复用的诊断材料。
-- 需要长期复用、稳定参数或 PEP 723 入口时，使用 [SKILL.md](../uv-cli-creator/SKILL.md) 定义 CLI，不给一次性脚本机械添加 CLI 框架。
+- 需要面向用户的稳定参数、输出契约或可执行入口时，使用 [SKILL.md](../uv-cli-creator/SKILL.md) 定义 CLI；仅采用 PEP 723 不需要额外加载 CLI 创作流程。
+
+```bash
+uv init --script /tmp/example.py
+uv add --script /tmp/example.py <package>
+uv run --script /tmp/example.py
+```
+
+只用标准库时省略添加依赖这一步；脚本逻辑直接编辑，依赖由 uv 管理。
 
 ## 检查
 

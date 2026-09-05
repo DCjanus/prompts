@@ -104,7 +104,7 @@ notification_method = "bel"
 | [`confluence-cli`](skills/confluence-cli/SKILL.md) | 查询、检索与阅读 Confluence 文档/页面。 |
 | [`jira-cli`](skills/jira-cli/SKILL.md) | 通过内置 Python CLI 查询和管理 Jira Issue、Saved Filter、流转与评论。 |
 | [`uv-cli-creator`](skills/uv-cli-creator/SKILL.md) | 创建或修改基于 PEP 723、由 `uv run --script` 管理的单文件 Python CLI，并在环境支持时提供直接执行入口。 |
-| [`python-execution`](skills/python-execution/SKILL.md) | 临时 Python 脚本、目标执行环境和 Python 格式/lint 检查。 |
+| [`python-execution`](skills/python-execution/SKILL.md) | 使用 PEP 723 保存临时 Python 脚本依赖，统一通过 uv run --script 执行，并处理目标环境和格式/lint 检查。 |
 | [`dependency-management`](skills/dependency-management/SKILL.md) | 按项目工具链管理依赖与项目版本，核对 manifest 和锁文件的变更范围。 |
 | [`dcjanus-preferences`](skills/dcjanus-preferences/SKILL.md) | 记录 DCjanus 的跨语言技术选型、哈希与无序集合摘要、Protobuf 契约以及 Python/Rust/Go 第三方库偏好，适用于存储、分析、压缩、归档、协议设计、依赖选择与技术方案对比。 |
 | [`domain-modeling`](skills/domain-modeling/SKILL.md) | 构建并持续校准领域模型，明确领域术语与边界，并在必要时记录重要架构决策。 |
