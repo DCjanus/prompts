@@ -71,7 +71,7 @@ description: 使用 GitLab CLI（glab）与 GitLab 资源交互；适用于 proj
 - CI 阻塞等待：优先用 `glab ci status --live` 等 pipeline 结束；需要跟随单个 job 日志时用 `glab ci trace <job-id|job-name>`
 - 评论：`glab issue note`
 - 审查意见整理：先读 MR discussions / notes / diff comments，再统一整理
-- 用户明确要求调整项目 merge / squash 策略时，参考 [squash-merge-policy.md](references/squash-merge-policy.md)
+- 用户明确要求采用 DCjanus 的个人合并策略时，使用 [dcjanus-merge-policy](../dcjanus-merge-policy/SKILL.md)。
 - 先确认能力边界：`glab <group> --help`、`glab <group> <subcommand> --help`
 - wiki：先看 `glab wiki --help`；若当前版本没有子命令，再考虑 `glab api`
 
