@@ -21,7 +21,7 @@ description: 使用 GitHub CLI 与 GitHub 资源交互；适用于 repo、issue�
 
 - 仓库、Issue、PR、评论、release、workflow 等资源，优先先用 `gh <group> --help` 确认是否有现成子命令，再执行。
 - 需要机器可读输出时，优先使用 `--json`，必要时再配合 `jq` 整理字段。
-- 用户明确要求调整 repository merge / squash 策略时，参考 [squash-merge-policy.md](references/squash-merge-policy.md)。
+- 用户明确要求采用 DCjanus 的个人合并策略时，使用 [dcjanus-merge-policy](../dcjanus-merge-policy/SKILL.md)。
 
 ## PR Review
 
