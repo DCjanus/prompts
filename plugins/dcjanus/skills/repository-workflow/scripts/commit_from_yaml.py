@@ -3,7 +3,7 @@
 # /// script
 # requires-python = ">=3.14"
 # dependencies = [
-#     "openai-codex>=0.147.0",
+#     "openai-codex>=0.154.0",
 #     "pydantic>=2.13.5",
 #     "pyyaml>=6.0.3",
 #     "typer>=0.27.2",
