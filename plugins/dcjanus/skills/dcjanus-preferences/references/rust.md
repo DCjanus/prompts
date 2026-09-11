@@ -15,4 +15,5 @@
 - anyhow / thiserror: 统一错误处理与错误类型建模，适合搭配 `tracing` 做错误追踪。
 - reqwest: 常用 HTTP 客户端，API 现代且与 `serde`/`tokio` 组合顺畅。
 - tokio: 事实上的异步运行时标准，与 `tracing`/`serde` 生态匹配。
+- prometheus: Rust 应用明确以 Prometheus 为指标后端时，默认优先使用 TiKV 维护的 `prometheus` crate；优先使用显式 `Registry` 管理指标，整数计数和整数状态优先选择 `IntCounter` / `IntGauge` 及对应的 `*Vec`，并根据实际 workload 设计 Histogram buckets 和控制 label cardinality。不因 `prometheus-client` 位于 Prometheus 组织或 `metrics` 更抽象就自动替换；只有需要 OpenMetrics 导向的类型建模时评估 `prometheus-client`，需要 library 与具体指标后端解耦时评估 `metrics` 及对应 exporter；已有项目继续沿用其当前生态，不做无收益迁移。
 - teloxide: Telegram Bot 开发框架，适合快速构建基于 Telegram Bot API 的 Rust 机器人服务；自定义 Bot Command 时优先使用 `#[derive(BotCommands)]` 的 `enum` 形式，维护强类型命令列表（统一解析、帮助描述与命令注册）。
