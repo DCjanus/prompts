@@ -22,6 +22,7 @@ description: 使用 GitHub CLI 与 GitHub 资源交互；适用于 repo、issue�
 - 仓库、Issue、PR、评论、release、workflow 等资源，优先先用 `gh <group> --help` 确认是否有现成子命令，再执行。
 - 需要机器可读输出时，优先使用 `--json`，必要时再配合 `jq` 整理字段。
 - 用户明确要求采用 DCjanus 的个人合并策略时，使用 [dcjanus-merge-policy](../dcjanus-merge-policy/SKILL.md)。
+- 当 Agent 需要持续等待 workflow run、单个 job 或 PR checks 时，不要手写 shell 轮询或反复调用 `gh api`；先完整读取 [actions-wait.md](references/actions-wait.md)，再使用统一脚本。人工临时查看仍可直接使用 `gh run watch`。
 
 ## PR Review
 
