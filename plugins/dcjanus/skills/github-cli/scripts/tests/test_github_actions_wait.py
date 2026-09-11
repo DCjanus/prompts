@@ -314,3 +314,21 @@ def test_explicit_repository_url_takes_priority_over_gh_host(
     repo = github_actions_wait.parse_repo("https://github.example.com/acme/widgets")
 
     assert repo.hostname == "github.example.com"
+
+
+def test_gh_token_takes_priority_over_github_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GH_TOKEN", "gh-token")
+    monkeypatch.setenv("GITHUB_TOKEN", "github-token")
+
+    assert github_actions_wait.resolve_token("github.com") == "gh-token"
+
+
+def test_github_token_is_used_when_gh_token_is_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    monkeypatch.setenv("GITHUB_TOKEN", "github-token")
+
+    assert github_actions_wait.resolve_token("github.com") == "github-token"

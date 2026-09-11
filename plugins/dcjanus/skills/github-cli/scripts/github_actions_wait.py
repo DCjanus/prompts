@@ -222,8 +222,9 @@ def parse_repo(value: str, hostname: str | None = None) -> RepoRef:
 
 
 def resolve_token(hostname: str) -> str:
-    if token := os.environ.get("GH_TOKEN", "").strip():
-        return token
+    for name in ("GH_TOKEN", "GITHUB_TOKEN"):
+        if token := os.environ.get(name, "").strip():
+            return token
     try:
         result = subprocess.run(
             ["gh", "auth", "token", "--hostname", hostname],
