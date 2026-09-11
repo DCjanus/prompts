@@ -201,7 +201,7 @@ def is_rate_limited(response: RawResponse) -> bool:
 
 def parse_repo(value: str, hostname: str | None = None) -> RepoRef:
     raw = value.strip()
-    selected_host = hostname or os.environ.get("GH_HOST")
+    selected_host = hostname
     if "://" in raw:
         parsed = urlparse(raw)
         selected_host = selected_host or parsed.hostname
@@ -216,23 +216,14 @@ def parse_repo(value: str, hostname: str | None = None) -> RepoRef:
         raise WaitError("repo must be OWNER/REPO, HOST/OWNER/REPO, or a repository URL")
     if not owner or not name:
         raise WaitError("repository owner and name must not be empty")
-    return RepoRef(owner, name, selected_host or "github.com")
+    return RepoRef(
+        owner, name, selected_host or os.environ.get("GH_HOST") or "github.com"
+    )
 
 
 def resolve_token(hostname: str) -> str:
-    names = (
-        ("GH_TOKEN", "GITHUB_TOKEN")
-        if hostname == "github.com"
-        else (
-            "GH_ENTERPRISE_TOKEN",
-            "GITHUB_ENTERPRISE_TOKEN",
-            "GH_TOKEN",
-            "GITHUB_TOKEN",
-        )
-    )
-    for name in names:
-        if token := os.environ.get(name, "").strip():
-            return token
+    if token := os.environ.get("GH_TOKEN", "").strip():
+        return token
     try:
         result = subprocess.run(
             ["gh", "auth", "token", "--hostname", hostname],

@@ -70,7 +70,7 @@ PR 模式同时读取 head SHA 的 check runs 和 commit statuses。未知的新
 
 仓库接受 `OWNER/REPO`、`HOST/OWNER/REPO` 或完整 repository URL。未显式给出 host 时遵循 `GH_HOST`，否则默认 `github.com`。GitHub.com 使用 `https://api.github.com`；GitHub Enterprise Server 使用 `https://HOST/api/v3`。
 
-认证顺序与 `gh` 一致：GitHub.com 优先 `GH_TOKEN`、`GITHUB_TOKEN`；Enterprise 优先 `GH_ENTERPRISE_TOKEN`、`GITHUB_ENTERPRISE_TOKEN`，再回退通用 token。环境变量没有 token 时执行 `gh auth token --hostname HOST`，因此自然遵循 `GH_CONFIG_DIR`。错误与 NDJSON 不包含响应正文或 token。
+脚本只直接读取一个认证环境变量 `GH_TOKEN`，适用于 GitHub.com 和 Enterprise host；没有时执行 `gh auth token --hostname HOST`，因此自然遵循 `GH_CONFIG_DIR` 和该 host 当前选择的账号。GitHub Actions 中需要显式映射，例如 `GH_TOKEN: ${{ github.token }}`。脚本不直接读取名称更宽泛的 `GITHUB_TOKEN` 或 Enterprise 专用变量，避免同一环境中多个账号来源不明确。错误与 NDJSON 不包含响应正文或 token。
 
 每个成功 GET 的响应若包含 ETag，后续请求会发送 `If-None-Match`；收到 304 时复用缓存。端点不返回 ETag 时会安全退回普通轮询。
 

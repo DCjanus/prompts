@@ -265,7 +265,7 @@ def test_primary_rate_limit_403_is_retryable() -> None:
 def test_token_is_redacted_from_api_errors_and_ndjson() -> None:
     token = "super-secret-token"
     transport = github_actions_wait.FakeableTransport(
-        [github_actions_wait.RawResponse(401, {}, token.encode())]
+        [github_actions_wait.RawResponse(401, {}, token.encode())] * 2
     )
     api = github_actions_wait.GitHubApi(
         github_actions_wait.RepoRef("acme", "widgets", "github.com"),
@@ -275,6 +275,14 @@ def test_token_is_redacted_from_api_errors_and_ndjson() -> None:
     with pytest.raises(github_actions_wait.ApiError) as error:
         api.get("example")
     assert token not in str(error.value)
+
+    stream = io.StringIO()
+    emitter = github_actions_wait.Emitter("ndjson", stream, wall_time=lambda: 0)
+    assert (
+        github_actions_wait.run_guarded(lambda: api.get("example"), emitter)
+        == github_actions_wait.EXIT_API_ERROR
+    )
+    assert token not in stream.getvalue()
 
 
 def test_keyboard_interrupt_returns_interrupted_exit_code() -> None:
@@ -296,3 +304,13 @@ def test_enterprise_api_base_and_host_environment(
 
     assert repo.hostname == "github.example.com"
     assert api.rest_base == "https://github.example.com/api/v3"
+
+
+def test_explicit_repository_url_takes_priority_over_gh_host(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GH_HOST", "wrong.example.com")
+
+    repo = github_actions_wait.parse_repo("https://github.example.com/acme/widgets")
+
+    assert repo.hostname == "github.example.com"
