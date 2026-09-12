@@ -430,6 +430,28 @@ class RenderUsageTests(unittest.TestCase):
         self.assertNotIn('data-role="time-marker"', svg)
         self.assertNotIn("stroke-dasharray", svg)
         self.assertIn("额度充足，节奏安全", svg)
+        reset_at = datetime.fromtimestamp(
+            self.buckets[0].windows[0].resets_at or 0
+        ).astimezone()
+        self.assertIn(f"2小时30分钟后重置（{reset_at:%m-%d %H:%M}）", svg)
+
+    def test_compact_svg_includes_exact_reset_time(self) -> None:
+        history = chatgpt_usage.UsageHistory(
+            days=(),
+            scan=chatgpt_usage.ScanStats(0, 0, 0, 0),
+        )
+
+        svg = chatgpt_usage.render_usage_svg(
+            self.buckets,
+            self.now,
+            history=history,
+            verbose=False,
+        )
+
+        reset_at = datetime.fromtimestamp(
+            self.buckets[0].windows[0].resets_at or 0
+        ).astimezone()
+        self.assertIn(f"2小时30分钟后重置（{reset_at:%m-%d %H:%M}）", svg)
 
     def test_svg_is_rasterized_in_process(self) -> None:
         svg = chatgpt_usage.render_usage_svg(self.buckets, self.now, verbose=False)
