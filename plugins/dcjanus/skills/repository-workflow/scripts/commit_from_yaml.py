@@ -30,7 +30,7 @@ from openai_codex.client import CodexClient
 from openai_codex.errors import CodexError
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-DEFAULT_AGENT_NAME = "Codex"
+DEFAULT_AGENT_NAME = "codex"
 CONVENTIONAL_SUBJECT = re.compile(r"^[a-z][a-z0-9-]*(?:\([^\r\n)]+\))?!?: [^\r\n]+$")
 BREAKING_SUBJECT = re.compile(r"^[a-z][a-z0-9-]*(?:\([^\r\n)]+\))?!: .+$")
 BREAKING_PREFIX = "BREAKING CHANGE:"

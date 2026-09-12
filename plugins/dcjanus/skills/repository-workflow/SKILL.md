@@ -43,7 +43,7 @@ description: 处理从本地 Git 变更到 GitHub/GitLab 协作发布的完整�
   && rm -- /tmp/commit.yaml
 ```
 
-脚本默认从当前 Codex thread 自动解析模型并生成 `Assisted-by: Codex:<model>`。需要覆盖默认行为时，把 `assisted_by` 写进提交 YAML，而不是改用命令行参数，便于审查：
+脚本默认从当前 Codex thread 自动解析模型并生成 `Assisted-by: codex:<model>`。需要覆盖默认行为时，把 `assisted_by` 写进提交 YAML，而不是改用命令行参数，便于审查：
 
 ```yaml
 # 在 opencode 等非 Codex Agent 下显式指定 Agent 与模型
@@ -52,7 +52,7 @@ assisted_by:
   model: deepseek-v4.1-flash
 ```
 
-- `assisted_by.agent` 覆盖 Agent 前缀（默认 `Codex`，不能为空）。
+- `assisted_by.agent` 覆盖 Agent 前缀（默认 `codex`，不能为空）。
 - `assisted_by.model` 指定模型并跳过自动探测；缺省时自动探测当前 Codex thread 使用的模型，不得猜测。
 - 非 Codex 运行环境下自动探测大概率失败，此时应显式询问用户所用模型并写入 `assisted_by.model`。
 - `assisted_by: false` 跳过探测且不添加 `Assisted-by` trailer，只用于确实无法获得模型信息的场景。

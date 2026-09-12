@@ -112,7 +112,7 @@ breaking_change:
             resolve.return_value = "gpt-current"
             got = commit_from_yaml.assisted_by_value(None)
 
-        self.assertEqual(got, "Codex:gpt-current")
+        self.assertEqual(got, "codex:gpt-current")
         resolve.assert_called_once()
 
     def test_uses_explicit_model_without_auto_detection(self) -> None:
@@ -121,7 +121,7 @@ breaking_change:
                 commit_from_yaml.AssistedBy(model="gpt-explicit")
             )
 
-        self.assertEqual(got, "Codex:gpt-explicit")
+        self.assertEqual(got, "codex:gpt-explicit")
         resolve.assert_not_called()
 
     def test_uses_explicit_agent_and_model(self) -> None:
