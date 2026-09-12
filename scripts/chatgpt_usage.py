@@ -1832,6 +1832,15 @@ def _remaining_text(seconds: float | None) -> str:
     return "".join(parts)
 
 
+def _svg_reset_text(window: UsageWindow, progress: WindowProgress) -> str:
+    """格式化 SVG 中的相对与绝对重置时间。"""
+    relative = f"{_remaining_text(progress.remaining_seconds)}后重置"
+    if window.resets_at is None:
+        return relative
+    reset_at = datetime.fromtimestamp(window.resets_at).astimezone()
+    return f"{relative}（{reset_at:%m-%d %H:%M}）"
+
+
 def _catch_up_seconds(window: UsageWindow, progress: WindowProgress) -> float | None:
     """返回暂停使用后额度进度与时间持平所需秒数。"""
     if (
@@ -2349,7 +2358,7 @@ def _render_compact_usage_svg(
                 )
             parts.extend(
                 [
-                    f'<text x="{track_x + track_width + 24}" y="{row_y + 19}" class="muted" font-size="13">{_svg_text(_remaining_text(progress.remaining_seconds))}后重置</text>',
+                    f'<text x="{track_x + track_width + 24}" y="{row_y + 19}" class="muted" font-size="13">{_svg_text(_svg_reset_text(window, progress))}</text>',
                     f'<rect x="{SVG_WIDTH - margin - 214}" y="{row_y - 4}" width="190" height="34" rx="17" fill="{pace_color}" fill-opacity="0.13"/>',
                     f'<text x="{SVG_WIDTH - margin - 119}" y="{row_y + 18}" text-anchor="middle" fill="{pace_color}" font-size="13" font-weight="700">{_svg_text(relation)}</text>',
                 ]
@@ -2527,7 +2536,7 @@ def render_usage_svg(
   <rect x="{badge_x}" y="{panel_y + 12}" width="{badge_width}" height="32" rx="16" fill="{pace_color}" fill-opacity="0.13"/>
   <text x="{badge_x + badge_width / 2}" y="{panel_y + 34}" text-anchor="middle" fill="{pace_color}" font-size="14" font-weight="700">{_svg_text(relation_text)}</text>
   {_svg_comparison_rail(progress, x=rail_x, y=panel_y + 83, width=rail_width)}
-  <text x="{panel_x + 22}" y="{panel_y + 140}" class="muted" font-size="12">距离重置 {_svg_text(_remaining_text(progress.remaining_seconds))}</text>'''
+  <text x="{panel_x + 22}" y="{panel_y + 140}" class="muted" font-size="12">{_svg_text(_svg_reset_text(window, progress))}</text>'''
             )
             if verbose and window.resets_at is not None:
                 reset_text = (
