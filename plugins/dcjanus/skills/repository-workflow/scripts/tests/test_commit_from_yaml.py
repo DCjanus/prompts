@@ -107,23 +107,76 @@ breaking_change:
             message,
         )
 
+    def test_auto_detects_model_with_the_default_agent(self) -> None:
+        with mock.patch.object(commit_from_yaml, "resolve_model_name") as resolve:
+            resolve.return_value = "gpt-current"
+            got = commit_from_yaml.assisted_by_value(None)
+
+        self.assertEqual(got, "codex:gpt-current")
+        resolve.assert_called_once()
+
     def test_uses_explicit_model_without_auto_detection(self) -> None:
         with mock.patch.object(commit_from_yaml, "resolve_model_name") as resolve:
-            got = commit_from_yaml.assisted_by_value("gpt-explicit", False)
+            got = commit_from_yaml.assisted_by_value(
+                commit_from_yaml.AssistedBy(model="gpt-explicit")
+            )
 
-        self.assertEqual(got, "Codex:gpt-explicit")
+        self.assertEqual(got, "codex:gpt-explicit")
         resolve.assert_not_called()
+
+    def test_uses_explicit_agent_and_model(self) -> None:
+        with mock.patch.object(commit_from_yaml, "resolve_model_name") as resolve:
+            got = commit_from_yaml.assisted_by_value(
+                commit_from_yaml.AssistedBy(
+                    agent="opencode", model="deepseek-v4.1-flash"
+                )
+            )
+
+        self.assertEqual(got, "opencode:deepseek-v4.1-flash")
+        resolve.assert_not_called()
+
+    def test_rejects_empty_agent(self) -> None:
+        with self.assertRaisesRegex(commit_from_yaml.CommitError, "agent"):
+            commit_from_yaml.assisted_by_value(
+                commit_from_yaml.AssistedBy(agent="  ", model="gpt-explicit")
+            )
 
     def test_skip_assisted_by_avoids_auto_detection(self) -> None:
         with mock.patch.object(commit_from_yaml, "resolve_model_name") as resolve:
-            got = commit_from_yaml.assisted_by_value(None, True)
+            got = commit_from_yaml.assisted_by_value(False)
 
         self.assertIsNone(got)
         resolve.assert_not_called()
 
-    def test_model_and_skip_are_mutually_exclusive(self) -> None:
-        with self.assertRaisesRegex(commit_from_yaml.CommitError, "mutually exclusive"):
-            commit_from_yaml.assisted_by_value("gpt-explicit", True)
+    def test_loads_assisted_by_overrides_from_yaml(self) -> None:
+        spec = commit_from_yaml.load_spec(
+            """
+subject: "chore(commit): load assisted-by overrides"
+assisted_by:
+  agent: opencode
+  model: deepseek-v4.1-flash
+"""
+        )
+
+        self.assertEqual(spec.assisted_by.agent, "opencode")
+        self.assertEqual(spec.assisted_by.model, "deepseek-v4.1-flash")
+
+    def test_loads_assisted_by_skip_from_yaml(self) -> None:
+        spec = commit_from_yaml.load_spec(
+            'subject: "chore(commit): skip assisted-by"\nassisted_by: false\n'
+        )
+
+        self.assertIs(spec.assisted_by, False)
+
+    def test_rejects_unknown_assisted_by_field(self) -> None:
+        with self.assertRaises(ValidationError):
+            commit_from_yaml.load_spec(
+                """
+subject: "chore(commit): reject unknown assisted-by field"
+assisted_by:
+  provider: opencode
+"""
+            )
 
     def test_reads_latest_complete_model_from_rollout(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
