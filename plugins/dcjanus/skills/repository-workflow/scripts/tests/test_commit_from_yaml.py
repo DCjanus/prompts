@@ -114,6 +114,19 @@ breaking_change:
         self.assertEqual(got, "Codex:gpt-explicit")
         resolve.assert_not_called()
 
+    def test_uses_explicit_agent_and_model(self) -> None:
+        with mock.patch.object(commit_from_yaml, "resolve_model_name") as resolve:
+            got = commit_from_yaml.assisted_by_value(
+                "deepseek-v4.1-flash", False, "opencode"
+            )
+
+        self.assertEqual(got, "opencode:deepseek-v4.1-flash")
+        resolve.assert_not_called()
+
+    def test_rejects_empty_agent(self) -> None:
+        with self.assertRaisesRegex(commit_from_yaml.CommitError, "agent"):
+            commit_from_yaml.assisted_by_value("gpt-explicit", False, "  ")
+
     def test_skip_assisted_by_avoids_auto_detection(self) -> None:
         with mock.patch.object(commit_from_yaml, "resolve_model_name") as resolve:
             got = commit_from_yaml.assisted_by_value(None, True)

@@ -30,7 +30,7 @@ from openai_codex.client import CodexClient
 from openai_codex.errors import CodexError
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-AGENT_NAME = "Codex"
+DEFAULT_AGENT_NAME = "Codex"
 CONVENTIONAL_SUBJECT = re.compile(r"^[a-z][a-z0-9-]*(?:\([^\r\n)]+\))?!?: [^\r\n]+$")
 BREAKING_SUBJECT = re.compile(r"^[a-z][a-z0-9-]*(?:\([^\r\n)]+\))?!: .+$")
 BREAKING_PREFIX = "BREAKING CHANGE:"
@@ -324,17 +324,22 @@ def resolve_model_name() -> str:
     return read_latest_model_name(Path(rollout_path))
 
 
-def assisted_by_value(model: str | None, skip: bool) -> str | None:
+def assisted_by_value(
+    model: str | None, skip: bool, agent: str = DEFAULT_AGENT_NAME
+) -> str | None:
     """根据 CLI 参数返回 Assisted-by 值。"""
 
     if model is not None and skip:
         raise CommitError("--model and --skip-assisted-by are mutually exclusive")
     if skip:
         return None
+    agent_name = agent.strip()
+    if not agent_name:
+        raise CommitError("--agent must not be empty")
     model_name = model.strip() if model is not None else resolve_model_name()
     if not model_name:
         raise CommitError("--model must not be empty")
-    return f"{AGENT_NAME}:{model_name}"
+    return f"{agent_name}:{model_name}"
 
 
 def run_git(repo: Path, arguments: list[str], *, input_text: str | None = None) -> str:
@@ -432,8 +437,12 @@ def main(
     ] = False,
     model: Annotated[
         str | None,
-        typer.Option("--model", help="显式指定 Codex 模型并跳过自动探测。"),
+        typer.Option("--model", help="显式指定模型并跳过自动探测。"),
     ] = None,
+    agent: Annotated[
+        str,
+        typer.Option("--agent", help=f"Assisted-by 的 Agent 名（默认 {DEFAULT_AGENT_NAME}）。"),
+    ] = DEFAULT_AGENT_NAME,
     skip_assisted_by: Annotated[
         bool,
         typer.Option(
@@ -446,7 +455,7 @@ def main(
 
     try:
         spec = load_spec(spec_file.read_text(encoding="utf-8"))
-        assisted_by = assisted_by_value(model, skip_assisted_by)
+        assisted_by = assisted_by_value(model, skip_assisted_by, agent)
         message = render_message(spec, assisted_by)
         validate_rendered_message(message, assisted_by)
         commit_sha = None
