@@ -43,20 +43,18 @@ description: 处理从本地 Git 变更到 GitHub/GitLab 协作发布的完整�
   && rm -- /tmp/commit.yaml
 ```
 
-脚本默认从当前 Codex thread 自动解析模型并生成 `Assisted-by: Codex:<model>`。在 opencode 等非 Codex Agent 下运行时，无论是否自动探测到模型，都必须用 `--agent` 覆盖 Agent 名，避免写出错误的来源标识；自动探测不可用时再显式选择以下一种方式，不得猜测模型：
+脚本默认从当前 Codex thread 自动解析模型并生成 `Assisted-by: Codex:<model>`。需要覆盖默认行为时，把 `assisted_by` 写进提交 YAML，而不是改用命令行参数，便于审查：
 
-```bash
-./scripts/commit_from_yaml.py /tmp/commit.yaml \
-  --repo /path/to/repository --model gpt-5.6-sol
-
-./scripts/commit_from_yaml.py /tmp/commit.yaml \
-  --repo /path/to/repository --agent opencode --model deepseek-v4.1-flash
-
-./scripts/commit_from_yaml.py /tmp/commit.yaml \
-  --repo /path/to/repository --skip-assisted-by
+```yaml
+# 在 opencode 等非 Codex Agent 下显式指定 Agent 与模型
+assisted_by:
+  agent: opencode
+  model: deepseek-v4.1-flash
 ```
 
-`--agent` 覆盖 `Assisted-by` 的 Agent 前缀（默认 `Codex`，不能为空）；`--model` 跳过自动探测但仍生成 trailer；`--skip-assisted-by` 同时跳过探测和 trailer。`--model` 与 `--skip-assisted-by` 互斥，后者只用于确实无法获得模型信息的场景。
+- `assisted_by.agent` 覆盖 Agent 前缀（默认 `Codex`，不能为空）。
+- `assisted_by.model` 指定模型并跳过自动探测；缺省时自动探测当前 Codex thread 使用的模型，不得猜测。
+- `assisted_by: false` 跳过探测且不添加 `Assisted-by` trailer，只用于确实无法获得模型信息的场景。
 
 4. YAML 的 `paths` 非空时，脚本会把每一项原样作为 Git pathspec 传给 Git，自动让匹配到的未跟踪文件进入 intent-to-add 状态，再使用 `git commit --only` 限定提交范围；调用方无需预先 stage。通配符由 Git 而不是 shell 展开，YAML 中应使用引号；需要让 `*` 不跨越目录分隔符时，使用 `:(glob)` 与 `**` 明确表达层级。若提交失败，脚本会清理自己创建的 intent-to-add 条目。`paths` 为空时提交当前 index，也可用于已经解决冲突的 merge commit。
 5. 脚本会在提交前后校验正文、breaking 标记和 trailer；任何字段中的字面量 `\\n` 都会失败。提交后仍需回读范围与工作区：

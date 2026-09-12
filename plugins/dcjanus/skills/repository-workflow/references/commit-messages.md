@@ -45,7 +45,7 @@ paths:
 - `paths` 的每一项都是仓库相对的 Git pathspec，支持字面路径、目录、`*`、`?`、字符集合以及 `:(glob)` 等 Git pathspec magic；非空时脚本自动处理匹配到的未跟踪文件，并使用 `git commit --only`，为空时提交当前 index。
 - pathspec 会原样传给 Git，不经过 shell 展开。包含通配符或 magic 时必须在 YAML 中使用引号；需要可预测的目录层级匹配时优先使用 `:(glob)`，其中 `*` 不匹配 `/`、`**` 可跨越目录。例如 `':(glob)src/**/*.py'` 会匹配 `src` 下各层级的 Python 文件。
 - `trailers` 是 `key` / `value` 结构化列表；key 仅支持字母、数字和连字符，value 必须是非空单行字符串。
-- `Assisted-by` 由脚本生成，禁止放入 `trailers`。
+- `Assisted-by` 由脚本根据顶层 `assisted_by` 覆盖项生成，禁止放入 `trailers`。
 - 所有字符串都禁止包含字面量 `\\n`；多行正文使用 YAML 的 `|` block scalar 表达。
 
 ## Breaking change
@@ -74,7 +74,7 @@ breaking_change:
 ## Trailers
 
 - 通过 YAML 的 `trailers` 添加 `Co-authored-by`、`Reviewed-by` 等结构化 trailer。
-- `Assisted-by` 由提交脚本自动探测、通过 `--model` 和 `--agent` 显式生成，或通过 `--skip-assisted-by` 明确省略。
+- `Assisted-by` 由提交脚本自动探测，或通过顶层 `assisted_by` 覆盖项控制：`agent` 指定 Agent 前缀，`model` 指定模型并跳过探测，`assisted_by: false` 明确省略 trailer。
 - `trailers` 只用于能被 `git interpret-trailers --parse` 正确识别的普通 key；不能包含 `Assisted-by` 或 `BREAKING CHANGE`。
 - 不要用多个 `-m` 或 shell 转义手工拼接正文和 trailer block。
 - shell 命令中的提交标题或正文不要包含未安全处理的反引号。

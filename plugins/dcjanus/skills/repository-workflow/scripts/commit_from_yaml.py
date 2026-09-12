@@ -21,7 +21,7 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Annotated, Any, Self
+from typing import Annotated, Any, Literal, Self
 
 import typer
 import yaml
@@ -146,6 +146,13 @@ class Trailer(StrictModel):
         return self
 
 
+class AssistedBy(StrictModel):
+    """Assisted-by trailer 的覆盖项。"""
+
+    agent: str = DEFAULT_AGENT_NAME
+    model: str | None = None
+
+
 class CommitSpec(StrictModel):
     """结构化提交描述。"""
 
@@ -154,6 +161,7 @@ class CommitSpec(StrictModel):
     breaking_change: BreakingChange | None = None
     trailers: list[Trailer] = Field(default_factory=list)
     paths: list[str] = Field(default_factory=list)
+    assisted_by: AssistedBy | Literal[False] | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -240,7 +248,8 @@ def require_thread_id() -> str:
     thread_id = os.environ.get("CODEX_THREAD_ID", "").strip()
     if not thread_id:
         raise CommitError(
-            "missing CODEX_THREAD_ID; use --model MODEL or --skip-assisted-by"
+            "missing CODEX_THREAD_ID; set assisted_by.model in the commit YAML "
+            "or use assisted_by: false"
         )
     return thread_id
 
@@ -255,8 +264,8 @@ def resolve_codex_bin() -> str:
     if resolved:
         return resolved
     raise CommitError(
-        "host Codex binary not found; set CODEX_BIN, use --model MODEL, "
-        "or use --skip-assisted-by"
+        "host Codex binary not found; set CODEX_BIN, set assisted_by.model "
+        "in the commit YAML, or use assisted_by: false"
     )
 
 
@@ -324,21 +333,19 @@ def resolve_model_name() -> str:
     return read_latest_model_name(Path(rollout_path))
 
 
-def assisted_by_value(
-    model: str | None, skip: bool, agent: str = DEFAULT_AGENT_NAME
-) -> str | None:
-    """根据 CLI 参数返回 Assisted-by 值。"""
+def assisted_by_value(config: AssistedBy | Literal[False] | None) -> str | None:
+    """根据 YAML 的 assisted_by 覆盖项返回 Assisted-by 值。"""
 
-    if model is not None and skip:
-        raise CommitError("--model and --skip-assisted-by are mutually exclusive")
-    if skip:
+    if config is False:
         return None
+    agent = config.agent if config is not None else DEFAULT_AGENT_NAME
+    model = config.model if config is not None else None
     agent_name = agent.strip()
     if not agent_name:
-        raise CommitError("--agent must not be empty")
+        raise CommitError("assisted_by.agent must not be empty")
     model_name = model.strip() if model is not None else resolve_model_name()
     if not model_name:
-        raise CommitError("--model must not be empty")
+        raise CommitError("assisted_by.model must not be empty")
     return f"{agent_name}:{model_name}"
 
 
@@ -435,27 +442,12 @@ def main(
     json_output: Annotated[
         bool, typer.Option("--json", help="输出机器可读 JSON。")
     ] = False,
-    model: Annotated[
-        str | None,
-        typer.Option("--model", help="显式指定模型并跳过自动探测。"),
-    ] = None,
-    agent: Annotated[
-        str,
-        typer.Option("--agent", help=f"Assisted-by 的 Agent 名（默认 {DEFAULT_AGENT_NAME}）。"),
-    ] = DEFAULT_AGENT_NAME,
-    skip_assisted_by: Annotated[
-        bool,
-        typer.Option(
-            "--skip-assisted-by",
-            help="跳过模型探测且不添加 Assisted-by trailer。",
-        ),
-    ] = False,
 ) -> None:
     """从 SPEC_FILE 创建一个结构化 Git commit。"""
 
     try:
         spec = load_spec(spec_file.read_text(encoding="utf-8"))
-        assisted_by = assisted_by_value(model, skip_assisted_by, agent)
+        assisted_by = assisted_by_value(spec.assisted_by)
         message = render_message(spec, assisted_by)
         validate_rendered_message(message, assisted_by)
         commit_sha = None
