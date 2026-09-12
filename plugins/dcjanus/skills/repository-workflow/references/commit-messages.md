@@ -74,7 +74,7 @@ breaking_change:
 ## Trailers
 
 - 通过 YAML 的 `trailers` 添加 `Co-authored-by`、`Reviewed-by` 等结构化 trailer。
-- `Assisted-by` 由提交脚本自动探测、通过 `--model` 显式生成，或通过 `--skip-assisted-by` 明确省略。
+- `Assisted-by` 由提交脚本自动探测、通过 `--model` 和 `--agent` 显式生成，或通过 `--skip-assisted-by` 明确省略。
 - `trailers` 只用于能被 `git interpret-trailers --parse` 正确识别的普通 key；不能包含 `Assisted-by` 或 `BREAKING CHANGE`。
 - 不要用多个 `-m` 或 shell 转义手工拼接正文和 trailer block。
 - shell 命令中的提交标题或正文不要包含未安全处理的反引号。
