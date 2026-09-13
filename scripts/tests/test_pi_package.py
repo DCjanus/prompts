@@ -14,7 +14,13 @@ def test_pi_package_reuses_codex_plugin_skills():
         (REPOSITORY_ROOT / "plugins/dcjanus/.codex-plugin/plugin.json").read_text()
     )
     codex_skills = (REPOSITORY_ROOT / "plugins/dcjanus" / plugin["skills"]).resolve()
-    pi_skills = [(REPOSITORY_ROOT / path).resolve() for path in package["pi"]["skills"]]
 
-    assert pi_skills == [codex_skills]
-    assert any(codex_skills.rglob("SKILL.md"))
+    entries = package["pi"]["skills"]
+    includes = [entry for entry in entries if not entry.startswith(("!", "+", "-"))]
+    assert [(REPOSITORY_ROOT / entry).resolve() for entry in includes] == [codex_skills]
+
+    excludes = [entry for entry in entries if entry.startswith("!")]
+    assert excludes
+    for pattern in excludes:
+        name = pattern.removeprefix("!").removeprefix("**/")
+        assert (codex_skills / name / "SKILL.md").is_file()
