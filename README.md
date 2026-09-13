@@ -1,9 +1,10 @@
 # prompts
 
-DCjanus 的个人 Codex plugin，包含工作流、偏好和 CLI skills，通过 Git marketplace 在多台电脑上安装和更新。
+DCjanus 的个人 skills，既包装为 Codex plugin，也通过同一份 `plugins/dcjanus/skills` 作为原生 Pi package，均借助 Git 在多台电脑上安装和更新。
 
 - [dcjanus](plugins/dcjanus)：plugin 及其 skills、脚本和第三方许可。
 - [marketplace.json](.agents/plugins/marketplace.json)：`dcjanus-plugins` marketplace。
+- [package.json](package.json)：复用同一套 skills 的 Pi package manifest。
 - [AGENTS.md](AGENTS.md)：独立维护的全局个人约定，不由 plugin 自动加载，新电脑按需单独配置。
 
 ## 安装与更新
@@ -24,6 +25,16 @@ codex plugin marketplace upgrade dcjanus-plugins --json
 检查输出中的 `errors`，更新后用新任务验证。内容更新不要求每次修改 plugin 版本号；不要直接编辑安装缓存。外部服务凭据和所需工具仍由各台电脑独立配置。
 
 支持自动触发的 skill 可由 Codex 按需求选择；显式调用使用 `$dcjanus:github-cli` 等完整名称，也可在技能选择器中搜索短名称后选中。
+
+## Pi
+
+同一份 `plugins/dcjanus/skills` 通过 [package.json](package.json) 的 `pi` manifest 作为原生 [Pi](https://pi.dev/) package 分发。每台电脑安装 Pi 后：
+
+```bash
+pi install git:github.com/DCjanus/prompts
+```
+
+Pi 会加载 `pi.skills` 声明的全部 skill，显式调用使用 `/skill:github-cli` 这样的名称，没有 Codex 的 `$dcjanus:` 命名空间。内容更新后运行 `pi update --extensions`；Pi 只在启动时提示包更新，不会自动应用。Codex 专有的 skill（如 `codex-session-reader`、`codex-thread-namer`）也会被加载，可用 `pi config` 单独关闭。`AGENTS.md` 与 Codex 的情形一致，不由 package 自动加载，需要按需软链到 `~/.pi/agent/AGENTS.md`。
 
 ## 开发
 
