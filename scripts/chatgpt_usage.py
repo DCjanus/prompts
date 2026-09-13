@@ -1704,6 +1704,25 @@ def available_providers(
     )
 
 
+def _require_known_provider(provider: str, codex_home: Path) -> str:
+    """校验 provider 取值，避免拼错时静默统计出 0。
+
+    官方 provider 与 `all` 始终有效，其它取值必须能在 config.toml 或历史
+    session 中找到。
+    """
+    normalized = _normalize_provider(provider)
+    if normalized in (OFFICIAL_PROVIDER, ALL_PROVIDERS):
+        return normalized
+    providers = available_providers(codex_home)
+    if any(info.provider == normalized for info in providers):
+        return normalized
+    known = "、".join([ALL_PROVIDERS, *(info.provider for info in providers)])
+    raise typer.BadParameter(
+        f"--provider 取值 {provider} 未知；本机可用 provider：{known}"
+        "（详见 providers 子命令）"
+    )
+
+
 def _cli_epilog() -> str:
     """在 --help 末尾列出本机 config.toml 声明的 provider。"""
     configured, current = _configured_providers(default_codex_home())
@@ -3021,6 +3040,8 @@ def main(
         return
     if json_output and image_output is True:
         raise typer.BadParameter("--json 与 --image 不能同时使用")
+    resolved_home = (codex_home or default_codex_home()).expanduser()
+    provider = _require_known_provider(provider, resolved_home)
     resolved = codex_bin or (Path(found) if (found := shutil.which("codex")) else None)
     if resolved is None:
         error_console.print("[bold red]错误：[/]PATH 中找不到 Codex CLI")
@@ -3048,7 +3069,7 @@ def main(
     )
     try:
         history = collect_usage_history(
-            (codex_home or default_codex_home()).expanduser(),
+            resolved_home,
             resolved_usage_cache,
             now=datetime.now().astimezone(),
             days=history_days,
