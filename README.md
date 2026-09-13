@@ -42,7 +42,7 @@ Pi 会加载 `pi.skills` 声明的全部 skill，显式调用使用 `/skill:gith
 
 ## 工具入口
 
-- [chatgpt_usage.py](scripts/chatgpt_usage.py)：查看 Codex 额度与本地用量。
+- [chatgpt_usage.py](scripts/chatgpt_usage.py)：查看 Codex 额度与本地用量，本地统计按 provider 拆分（默认 `openai`，可用 `--provider` 切换，`providers` 子命令列出本机可用 provider）。
 - [run_tests.py](scripts/run_tests.py)：运行仓库测试。
 - [script_deps.py](scripts/script_deps.py)：检查或升级脚本依赖。
 - [upstream_skills.py](scripts/upstream_skills.py)：按 [upstream-skills.toml](upstream-skills.toml) 检查上游 skill 更新。

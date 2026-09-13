@@ -348,6 +348,52 @@ class RenderUsageTests(unittest.TestCase):
         self.assertEqual(report["local_usage"]["days"][0]["day"], "2029-12-31")
         self.assertEqual(report["local_usage"]["scan"]["cache_hits"], 9)
 
+    def test_shows_selected_provider_and_cross_provider_breakdown(self) -> None:
+        history = chatgpt_usage.UsageHistory(
+            days=(
+                chatgpt_usage.DailyTokenUsage(
+                    day=date(2030, 1, 1),
+                    input_tokens=1_000,
+                    cached_input_tokens=0,
+                    cache_write_input_tokens=0,
+                    output_tokens=0,
+                    reasoning_output_tokens=0,
+                    total_tokens=1_000,
+                ),
+            ),
+            scan=chatgpt_usage.ScanStats(
+                total_files=3, cache_hits=3, full_scans=0, incremental_scans=0
+            ),
+            provider="openai",
+            providers=(
+                chatgpt_usage.ProviderTokenUsage("opencode-go", 5_000),
+                chatgpt_usage.ProviderTokenUsage("openai", 1_000),
+            ),
+        )
+
+        chatgpt_usage.render_usage(
+            self.buckets, self.now, history=history, verbose=False
+        )
+        svg = chatgpt_usage.render_usage_svg(
+            self.buckets, self.now, history=history, verbose=False
+        )
+        report = chatgpt_usage._json_report(self.buckets, self.now, history)
+
+        output = self.output.getvalue()
+        self.assertIn("openai", output)
+        self.assertIn("*openai 1.0K", output)
+        self.assertIn("opencode-go 5.0K", output)
+        self.assertIn("openai", svg)
+        self.assertIn("opencode-go 5.0K", svg)
+        self.assertEqual(report["local_usage"]["provider"], "openai")
+        self.assertEqual(
+            report["local_usage"]["providers"],
+            [
+                {"provider": "opencode-go", "total_tokens": 5_000},
+                {"provider": "openai", "total_tokens": 1_000},
+            ],
+        )
+
     def test_estimates_cached_input_and_long_context_at_model_rates(self) -> None:
         short = chatgpt_usage.estimate_api_cost(
             "gpt-5.6-sol",
@@ -720,6 +766,18 @@ class LocalUsageHistoryTests(unittest.TestCase):
             }
         )
 
+    @staticmethod
+    def _session_meta_line(timestamp: str, provider: str | None) -> str:
+        payload: dict[str, object] = {
+            "id": "00000000-0000-0000-0000-000000000000",
+            "timestamp": timestamp,
+        }
+        if provider is not None:
+            payload["model_provider"] = provider
+        return json.dumps(
+            {"timestamp": timestamp, "type": "session_meta", "payload": payload}
+        )
+
     def _token_count_line(
         self,
         timestamp: str,
@@ -753,6 +811,115 @@ class LocalUsageHistoryTests(unittest.TestCase):
                 },
             }
         )
+
+    def _write_provider_rollout(
+        self,
+        directory: Path,
+        *,
+        thread_id: str,
+        provider: str | None,
+        total_tokens: int,
+        with_session_meta: bool = True,
+    ) -> Path:
+        lines = []
+        if with_session_meta:
+            lines.append(self._session_meta_line("2030-01-08T09:59:00.000Z", provider))
+        lines.extend(
+            [
+                self._turn_context_line("2030-01-08T10:00:00.000Z", "gpt-5.5"),
+                self._token_count_line(
+                    "2030-01-08T10:00:00.000Z",
+                    ordinal=0,
+                    total=(total_tokens, 0, 0, total_tokens),
+                    last=(total_tokens, 0, 0, total_tokens),
+                ),
+            ]
+        )
+        rollout = directory / f"rollout-2030-01-08T09-59-00-{thread_id}.jsonl"
+        rollout.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        now = datetime(2030, 1, 8, 12, tzinfo=UTC)
+        os.utime(rollout, (now.timestamp(), now.timestamp()))
+        return rollout
+
+    def test_splits_local_usage_by_session_provider(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            codex_home = root / "codex"
+            active = codex_home / "sessions" / "2030" / "01" / "08"
+            active.mkdir(parents=True)
+            for thread_id, provider, total in (
+                ("00000000-0000-0000-0000-0000000000a1", "openai", 100),
+                ("00000000-0000-0000-0000-0000000000a2", "opencode-go", 500),
+                ("00000000-0000-0000-0000-0000000000a3", "packycode", 40),
+            ):
+                self._write_provider_rollout(
+                    active,
+                    thread_id=thread_id,
+                    provider=provider,
+                    total_tokens=total,
+                )
+            cache_path = root / "cache" / "usage.duckdb"
+            now = datetime(2030, 1, 8, 12, tzinfo=UTC)
+
+            official = chatgpt_usage.collect_usage_history(
+                codex_home, cache_path, now=now, days=7
+            )
+            self.assertEqual(official.provider, "openai")
+            self.assertEqual(official.total_tokens, 100)
+            self.assertEqual(
+                [(item.provider, item.total_tokens) for item in official.providers],
+                [("opencode-go", 500), ("openai", 100), ("packycode", 40)],
+            )
+            self.assertEqual(
+                [usage.model for usage in official.days[-1].models], ["gpt-5.5"]
+            )
+
+            explicit = chatgpt_usage.collect_usage_history(
+                codex_home, cache_path, now=now, days=7, provider="opencode-go"
+            )
+            self.assertEqual(explicit.provider, "opencode-go")
+            self.assertEqual(explicit.total_tokens, 500)
+            self.assertEqual(explicit.scan, chatgpt_usage.ScanStats(3, 3, 0, 0))
+
+            combined = chatgpt_usage.collect_usage_history(
+                codex_home, cache_path, now=now, days=7, provider="all"
+            )
+            self.assertEqual(combined.provider, "all")
+            self.assertEqual(combined.total_tokens, 640)
+
+    def test_missing_model_provider_falls_back_to_official_provider(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            codex_home = root / "codex"
+            active = codex_home / "sessions" / "2030" / "01" / "08"
+            active.mkdir(parents=True)
+            self._write_provider_rollout(
+                active,
+                thread_id="00000000-0000-0000-0000-0000000000b1",
+                provider=None,
+                total_tokens=70,
+            )
+            self._write_provider_rollout(
+                active,
+                thread_id="00000000-0000-0000-0000-0000000000b2",
+                provider=None,
+                total_tokens=30,
+                with_session_meta=False,
+            )
+
+            official = chatgpt_usage.collect_usage_history(
+                codex_home,
+                root / "cache" / "usage.duckdb",
+                now=datetime(2030, 1, 8, 12, tzinfo=UTC),
+                days=7,
+            )
+
+            self.assertEqual(official.provider, "openai")
+            self.assertEqual(official.total_tokens, 100)
+            self.assertEqual(
+                [(item.provider, item.total_tokens) for item in official.providers],
+                [("openai", 100)],
+            )
 
     def test_keeps_completed_rollouts_when_a_later_scan_fails(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -1122,6 +1289,166 @@ class LocalUsageHistoryTests(unittest.TestCase):
             self.assertEqual(model.non_fast_tokens, 0)
 
 
+class AvailableProvidersTests(unittest.TestCase):
+    @staticmethod
+    def _prepare_home(directory: str) -> Path:
+        home = Path(directory) / "codex"
+        (home / "sessions" / "2030" / "01" / "08").mkdir(parents=True)
+        return home
+
+    @staticmethod
+    def _session_meta_rollout(directory: Path, thread_id: str, provider: str) -> None:
+        rollout = directory / f"rollout-2030-01-08T09-59-00-{thread_id}.jsonl"
+        rollout.write_text(
+            json.dumps(
+                {
+                    "timestamp": "2030-01-08T09:59:00.000Z",
+                    "type": "session_meta",
+                    "payload": {"id": thread_id, "model_provider": provider},
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+    def test_merges_built_in_config_and_observed_providers(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = self._prepare_home(directory)
+            (home / "config.toml").write_text(
+                'model_provider = "opencode-go"\n'
+                "\n"
+                "[model_providers.opencode-go]\n"
+                'name = "OpenCode Go"\n'
+                'base_url = "https://opencode.ai/zen/go/v1"\n',
+                encoding="utf-8",
+            )
+            active = home / "sessions" / "2030" / "01" / "08"
+            for thread_id, provider in (
+                ("00000000-0000-0000-0000-0000000000c1", "openai"),
+                ("00000000-0000-0000-0000-0000000000c2", "opencode-go"),
+                ("00000000-0000-0000-0000-0000000000c3", "packycode"),
+            ):
+                self._session_meta_rollout(active, thread_id, provider)
+
+            providers = chatgpt_usage.available_providers(
+                home, usage={"opencode-go": 500}
+            )
+
+            by_id = {info.provider: info for info in providers}
+            self.assertEqual(set(by_id), {"openai", "opencode-go", "packycode"})
+            self.assertEqual(by_id["openai"].sources, ("built_in", "observed"))
+            self.assertEqual(by_id["openai"].session_count, 1)
+            self.assertEqual(by_id["opencode-go"].sources, ("configured", "observed"))
+            self.assertEqual(by_id["opencode-go"].name, "OpenCode Go")
+            self.assertEqual(
+                by_id["opencode-go"].base_url, "https://opencode.ai/zen/go/v1"
+            )
+            self.assertTrue(by_id["opencode-go"].is_current)
+            self.assertEqual(by_id["opencode-go"].total_tokens, 500)
+            self.assertEqual(by_id["packycode"].sources, ("observed",))
+            self.assertEqual(providers[0].provider, "opencode-go")
+
+    def test_epilog_lists_configured_providers_and_marks_current(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = self._prepare_home(directory)
+            (home / "config.toml").write_text(
+                'model_provider = "relay"\n\n[model_providers.relay]\nname = "Relay"\n',
+                encoding="utf-8",
+            )
+
+            with patch.object(chatgpt_usage, "default_codex_home", return_value=home):
+                epilog = chatgpt_usage._cli_epilog()
+
+            self.assertIn("openai", epilog)
+            self.assertIn("relay", epilog)
+            self.assertIn("当前配置", epilog)
+            self.assertIn("providers 子命令", epilog)
+
+
+class ProvidersCommandTests(unittest.TestCase):
+    @staticmethod
+    def _prepare_home(directory: str) -> Path:
+        home = Path(directory) / "codex"
+        home.mkdir(parents=True)
+        (home / "config.toml").write_text(
+            'model_provider = "opencode-go"\n'
+            "\n"
+            "[model_providers.opencode-go]\n"
+            'name = "OpenCode Go"\n'
+            'base_url = "https://opencode.ai/zen/go/v1"\n',
+            encoding="utf-8",
+        )
+        return home
+
+    @patch.object(
+        chatgpt_usage,
+        "fetch_rate_limits",
+        return_value={"rateLimits": {"limitId": "codex", "primary": None}},
+    )
+    @patch.object(chatgpt_usage, "collect_usage_history")
+    def test_lists_config_providers_and_local_usage(
+        self,
+        collect_mock: unittest.mock.Mock,
+        fetch_mock: unittest.mock.Mock,
+    ) -> None:
+        collect_mock.return_value = chatgpt_usage.UsageHistory(
+            days=(),
+            scan=chatgpt_usage.ScanStats(0, 0, 0, 0),
+            provider="all",
+            providers=(chatgpt_usage.ProviderTokenUsage("opencode-go", 5_000),),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            home = self._prepare_home(directory)
+            output = io.StringIO()
+            with patch.object(
+                chatgpt_usage,
+                "console",
+                Console(
+                    file=output, width=140, color_system=None, force_terminal=False
+                ),
+            ):
+                result = CliRunner().invoke(
+                    chatgpt_usage.app, ["providers", "--codex-home", str(home)]
+                )
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        rendered = output.getvalue()
+        self.assertIn("openai", rendered)
+        self.assertIn("opencode-go", rendered)
+        self.assertIn("5.0K", rendered)
+        self.assertIn("配置 · 当前", rendered)
+        self.assertEqual(collect_mock.call_args.kwargs["provider"], "all")
+        fetch_mock.assert_not_called()
+
+    @patch.object(chatgpt_usage, "collect_usage_history")
+    def test_json_output_is_machine_readable(
+        self, collect_mock: unittest.mock.Mock
+    ) -> None:
+        collect_mock.return_value = chatgpt_usage.UsageHistory(
+            days=(),
+            scan=chatgpt_usage.ScanStats(0, 0, 0, 0),
+            provider="all",
+            providers=(chatgpt_usage.ProviderTokenUsage("openai", 1_000),),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            home = self._prepare_home(directory)
+            result = CliRunner().invoke(
+                chatgpt_usage.app,
+                ["providers", "--codex-home", str(home), "--json"],
+            )
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        payload = json.loads(result.output)
+        self.assertEqual(payload["current_provider"], "opencode-go")
+        self.assertEqual(payload["history_days"], chatgpt_usage.DEFAULT_HISTORY_DAYS)
+        self.assertEqual(
+            [item["provider"] for item in payload["providers"]],
+            ["opencode-go", "openai"],
+        )
+        self.assertEqual(payload["providers"][1]["total_tokens"], 1_000)
+        self.assertTrue(payload["providers"][0]["is_current"])
+
+
 class AppServerTests(unittest.TestCase):
     def test_fetches_limits_through_authenticated_codex_app_server(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -1209,6 +1536,33 @@ class CliTests(unittest.TestCase):
 
         self.assertEqual(result.exit_code, 0, result.output)
         self.assertEqual(self.collect_history_mock.call_args.kwargs["days"], 30)
+
+    @patch.object(
+        chatgpt_usage,
+        "fetch_rate_limits",
+        return_value={"rateLimits": {"limitId": "codex", "primary": None}},
+    )
+    def test_provider_option_is_forwarded_and_defaults_to_official(
+        self, _fetch_mock: unittest.mock.Mock
+    ) -> None:
+        runner = CliRunner()
+
+        default_result = runner.invoke(
+            chatgpt_usage.app, ["--codex-bin", "/tmp/codex", "--text"]
+        )
+        self.assertEqual(default_result.exit_code, 0, default_result.output)
+        self.assertEqual(
+            self.collect_history_mock.call_args.kwargs["provider"], "openai"
+        )
+
+        explicit_result = runner.invoke(
+            chatgpt_usage.app,
+            ["--codex-bin", "/tmp/codex", "--text", "--provider", "opencode-go"],
+        )
+        self.assertEqual(explicit_result.exit_code, 0, explicit_result.output)
+        self.assertEqual(
+            self.collect_history_mock.call_args.kwargs["provider"], "opencode-go"
+        )
 
     def test_history_days_rejects_values_outside_supported_range(self) -> None:
         result = CliRunner().invoke(

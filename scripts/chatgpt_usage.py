@@ -37,6 +37,7 @@ from pathlib import Path
 from typing import Annotated, Any, TextIO
 
 import duckdb
+import tomllib
 import typer
 from kittytgp import render_png
 from resvg_py import svg_to_bytes
@@ -54,7 +55,10 @@ DEFAULT_IMAGE_WIDTH_RATIO = 1.0
 DEFAULT_HISTORY_DAYS = 7
 USAGE_EVENT_BATCH_SIZE = 2_048
 USAGE_SCAN_WORKERS = 4
-USAGE_CACHE_SCHEMA_VERSION = 6
+USAGE_CACHE_SCHEMA_VERSION = 7
+# Codex 内置官方 provider；缺失 model_provider 的旧 session 也归入这里。
+OFFICIAL_PROVIDER = "openai"
+ALL_PROVIDERS = "all"
 PRICING_UPDATED_AT = "2026-08-26"
 MODELS_DEV_URL = "https://models.dev/api.json"
 PRICING_CACHE_VERSION = 1
@@ -68,7 +72,6 @@ TIMESTAMP_PATTERN = re.compile(rb'"timestamp"\s*:\s*"([^"]+)"')
 ROLLOUT_DATE_PATTERN = re.compile(r"rollout-(\d{4}-\d{2}-\d{2})T")
 console = Console()
 error_console = Console(stderr=True)
-app = typer.Typer(add_completion=False, no_args_is_help=False)
 
 
 class UsageError(RuntimeError):
@@ -209,12 +212,38 @@ class ScanStats:
 
 
 @dataclass(frozen=True)
+class ProviderTokenUsage:
+    """记录时间范围内单个 provider 的 Token 用量。"""
+
+    provider: str
+    total_tokens: int
+
+
+@dataclass(frozen=True)
+class ProviderInfo:
+    """描述本机可用的 provider 及其来源。"""
+
+    provider: str
+    sources: tuple[str, ...]
+    name: str | None = None
+    base_url: str | None = None
+    session_count: int = 0
+    total_tokens: int = 0
+    is_current: bool = False
+
+
+PROVIDER_SOURCE_LABELS = {"built_in": "内置", "configured": "配置", "observed": "历史"}
+
+
+@dataclass(frozen=True)
 class UsageHistory:
     """记录按天汇总的 Token 用量与索引状态。"""
 
     days: tuple[DailyTokenUsage, ...]
     scan: ScanStats
     pricing: PricingMetadata | None = None
+    provider: str = OFFICIAL_PROVIDER
+    providers: tuple[ProviderTokenUsage, ...] = ()
 
     @property
     def total_tokens(self) -> int:
@@ -254,6 +283,7 @@ class _UsageEvent:
     thread_id: str
     event_key: str
     day: date
+    provider: str
     model: str
     service_tier: str
     usage: tuple[int, int, int, int, int, int]
@@ -845,6 +875,41 @@ def _normalize_service_tier(raw: str | None) -> str:
     return tier
 
 
+def _normalize_provider(raw: str | None) -> str:
+    """把 session 的 model_provider 归一化为稳定的用量维度。
+
+    2025-11 之前的 rollout 还没有 model_provider 字段，当时的 Codex 只会
+    使用官方 provider，因此缺失或为空时归入 OFFICIAL_PROVIDER。
+    """
+    if not raw:
+        return OFFICIAL_PROVIDER
+    provider = raw.strip().lower()
+    return provider or OFFICIAL_PROVIDER
+
+
+def _parse_session_provider(line: bytes) -> str | None:
+    """从 rollout 首行 session_meta 提取 model_provider。"""
+    try:
+        item = json.loads(line)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(item, dict) or item.get("type") != "session_meta":
+        return None
+    payload = item.get("payload")
+    provider = payload.get("model_provider") if isinstance(payload, dict) else None
+    return _normalize_provider(provider) if isinstance(provider, str) else None
+
+
+def _rollout_provider(path: Path) -> str:
+    """读取 rollout 的 provider；缺失或不可解析时回退到官方 provider。"""
+    try:
+        with path.open("rb") as file:
+            first_line = file.readline()
+    except OSError:
+        return OFFICIAL_PROVIDER
+    return _parse_session_provider(first_line) or OFFICIAL_PROVIDER
+
+
 def estimate_api_cost(
     model: str,
     *,
@@ -980,6 +1045,7 @@ def _create_usage_tables(connection: duckdb.DuckDBPyConnection) -> None:
             thread_id VARCHAR NOT NULL,
             event_key VARCHAR NOT NULL,
             usage_date DATE NOT NULL,
+            provider VARCHAR NOT NULL,
             model VARCHAR NOT NULL,
             service_tier VARCHAR NOT NULL,
             input_tokens BIGINT NOT NULL,
@@ -1129,6 +1195,7 @@ def _parse_rollout_usage(
     previous_total: tuple[int, int, int, int, int, int] | None,
     current_model: str | None,
     current_service_tier: str,
+    provider: str,
     first_day: date,
     timezone: Any,
     event_sink: Callable[[list[_UsageEvent]], None] | None = None,
@@ -1168,6 +1235,7 @@ def _parse_rollout_usage(
                 previous_total=previous_total,
                 model=current_model,
                 service_tier=current_service_tier,
+                provider=provider,
                 first_day=first_day,
                 timezone=timezone,
             )
@@ -1234,6 +1302,7 @@ def _parse_usage_event(
     previous_total: tuple[int, int, int, int, int, int] | None,
     model: str | None,
     service_tier: str,
+    provider: str,
     first_day: date,
     timezone: Any,
 ) -> tuple[
@@ -1271,6 +1340,7 @@ def _parse_usage_event(
             thread_id=thread_id,
             event_key=event_key,
             day=timestamp.date(),
+            provider=_normalize_provider(provider),
             model=normalized_model,
             service_tier=_normalize_service_tier(service_tier),
             usage=contribution,
@@ -1283,6 +1353,7 @@ def _parse_rollout_usage_tail(
     path: Path,
     *,
     thread_id: str,
+    provider: str,
     first_day: date,
     timezone: Any,
     event_sink: Callable[[list[_UsageEvent]], None] | None = None,
@@ -1339,6 +1410,7 @@ def _parse_rollout_usage_tail(
         previous_total=None,
         current_model=initial_model,
         current_service_tier=initial_service_tier,
+        provider=provider,
         first_day=first_day,
         timezone=timezone,
         event_sink=event_sink,
@@ -1365,7 +1437,7 @@ def _upsert_usage_events(
         return
     connection.executemany(
         """
-        INSERT INTO token_usage_events VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO token_usage_events VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (thread_id, event_key) DO NOTHING
         """,
         [
@@ -1373,6 +1445,7 @@ def _upsert_usage_events(
                 event.thread_id,
                 event.event_key,
                 event.day,
+                event.provider,
                 event.model,
                 event.service_tier,
                 *event.usage,
@@ -1450,6 +1523,7 @@ def _index_rollout_job(
     """使用线程本地连接增量或全量索引一个 rollout。"""
     local_connection = connection.cursor()
     try:
+        provider = _rollout_provider(job.path)
         if job.can_append:
             if job.state is None:
                 raise RuntimeError("增量扫描缺少 rollout 状态")
@@ -1485,6 +1559,7 @@ def _index_rollout_job(
                     previous_total=previous_total,
                     current_model=current_model,
                     current_service_tier=current_service_tier,
+                    provider=provider,
                     first_day=first_day,
                     timezone=timezone,
                     event_sink=event_sink,
@@ -1499,6 +1574,7 @@ def _index_rollout_job(
                 ) = _parse_rollout_usage_tail(
                     job.path,
                     thread_id=job.thread_id,
+                    provider=provider,
                     first_day=first_day,
                     timezone=timezone,
                     event_sink=event_sink,
@@ -1532,17 +1608,141 @@ def _rollout_paths(codex_home: Path) -> list[Path]:
     )
 
 
+def _configured_providers(codex_home: Path) -> tuple[dict[str, Any], str | None]:
+    """读取 config.toml 声明的 provider 与当前 model_provider。"""
+    try:
+        data = tomllib.loads((codex_home / "config.toml").read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError):
+        return {}, None
+    providers = data.get("model_providers")
+    current = data.get("model_provider")
+    return (
+        providers if isinstance(providers, dict) else {},
+        current if isinstance(current, str) and current.strip() else None,
+    )
+
+
+def _observed_providers(codex_home: Path) -> dict[str, int]:
+    """统计本机 rollout 中出现过的 provider 及其 session 数。"""
+    counts: dict[str, int] = {}
+    for path in _rollout_paths(codex_home):
+        if THREAD_ID_PATTERN.search(path.name) is None:
+            continue
+        provider = _rollout_provider(path)
+        counts[provider] = counts.get(provider, 0) + 1
+    return counts
+
+
+def available_providers(
+    codex_home: Path,
+    *,
+    observed: dict[str, int] | None = None,
+    usage: dict[str, int] | None = None,
+) -> tuple[ProviderInfo, ...]:
+    """合并内置、config.toml 与历史 session，列出本机可用 provider。"""
+    configured, current = _configured_providers(codex_home)
+    if observed is None:
+        observed = _observed_providers(codex_home)
+    usage = usage or {}
+    entries: dict[str, dict[str, Any]] = {}
+
+    def entry(provider: str) -> dict[str, Any]:
+        return entries.setdefault(
+            provider,
+            {
+                "sources": [],
+                "name": None,
+                "base_url": None,
+                "session_count": 0,
+                "total_tokens": 0,
+            },
+        )
+
+    def add_source(item: dict[str, Any], source: str) -> None:
+        if source not in item["sources"]:
+            item["sources"].append(source)
+
+    current_provider = _normalize_provider(current) if current else None
+    add_source(entry(OFFICIAL_PROVIDER), "built_in")
+    for provider, settings in configured.items():
+        item = entry(_normalize_provider(str(provider)))
+        add_source(item, "configured")
+        if not isinstance(settings, dict):
+            continue
+        name = settings.get("name")
+        if isinstance(name, str) and name.strip():
+            item["name"] = name.strip()
+        base_url = settings.get("base_url")
+        if isinstance(base_url, str) and base_url.strip():
+            item["base_url"] = base_url.strip()
+    for provider, count in observed.items():
+        item = entry(provider)
+        add_source(item, "observed")
+        item["session_count"] = int(count)
+    for provider, tokens in usage.items():
+        entry(provider)["total_tokens"] = int(tokens)
+    return tuple(
+        sorted(
+            (
+                ProviderInfo(
+                    provider=provider,
+                    sources=tuple(item["sources"]),
+                    name=item["name"],
+                    base_url=item["base_url"],
+                    session_count=item["session_count"],
+                    total_tokens=item["total_tokens"],
+                    is_current=provider == current_provider,
+                )
+                for provider, item in entries.items()
+            ),
+            key=lambda info: (
+                0 if info.is_current else 1,
+                -info.total_tokens,
+                info.provider,
+            ),
+        )
+    )
+
+
+def _cli_epilog() -> str:
+    """在 --help 末尾列出本机 config.toml 声明的 provider。"""
+    configured, current = _configured_providers(default_codex_home())
+    current_provider = _normalize_provider(current) if current else None
+    items = [f"{OFFICIAL_PROVIDER}（内置官方，本地统计默认）"]
+    for provider, settings in configured.items():
+        provider_id = _normalize_provider(str(provider))
+        if provider_id == OFFICIAL_PROVIDER:
+            continue
+        name = settings.get("name") if isinstance(settings, dict) else None
+        markers = [
+            marker
+            for marker in (
+                name.strip() if isinstance(name, str) and name.strip() else "",
+                "当前配置" if provider_id == current_provider else "",
+            )
+            if marker
+        ]
+        suffix = f"（{'，'.join(markers)}）" if markers else ""
+        items.append(f"{provider_id}{suffix}")
+    return (
+        f"本机可用 provider：{'、'.join(items)}。"
+        "历史 session 中出现过的其他 provider 与各自本地用量，见 providers 子命令。"
+    )
+
+
 def collect_usage_history(
     codex_home: Path,
     cache_path: Path,
     *,
     now: datetime,
     days: int = DEFAULT_HISTORY_DAYS,
+    provider: str = OFFICIAL_PROVIDER,
     pricing_catalog: PricingCatalog | None = None,
 ) -> UsageHistory:
-    """增量索引本地 Thread，并返回按天 Token 用量。"""
+    """增量索引本地 Thread，并返回指定 provider 的按天 Token 用量。"""
     if days < 1:
         raise ValueError("days 必须大于等于 1")
+    selected_provider = _normalize_provider(provider)
     local_now = now.astimezone()
     timezone = local_now.tzinfo or UTC
     display_first_day = local_now.date() - timedelta(days=days - 1)
@@ -1675,6 +1875,7 @@ def collect_usage_history(
         rows = connection.execute(
             """
             SELECT usage_date,
+                   provider,
                    model,
                    service_tier,
                    input_tokens,
@@ -1685,7 +1886,7 @@ def collect_usage_history(
                    total_tokens
             FROM token_usage_events
             WHERE usage_date BETWEEN ? AND ?
-            ORDER BY usage_date, model, event_key
+            ORDER BY usage_date, provider, model, event_key
             """,
             [display_first_day, local_now.date()],
         ).fetchall()
@@ -1709,22 +1910,29 @@ def collect_usage_history(
     totals_by_model: dict[tuple[date, str], list[int]] = {}
     tier_tokens_by_model: dict[tuple[date, str], list[int]] = {}
     costs_by_model: dict[tuple[date, str], float | None] = {}
+    provider_totals: dict[str, int] = {}
     for row in rows:
-        key = (row[0], str(row[1]))
-        usage = [int(value) for value in row[3:9]]
+        row_provider = str(row[1])
+        provider_totals[row_provider] = provider_totals.get(row_provider, 0) + int(
+            row[9]
+        )
+        if selected_provider != ALL_PROVIDERS and row_provider != selected_provider:
+            continue
+        key = (row[0], str(row[2]))
+        usage = [int(value) for value in row[4:10]]
         totals = totals_by_model.setdefault(key, [0] * 6)
         for index, value in enumerate(usage):
             totals[index] += value
         tier_tokens = tier_tokens_by_model.setdefault(key, [0, 0])
-        tier_index = 0 if _normalize_service_tier(str(row[2])) == "fast" else 1
+        tier_index = 0 if _normalize_service_tier(str(row[3])) == "fast" else 1
         tier_tokens[tier_index] += usage[-1]
         cost = estimate_api_cost(
-            str(row[1]),
+            str(row[2]),
             input_tokens=usage[0],
             cached_input_tokens=usage[1],
             cache_write_input_tokens=usage[2],
             output_tokens=usage[3],
-            service_tier=str(row[2]),
+            service_tier=str(row[3]),
             prices=resolved_pricing.prices,
         )
         previous_cost = costs_by_model.get(key, 0.0)
@@ -1783,6 +1991,13 @@ def collect_usage_history(
             incremental_scans=incremental_scans,
         ),
         pricing=resolved_pricing.metadata,
+        provider=selected_provider,
+        providers=tuple(
+            ProviderTokenUsage(item_provider, tokens)
+            for item_provider, tokens in sorted(
+                provider_totals.items(), key=lambda item: (-item[1], item[0])
+            )
+        ),
     )
 
 
@@ -1921,6 +2136,27 @@ def _cache_hit_text(day: DailyTokenUsage) -> str:
     return "—" if percent is None else f"{percent:.1f}%"
 
 
+def _provider_label(provider: str) -> str:
+    """把 provider 维度展示为可读文本。"""
+    return "全部 Provider" if provider == ALL_PROVIDERS else provider
+
+
+def _provider_breakdown_text(history: UsageHistory) -> str | None:
+    """列出各 provider 的 Token 用量，便于对比与切换。"""
+    if not history.providers:
+        return None
+    selected_missing = history.provider != ALL_PROVIDERS and all(
+        item.provider != history.provider for item in history.providers
+    )
+    if len(history.providers) < 2 and not selected_missing:
+        return None
+    return " · ".join(
+        f"{'*' if item.provider == history.provider else ''}{item.provider} "
+        f"{_format_token_count(item.total_tokens)}"
+        for item in history.providers
+    )
+
+
 def _format_cost(estimated_cost_usd: float, unpriced_tokens: int) -> str:
     """格式化 API 等价成本，并标记未完整估价的情况。"""
     if unpriced_tokens > 0:
@@ -1966,6 +2202,8 @@ def _render_usage_history(history: UsageHistory, *, verbose: bool) -> None:
         )
     scan = history.scan
     subtitle_parts = []
+    if breakdown := _provider_breakdown_text(history):
+        subtitle_parts.append(f"[dim]{breakdown}[/]")
     if history.unpriced_tokens:
         subtitle_parts.append(
             f"[yellow]未估价 {_format_token_count(history.unpriced_tokens)} Token[/]"
@@ -1991,7 +2229,8 @@ def _render_usage_history(history: UsageHistory, *, verbose: bool) -> None:
             title=(
                 f"[bold]最近 {len(history.days)} 天 Token · "
                 f"{_format_token_count(history.total_tokens)} · "
-                f"API 等价 {_format_cost(history.estimated_cost_usd, history.unpriced_tokens)}[/]"
+                f"API 等价 {_format_cost(history.estimated_cost_usd, history.unpriced_tokens)}"
+                f" · {_provider_label(history.provider)}[/]"
             ),
             subtitle=" · ".join(subtitle_parts) or None,
             border_style="blue",
@@ -2197,12 +2436,16 @@ def _svg_usage_history(
     card_height = 140.0
     parts = [
         f'<g data-role="daily-usage" data-grid-columns="{grid_columns}" filter="url(#shadow)"><rect x="{x}" y="{y}" width="{width}" height="{height}" rx="24" fill="#151b2d" stroke="#283149"/></g>',
-        f'<text x="{x + 26}" y="{y + 40}" fill="#f8f8f2" font-size="22" font-weight="700">最近 {len(days)} 天 Token · {_svg_text(_format_token_count(history.total_tokens))} · API 等价 {_svg_text(_format_cost(history.estimated_cost_usd, history.unpriced_tokens))}</text>',
+        f'<text x="{x + 26}" y="{y + 40}" fill="#f8f8f2" font-size="22" font-weight="700">最近 {len(days)} 天 Token · {_svg_text(_format_token_count(history.total_tokens))} · API 等价 {_svg_text(_format_cost(history.estimated_cost_usd, history.unpriced_tokens))} · {_svg_text(_provider_label(history.provider))}</text>',
     ]
     if verbose:
         scan = history.scan
         parts.append(
             f'<text x="{x + width - 26}" y="{y + 38}" text-anchor="end" class="muted" font-size="13">索引命中 {scan.cache_hits}/{scan.total_files} · 全量 {scan.full_scans} · 增量 {scan.incremental_scans}</text>'
+        )
+    elif breakdown := _provider_breakdown_text(history):
+        parts.append(
+            f'<text x="{x + width - 26}" y="{y + 38}" text-anchor="end" class="muted" font-size="13">{_svg_text(breakdown)}</text>'
         )
     for index, day in enumerate(days):
         row_index, column_index = divmod(index, grid_columns)
@@ -2658,6 +2901,8 @@ def _json_report(
             "total_tokens": history.total_tokens,
             "estimated_cost_usd": history.estimated_cost_usd,
             "unpriced_tokens": history.unpriced_tokens,
+            "provider": history.provider,
+            "providers": [asdict(item) for item in history.providers],
             "pricing_basis": "current_standard_api_equivalent",
             "pricing": {
                 "source": pricing.source if pricing is not None else "unknown",
@@ -2690,8 +2935,16 @@ def _json_report(
     }
 
 
-@app.command()
+app = typer.Typer(
+    add_completion=False,
+    no_args_is_help=False,
+    epilog=_cli_epilog(),
+)
+
+
+@app.callback(invoke_without_command=True)
 def main(
+    ctx: typer.Context,
     codex_bin: Annotated[
         Path | None,
         typer.Option("--codex-bin", help="Codex CLI 路径；默认从 PATH 查找。"),
@@ -2723,6 +2976,17 @@ def main(
             help="本地 Token 用量展示天数；扩大范围时会补建一次索引。",
         ),
     ] = DEFAULT_HISTORY_DAYS,
+    provider: Annotated[
+        str,
+        typer.Option(
+            "--provider",
+            help=(
+                "本地 Token 统计维度；"
+                f"默认 {OFFICIAL_PROVIDER}（官方），{ALL_PROVIDERS} 汇总全部，"
+                "可选值见 --help 末尾与 providers 子命令。"
+            ),
+        ),
+    ] = OFFICIAL_PROVIDER,
     json_output: Annotated[
         bool,
         typer.Option("--json", help="输出机器可读 JSON。"),
@@ -2753,6 +3017,8 @@ def main(
     ] = None,
 ) -> None:
     """显示 Codex 额度、时间进度与最近本地 Token 用量。"""
+    if ctx.invoked_subcommand is not None:
+        return
     if json_output and image_output is True:
         raise typer.BadParameter("--json 与 --image 不能同时使用")
     resolved = codex_bin or (Path(found) if (found := shutil.which("codex")) else None)
@@ -2786,6 +3052,7 @@ def main(
             resolved_usage_cache,
             now=datetime.now().astimezone(),
             days=history_days,
+            provider=provider,
             pricing_catalog=pricing_catalog,
         )
     except (OSError, RuntimeError, ValueError, UsageError) as error:
@@ -2852,6 +3119,118 @@ def main(
             reset_credits=reset_credits,
             verbose=verbose,
         )
+
+
+def _provider_source_text(info: ProviderInfo) -> str:
+    """把 provider 的来源标记拼接为可读文本。"""
+    labels = [PROVIDER_SOURCE_LABELS.get(source, source) for source in info.sources]
+    if info.is_current:
+        labels.append("当前")
+    return " · ".join(labels)
+
+
+def _render_providers(
+    providers: tuple[ProviderInfo, ...], *, history_days: int
+) -> None:
+    """用 Rich 列出本机可用的 provider。"""
+    current = next(
+        (info.provider for info in providers if info.is_current),
+        None,
+    )
+    table = Table(box=None, padding=(0, 1), show_header=True)
+    table.add_column("Provider", style="bold", no_wrap=True)
+    table.add_column("来源", no_wrap=True)
+    table.add_column(f"近 {history_days} 天 Token", justify="right", no_wrap=True)
+    table.add_column("Session", justify="right", no_wrap=True)
+    table.add_column("说明")
+    for info in providers:
+        detail = info.name or ""
+        if info.base_url:
+            detail = f"{detail} · {info.base_url}" if detail else info.base_url
+        table.add_row(
+            info.provider,
+            _provider_source_text(info),
+            _format_token_count(info.total_tokens),
+            str(info.session_count),
+            detail or "—",
+        )
+    subtitle = None
+    if current and current != OFFICIAL_PROVIDER:
+        subtitle = (
+            f"[dim]config.toml 当前 model_provider = {current}；"
+            f"本地统计默认仍看 {OFFICIAL_PROVIDER}[/]"
+        )
+    console.print(
+        Panel(
+            table,
+            title="[bold]本机可用 Provider[/]",
+            subtitle=subtitle,
+            border_style="blue",
+            padding=(0, 1),
+        )
+    )
+
+
+@app.command("providers")
+def providers_command(
+    codex_home: Annotated[
+        Path | None,
+        typer.Option(
+            "--codex-home",
+            help="Codex 本地数据目录；默认使用 CODEX_HOME 或 ~/.codex。",
+        ),
+    ] = None,
+    usage_cache: Annotated[
+        Path | None,
+        typer.Option("--usage-cache", help="本地用量 DuckDB 索引路径。"),
+    ] = None,
+    history_days: Annotated[
+        int,
+        typer.Option(
+            "--history-days",
+            min=1,
+            max=365,
+            help="本地 Token 用量统计天数；扩大范围时会补建一次索引。",
+        ),
+    ] = DEFAULT_HISTORY_DAYS,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="输出机器可读 JSON。"),
+    ] = False,
+) -> None:
+    """列出本机可用 provider，以及近期的本地 Token 用量。"""
+    resolved_home = (codex_home or default_codex_home()).expanduser()
+    observed = _observed_providers(resolved_home)
+    usage: dict[str, int] = {}
+    try:
+        history = collect_usage_history(
+            resolved_home,
+            (usage_cache or default_usage_cache_path()).expanduser(),
+            now=datetime.now().astimezone(),
+            days=history_days,
+            provider=ALL_PROVIDERS,
+        )
+        usage = {item.provider: item.total_tokens for item in history.providers}
+    except (OSError, RuntimeError, ValueError, UsageError) as error:
+        error_console.print(f"[yellow]本地 Token 统计不可用：[/]{error}")
+    providers = available_providers(resolved_home, observed=observed, usage=usage)
+    if json_output:
+        print(
+            json.dumps(
+                {
+                    "codex_home": str(resolved_home),
+                    "history_days": history_days,
+                    "current_provider": next(
+                        (info.provider for info in providers if info.is_current), None
+                    ),
+                    "providers": [asdict(info) for info in providers],
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return
+    _render_providers(providers, history_days=history_days)
 
 
 if __name__ == "__main__":
