@@ -1547,22 +1547,76 @@ class CliTests(unittest.TestCase):
     ) -> None:
         runner = CliRunner()
 
-        default_result = runner.invoke(
-            chatgpt_usage.app, ["--codex-bin", "/tmp/codex", "--text"]
-        )
-        self.assertEqual(default_result.exit_code, 0, default_result.output)
-        self.assertEqual(
-            self.collect_history_mock.call_args.kwargs["provider"], "openai"
-        )
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory) / "codex"
+            home.mkdir()
+            (home / "config.toml").write_text(
+                'model_provider = "opencode-go"\n'
+                "\n"
+                "[model_providers.opencode-go]\n"
+                'name = "OpenCode Go"\n',
+                encoding="utf-8",
+            )
+            base_args = [
+                "--codex-bin",
+                "/tmp/codex",
+                "--text",
+                "--codex-home",
+                str(home),
+            ]
 
-        explicit_result = runner.invoke(
-            chatgpt_usage.app,
-            ["--codex-bin", "/tmp/codex", "--text", "--provider", "opencode-go"],
-        )
-        self.assertEqual(explicit_result.exit_code, 0, explicit_result.output)
-        self.assertEqual(
-            self.collect_history_mock.call_args.kwargs["provider"], "opencode-go"
-        )
+            default_result = runner.invoke(chatgpt_usage.app, base_args)
+            self.assertEqual(default_result.exit_code, 0, default_result.output)
+            self.assertEqual(
+                self.collect_history_mock.call_args.kwargs["provider"], "openai"
+            )
+
+            explicit_result = runner.invoke(
+                chatgpt_usage.app, [*base_args, "--provider", "opencode-go"]
+            )
+            self.assertEqual(explicit_result.exit_code, 0, explicit_result.output)
+            self.assertEqual(
+                self.collect_history_mock.call_args.kwargs["provider"], "opencode-go"
+            )
+
+    @patch.object(
+        chatgpt_usage,
+        "fetch_rate_limits",
+        return_value={"rateLimits": {"limitId": "codex", "primary": None}},
+    )
+    def test_unknown_provider_is_rejected_before_querying_codex(
+        self, fetch_mock: unittest.mock.Mock
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory) / "codex"
+            home.mkdir()
+            (home / "config.toml").write_text(
+                'model_provider = "opencode-go"\n'
+                "\n"
+                "[model_providers.opencode-go]\n"
+                'name = "OpenCode Go"\n',
+                encoding="utf-8",
+            )
+
+            result = CliRunner().invoke(
+                chatgpt_usage.app,
+                [
+                    "--codex-bin",
+                    "/tmp/codex",
+                    "--text",
+                    "--codex-home",
+                    str(home),
+                    "--provider",
+                    "opencode-go-typo",
+                ],
+            )
+
+        self.assertEqual(result.exit_code, 2, result.output)
+        self.assertIn("opencode-go-typo", result.output)
+        self.assertIn("all", result.output)
+        self.assertIn("opencode-go", result.output)
+        fetch_mock.assert_not_called()
+        self.collect_history_mock.assert_not_called()
 
     def test_history_days_rejects_values_outside_supported_range(self) -> None:
         result = CliRunner().invoke(
