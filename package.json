@@ -1,0 +1,14 @@
+{
+  "name": "dcjanus-prompts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DCjanus 的个人 skills，同时供 Codex plugin 与 Pi package 使用。",
+  "keywords": [
+    "pi-package"
+  ],
+  "pi": {
+    "skills": [
+      "./plugins/dcjanus/skills"
+    ]
+  }
+}
