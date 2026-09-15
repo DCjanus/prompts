@@ -79,10 +79,20 @@ description: 使用 GitHub CLI 与 GitHub 资源交互；适用于 repo、issue�
 5. dry-run 确认无误且用户已授权创建后，移除 `--dry-run` 正式执行。需要机器可读输出时加 `--json`。
 6. 无模板的普通 Issue 仍使用同一入口，只是不传 `--template`；此时可用可重复的 `--label` / `--assignee`。脚本会在权限不足时提前失败，避免 GitHub REST 静默丢弃元数据。
 7. Markdown template 与 YAML Issue Form 都通过 `--template <文件名>` 指定。模板场景不要再传 `--label` / `--assignee`；脚本会让 GitHub 服务端应用模板预设元数据，并在创建后回读验证。
+   正文中的本地 Markdown 图片引用（如 `![repro](./repro.png)`）会相对正文文件解析、上传并改写成 GitHub URL；远程图片和普通链接不会触发上传。没有正文引用的图片或视频才使用可重复的 `--attach <path>` 显式指定。GitHub 的 user-attachment API 只允许向有写权限的目标仓库上传；给无写权限的上游提 Issue 时，脚本会在创建前明确失败，不会借用其它仓库存放附件，此时使用网页上传。
 8. 脚本优先读取 `GH_TOKEN` / `GITHUB_TOKEN`（GitHub Enterprise 对应变量），仅在环境变量不可用时调用 `gh auth token`。除鉴权兜底外，脚本直接调用 GitHub REST/GraphQL API。
 9. 创建后若模板 labels/assignees 缺失，脚本会返回非 0 并保留已创建 Issue URL 供处理；不要把这种结果报告为成功。
 10. 只有脚本明确报告不支持当前平台能力、且无法安全扩展时，才回退网页表单；回复中要说明回退原因。
 11. 创建成功并验证通过后，输出完整 Issue URL。
+
+已有 Issue 需要更新正文或补附件时仍使用统一脚本；正文文件中的本地图片同样会自动上传：
+
+```bash
+./scripts/github_issue.py edit \
+  --repo owner/repo \
+  --issue 123 \
+  --body-file /tmp/issue-body.md
+```
 
 正式创建并清理单次临时正文的示例：
 

@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from typer.testing import CliRunner
 
 SCRIPT_PATH = Path(__file__).resolve().parents[1] / "github_issue.py"
 SPEC = importlib.util.spec_from_file_location("github_issue", SCRIPT_PATH)
@@ -13,6 +14,8 @@ github_issue = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
 sys.modules[SPEC.name] = github_issue
 SPEC.loader.exec_module(github_issue)
+
+RUNNER = CliRunner()
 
 
 def test_parse_repo_supports_common_forms() -> None:
@@ -129,6 +132,84 @@ def test_environment_token_takes_priority(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setattr(github_issue.subprocess, "run", unexpected_run)
 
     assert github_issue.resolve_token("github.com") == "from-environment"
+
+
+def test_markdown_attachments_resolves_only_local_images(tmp_path: Path) -> None:
+    body_file = tmp_path / "issue.md"
+    image = tmp_path / "screenshots" / "repro image.png"
+    image.parent.mkdir()
+    image.write_bytes(b"png")
+
+    attachments = github_issue.markdown_attachments(
+        """![repro](<screenshots/repro%20image.png>)
+![remote](https://example.com/image.png)
+[ordinary file](screenshots/repro%20image.png)""",
+        body_file,
+    )
+
+    assert attachments == [image]
+
+
+def test_markdown_attachments_rejects_missing_local_image(tmp_path: Path) -> None:
+    with pytest.raises(github_issue.GitHubIssueError, match="does not exist"):
+        github_issue.markdown_attachments(
+            "![missing](missing.png)", tmp_path / "issue.md"
+        )
+
+
+def test_upload_asset_rejects_empty_attachment(tmp_path: Path) -> None:
+    image = tmp_path / "empty.png"
+    image.touch()
+    api = object.__new__(github_issue.GitHubApi)
+    api.repo = github_issue.RepoRef(owner="owner", name="repo")
+
+    with pytest.raises(github_issue.GitHubIssueError, match="attachment is empty"):
+        api.upload_asset(image, 123)
+
+
+def test_upload_and_rewrite_preserves_markdown_position_and_alt(tmp_path: Path) -> None:
+    body_file = tmp_path / "issue.md"
+    image = tmp_path / "image.png"
+    image.write_bytes(b"png")
+
+    class FakeApi:
+        def upload_asset(self, path: Path, repository_id: int) -> str:
+            assert path == image
+            assert repository_id == 123
+            return "https://github.com/user-attachments/assets/asset-id"
+
+    rewritten = github_issue.upload_and_rewrite(
+        FakeApi(),
+        github_issue.RepoInfo(id="R_123", databaseId=123, viewerPermission="WRITE"),
+        "Before\n\n![Chinese query](image.png)\n\nAfter",
+        body_file,
+        [],
+    )
+
+    assert rewritten == (
+        "Before\n\n"
+        "![Chinese query](https://github.com/user-attachments/assets/asset-id)"
+        "\n\nAfter"
+    )
+
+
+def test_upload_and_rewrite_leaves_remote_image_unchanged(tmp_path: Path) -> None:
+    body = "![remote](https://example.com/image.png)"
+    rewritten = github_issue.upload_and_rewrite(
+        object(),
+        github_issue.RepoInfo(id="R_123", databaseId=123, viewerPermission="WRITE"),
+        body,
+        tmp_path / "issue.md",
+        [],
+    )
+    assert rewritten == body
+
+
+def test_edit_does_not_require_explicit_attach() -> None:
+    result = RUNNER.invoke(github_issue.app, ["edit", "--help"])
+    assert result.exit_code == 0
+    assert "--attach" in result.stdout
+    assert "[required]" not in result.stdout.split("--attach", 1)[1].splitlines()[0]
 
 
 def test_template_creation_passes_issue_template_identifier() -> None:

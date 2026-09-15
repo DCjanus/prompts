@@ -20,7 +20,7 @@ import re
 import subprocess
 from pathlib import Path, PurePosixPath
 from typing import Annotated, Any, Literal
-from urllib.parse import quote, urlparse
+from urllib.parse import quote, unquote, urlparse
 
 import httpx2
 import typer
@@ -32,6 +32,18 @@ from rich.table import Table
 API_VERSION = "2022-11-28"
 METADATA_PERMISSIONS = {"ADMIN", "MAINTAIN", "WRITE", "TRIAGE"}
 TEMPLATE_SUFFIXES = {".md", ".yml", ".yaml"}
+ATTACHMENT_TYPES = {
+    ".gif": ("image/gif", 10 * 1024 * 1024),
+    ".jpeg": ("image/jpeg", 10 * 1024 * 1024),
+    ".jpg": ("image/jpeg", 10 * 1024 * 1024),
+    ".mov": ("video/quicktime", 100 * 1024 * 1024),
+    ".mp4": ("video/mp4", 100 * 1024 * 1024),
+    ".png": ("image/png", 10 * 1024 * 1024),
+    ".svg": ("image/svg+xml", 10 * 1024 * 1024),
+    ".webm": ("video/webm", 100 * 1024 * 1024),
+    ".webp": ("image/webp", 10 * 1024 * 1024),
+}
+MARKDOWN_IMAGE = re.compile(r"!\[[^\]]*\]\((?:<([^>]+)>|([^\s)]+))(?:\s+[^)]*)?\)")
 
 app = typer.Typer(
     add_completion=False,
@@ -119,6 +131,7 @@ class RepoInfo(BaseModel):
     """创建 issue 所需的 repository GraphQL 信息。"""
 
     id: str
+    database_id: int = Field(alias="databaseId")
     viewer_permission: str = Field(alias="viewerPermission")
 
 
@@ -241,6 +254,45 @@ class GitHubApi:
         )
         self._raise_for_status(response)
         return response.text
+
+    def upload_asset(self, path: Path, repository_id: int) -> str:
+        """上传 GitHub user attachment 并返回匿名资源 URL。"""
+
+        if self.repo.hostname != "github.com":
+            raise GitHubIssueError(
+                "direct attachment upload currently supports github.com only"
+            )
+        attachment_type = ATTACHMENT_TYPES.get(path.suffix.lower())
+        if attachment_type is None:
+            raise GitHubIssueError(f"unsupported attachment type: {path}")
+        content_type, maximum_size = attachment_type
+        size = path.stat().st_size
+        if size == 0:
+            raise GitHubIssueError(f"attachment is empty: {path}")
+        if size > maximum_size:
+            raise GitHubIssueError(
+                f"attachment exceeds the {maximum_size // (1024 * 1024)} MiB limit: {path}"
+            )
+        with path.open("rb") as stream:
+            response = self.client.post(
+                "https://uploads.github.com/user-attachments/assets",
+                params={
+                    "name": path.name,
+                    "content_type": content_type,
+                    "repository_id": str(repository_id),
+                },
+                content=stream,
+                headers={
+                    "Accept": "application/vnd.github+json",
+                    "Content-Type": "application/octet-stream",
+                    "Content-Length": str(size),
+                },
+            )
+        payload = self._json_response(response)
+        url = payload.get("url")
+        if not isinstance(url, str) or not url:
+            raise GitHubIssueError("GitHub attachment response has no URL")
+        return url
 
     def graphql(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
         """执行 GraphQL 请求并返回 data。"""
@@ -436,6 +488,7 @@ def fetch_repo_info(api: GitHubApi) -> RepoInfo:
     query RepositoryInfo($owner: String!, $name: String!) {
       repository(owner: $owner, name: $name) {
         id
+        databaseId
         viewerPermission
       }
     }
@@ -624,6 +677,66 @@ def normalize_options(values: list[str] | None) -> list[str]:
     return list(dict.fromkeys(normalized))
 
 
+def markdown_attachments(body: str, body_file: Path) -> list[Path]:
+    """解析 Markdown 图片中的本地路径；远程 URL 与普通链接不构成上传授权。"""
+
+    paths: list[Path] = []
+    for match in MARKDOWN_IMAGE.finditer(body):
+        target = unquote(match.group(1) or match.group(2))
+        parsed = urlparse(target)
+        if parsed.scheme or parsed.netloc or target.startswith("#"):
+            continue
+        path = Path(target)
+        resolved = (
+            (body_file.parent / path).resolve() if not path.is_absolute() else path
+        )
+        if not resolved.is_file():
+            raise GitHubIssueError(f"Markdown image does not exist: {target}")
+        paths.append(resolved)
+    return list(dict.fromkeys(paths))
+
+
+def upload_and_rewrite(
+    api: GitHubApi,
+    repo_info: RepoInfo,
+    body: str,
+    body_file: Path,
+    explicit: list[Path],
+) -> str:
+    """上传本地 Markdown 图片并将其引用替换为 GitHub URL。"""
+
+    referenced = markdown_attachments(body, body_file)
+    uploads = list(dict.fromkeys([*referenced, *explicit]))
+    urls = {path: api.upload_asset(path, repo_info.database_id) for path in uploads}
+
+    edits: list[tuple[int, int, str]] = []
+    for match in MARKDOWN_IMAGE.finditer(body):
+        target = unquote(match.group(1) or match.group(2))
+        parsed = urlparse(target)
+        if parsed.scheme or parsed.netloc or target.startswith("#"):
+            continue
+        path = Path(target)
+        resolved = (
+            (body_file.parent / path).resolve() if not path.is_absolute() else path
+        )
+        if resolved in urls:
+            group = 1 if match.group(1) is not None else 2
+            edits.append((*match.span(group), urls[resolved]))
+    for start, end, replacement in reversed(edits):
+        body = body[:start] + replacement + body[end:]
+
+    for path in explicit:
+        if path in referenced:
+            continue
+        url = urls[path]
+        content_type = ATTACHMENT_TYPES.get(path.suffix.lower(), ("", 0))[0]
+        addition = (
+            url if content_type.startswith("video/") else f"![{path.stem}]({url})"
+        )
+        body = body.rstrip() + "\n\n" + addition + "\n"
+    return body
+
+
 def open_api(repo: RepoRef) -> GitHubApi:
     """使用当前鉴权创建 GitHub API client。"""
 
@@ -690,6 +803,18 @@ def create_issue(
         list[str] | None,
         typer.Option("--assignee", help="普通 issue 的 assignee，可重复或逗号分隔。"),
     ] = None,
+    attach: Annotated[
+        list[Path] | None,
+        typer.Option(
+            "--attach",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+            resolve_path=True,
+            help="附加图片或视频，可重复指定；只有显式列出的文件会上传。",
+        ),
+    ] = None,
     hostname: Annotated[
         str | None, typer.Option("--hostname", help="GitHub host。")
     ] = None,
@@ -712,6 +837,8 @@ def create_issue(
 
         labels = normalize_options(label)
         assignees = normalize_options(assignee)
+        referenced_attachments = markdown_attachments(body, body_file)
+        attachments = list(dict.fromkeys([*referenced_attachments, *(attach or [])]))
         if template and (labels or assignees):
             raise GitHubIssueError(
                 "--template cannot be combined with --label or --assignee; template metadata is applied server-side"
@@ -728,6 +855,13 @@ def create_issue(
             ensure_plain_metadata_permission(
                 repo_info.viewer_permission, expected_labels, expected_assignees
             )
+        upload_info: RepoInfo | None = None
+        if attachments:
+            if repo_info.viewer_permission not in {"ADMIN", "MAINTAIN", "WRITE"}:
+                raise GitHubIssueError(
+                    "GitHub's user-attachment API requires write access to the target repository"
+                )
+            upload_info = repo_info
 
         if dry_run:
             payload = {
@@ -740,6 +874,7 @@ def create_issue(
                 "template": template_payload(spec) if spec else None,
                 "expected_labels": expected_labels,
                 "expected_assignees": expected_assignees,
+                "attachments": [str(path) for path in attachments],
             }
             if as_json:
                 typer.echo(json.dumps(payload, ensure_ascii=False))
@@ -760,6 +895,11 @@ def create_issue(
                     dry_run=True,
                 )
             return
+
+        if upload_info is not None:
+            body = upload_and_rewrite(
+                api, upload_info, body, body_file, list(attach or [])
+            )
 
         created = (
             create_template_issue(
@@ -789,16 +929,97 @@ def create_issue(
             expected_labels=expected_labels,
             expected_assignees=expected_assignees,
         )
-        if as_json:
-            typer.echo(json.dumps(result.model_dump(mode="json"), ensure_ascii=False))
-        else:
-            print_creation_result(result, dry_run=False)
         if not result.ok:
             raise GitHubIssueError(
                 "issue was created but metadata verification failed: "
                 f"missing labels={result.missing_labels}, missing assignees={result.missing_assignees}; "
                 f"url={issue.get('html_url')}"
             )
+        if as_json:
+            typer.echo(json.dumps(result.model_dump(mode="json"), ensure_ascii=False))
+        else:
+            print_creation_result(result, dry_run=False)
+    except (GitHubIssueError, OSError) as exc:
+        error_console.print(str(exc))
+        raise typer.Exit(code=1) from exc
+    finally:
+        if api is not None:
+            api.close()
+
+
+@app.command("edit")
+def edit_issue(
+    repo: Annotated[str, typer.Option("--repo", help="GitHub repository。")],
+    issue: Annotated[int, typer.Option("--issue", min=1, help="Issue 编号。")],
+    body_file: Annotated[
+        Path,
+        typer.Option(
+            "--body-file",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+            resolve_path=True,
+            help="新的 Markdown 正文；本地图片会自动上传并改写。",
+        ),
+    ],
+    attach: Annotated[
+        list[Path] | None,
+        typer.Option(
+            "--attach",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+            resolve_path=True,
+            help="附加图片或视频，可重复指定。",
+        ),
+    ] = None,
+    hostname: Annotated[
+        str | None, typer.Option("--hostname", help="GitHub host。")
+    ] = None,
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="只检查 issue 与本地文件，不上传。")
+    ] = False,
+) -> None:
+    """更新已有 issue 的 Markdown 正文并上传其中的本地图片。"""
+
+    api: GitHubApi | None = None
+    try:
+        repo_ref = parse_repo(repo, hostname)
+        body = body_file.read_text(encoding="utf-8")
+        if not body.strip():
+            raise GitHubIssueError("body file must not be empty")
+        attachments = list(dict.fromkeys(attach or []))
+        api = open_api(repo_ref)
+        repo_info = fetch_repo_info(api)
+        existing = read_issue(api, issue)
+        url = str(existing.get("html_url") or "")
+        local_images = markdown_attachments(body, body_file)
+        upload_info: RepoInfo | None = None
+        if local_images or attachments:
+            if repo_info.viewer_permission not in {"ADMIN", "MAINTAIN", "WRITE"}:
+                raise GitHubIssueError(
+                    "GitHub's user-attachment API requires write access to the target repository"
+                )
+            upload_info = repo_info
+        if dry_run:
+            console.print(
+                f"dry-run: would update {url} and upload "
+                f"{len({*local_images, *attachments})} file(s)"
+            )
+            return
+        rewritten = body
+        if upload_info is not None:
+            rewritten = upload_and_rewrite(
+                api, upload_info, body, body_file, attachments
+            )
+        api.request_json(
+            "PATCH",
+            f"repos/{repo_ref.full_name}/issues/{issue}",
+            payload={"body": rewritten},
+        )
+        console.print(url)
     except (GitHubIssueError, OSError) as exc:
         error_console.print(str(exc))
         raise typer.Exit(code=1) from exc
