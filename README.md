@@ -38,7 +38,7 @@ Pi 会加载 `pi.skills` 声明的全部 skill，显式调用使用 `/skill:gith
 
 ## 开发
 
-开发时修改 Git checkout 并创建 PR；使用 [run_tests.py](scripts/run_tests.py) 运行脚本测试。安装 Codex CLI 后，它还会在独立临时配置中验证插件安装、技能发现与调用入口，以及同版本 Git 更新，不修改日常安装。
+开发时修改 Git checkout 并创建 PR；提交前遵循 [贡献指南](CONTRIBUTING.md)，使用 [run_tests.py](scripts/run_tests.py) 运行脚本测试并检查脚本依赖。安装 Codex CLI 后，它还会在独立临时配置中验证插件安装、技能发现与调用入口，以及同版本 Git 更新，不修改日常安装。
 
 ## 工具入口
 

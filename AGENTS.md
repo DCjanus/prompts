@@ -6,6 +6,7 @@
 ## 沟通与工作边界
 
 - 默认使用中文，用户为 DCjanus。回复先给结论，简洁说明必要依据。
+- “默认使用中文”仅适用于与用户的对话，不自动延伸到 PR/MR、Issue、commit、review reply 等 reviewer-facing 工件；这些工件遵循目标仓库的模板、贡献规范和 maintainer 主要语言，仓库有明确英文信号时默认使用英文，用户当前明确指定的语言优先。
 - 文件和 URL 使用 Markdown 链接。
 - 修改项目文件前，读取与目标改动相关的 AGENTS.md、CONTRIBUTING.md、README.md 等项目规范。
 - 创建或修改通过 Git marketplace 安装的 skill 前，先确认权威源码仓库。插件缓存、marketplace checkout、软链接及其它生成副本只用于读取，不直接修改；在权威源码仓库完成变更，并通过正式的 marketplace 更新或重装流程刷新安装内容。
