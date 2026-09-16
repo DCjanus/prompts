@@ -58,9 +58,15 @@ team { id key name }
 cycle { id name number startsAt endsAt }
 project { id name }
 parent { id identifier title }
+assignee { id name email }
 labels { nodes { id name } }
 relations { nodes { id type relatedIssue { id identifier title } } }
 inverseRelations { nodes { id type issue { id identifier title } } }
+"""
+
+LABEL_FIELDS = """
+id name description color createdAt updatedAt
+team { id key name }
 """
 
 COMMENT_FIELDS = """
@@ -340,6 +346,42 @@ def resolve_team_state(
     return states[0]
 
 
+def list_labels(client: LinearClient) -> list[dict[str, Any]]:
+    """读取 workspace 中的 Issue Labels。"""
+    data = client.query(
+        f"""
+        query IssueLabels {{
+          issueLabels(first: 250) {{ nodes {{ {LABEL_FIELDS} }} }}
+        }}
+        """
+    )
+    return data["issueLabels"]["nodes"]
+
+
+def resolve_label(
+    client: LinearClient,
+    label_name_or_id: str,
+    team_id: str | None = None,
+) -> dict[str, Any]:
+    """按 UUID 或名称精确解析 Label，并限制可选 Team 范围。"""
+    labels = [
+        label
+        for label in list_labels(client)
+        if label["id"] == label_name_or_id or label["name"] == label_name_or_id
+    ]
+    if team_id is not None:
+        labels = [
+            label
+            for label in labels
+            if label.get("team") is None or label["team"]["id"] == team_id
+        ]
+    if len(labels) != 1:
+        raise LinearError(
+            f"Issue Label {label_name_or_id!r} 精确匹配数量为 {len(labels)}"
+        )
+    return labels[0]
+
+
 def read_view(client: LinearClient, view_id: str) -> dict[str, Any]:
     """按 UUID 或 slug 回读 Custom View。"""
     data = client.query(
@@ -496,6 +538,7 @@ auth_app = typer.Typer(no_args_is_help=True, help="登录或修复 Linear 认证
 team_app = typer.Typer(no_args_is_help=True, help="查询和管理 Team。")
 team_automation_app = typer.Typer(no_args_is_help=True, help="查询和管理 Team 自动化。")
 issue_app = typer.Typer(no_args_is_help=True, help="查询和管理 Issue。")
+label_app = typer.Typer(no_args_is_help=True, help="查询和管理 Issue Label。")
 issue_comment_app = typer.Typer(no_args_is_help=True, help="查询和创建 Issue 评论。")
 issue_relation_app = typer.Typer(no_args_is_help=True, help="管理 Issue 关系。")
 view_app = typer.Typer(no_args_is_help=True, help="查询和管理 Custom View。")
@@ -508,6 +551,7 @@ app.add_typer(auth_app, name="auth")
 app.add_typer(team_app, name="team")
 team_app.add_typer(team_automation_app, name="automation")
 app.add_typer(issue_app, name="issue")
+app.add_typer(label_app, name="label")
 issue_app.add_typer(issue_comment_app, name="comment")
 issue_app.add_typer(issue_relation_app, name="relation")
 app.add_typer(view_app, name="view")
@@ -851,6 +895,164 @@ def team_show(
         {"id": resolved["id"]},
     )
     emit(data["team"])
+
+
+@label_app.command("list")
+def label_list(
+    team: Annotated[str | None, typer.Option("--team")] = None,
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+) -> None:
+    """列出目标 Team 可用的 Team 与 workspace Labels。"""
+    client = get_client(endpoint)
+    resolved = resolve_team(client, select_team(team))
+    labels = [
+        label
+        for label in list_labels(client)
+        if label.get("team") is None or label["team"]["id"] == resolved["id"]
+    ]
+    emit(labels)
+
+
+@label_app.command("get")
+def label_get(
+    label: Annotated[str, typer.Argument()],
+    team: Annotated[str | None, typer.Option("--team")] = None,
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+) -> None:
+    """按 UUID 或名称精确回读 Label。"""
+    client = get_client(endpoint)
+    resolved = resolve_team(client, select_team(team))
+    emit(resolve_label(client, label, resolved["id"]))
+
+
+@label_app.command("create")
+def label_create(
+    name: Annotated[str, typer.Option("--name")],
+    team: Annotated[str | None, typer.Option("--team")] = None,
+    description: Annotated[str | None, typer.Option("--description")] = None,
+    color: Annotated[str | None, typer.Option("--color")] = None,
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+    yes: Annotated[bool, typer.Option("--yes")] = False,
+) -> None:
+    """预览或创建 Team Label，并在写入后回读。"""
+    name = name.strip()
+    if not name:
+        raise typer.BadParameter("--name 不能为空")
+    client = get_client(endpoint)
+    resolved = resolve_team(client, select_team(team))
+    fields = compact_input(
+        {
+            "name": name,
+            "teamId": resolved["id"],
+            "description": description,
+            "color": color,
+        }
+    )
+    if not yes:
+        emit({"action": "issueLabelCreate", "input": fields, "preview": True})
+        return
+    result = client.query(
+        """
+        mutation CreateIssueLabel($input: IssueLabelCreateInput!) {
+          issueLabelCreate(input: $input) { success issueLabel { id } }
+        }
+        """,
+        {"input": fields},
+    )["issueLabelCreate"]
+    if not result["success"]:
+        raise LinearError("issueLabelCreate 返回 success=false")
+    emit(resolve_label(client, result["issueLabel"]["id"], resolved["id"]))
+
+
+@label_app.command("update")
+def label_update(
+    label: Annotated[str, typer.Argument()],
+    team: Annotated[str | None, typer.Option("--team")] = None,
+    name: Annotated[str | None, typer.Option("--name")] = None,
+    description: Annotated[str | None, typer.Option("--description")] = None,
+    clear_description: Annotated[bool, typer.Option("--clear-description")] = False,
+    color: Annotated[str | None, typer.Option("--color")] = None,
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+    yes: Annotated[bool, typer.Option("--yes")] = False,
+) -> None:
+    """预览或更新 Label，并在写入后回读。"""
+    if description is not None and clear_description:
+        raise typer.BadParameter("--description 与 --clear-description 不能同时使用")
+    if name is not None:
+        name = name.strip()
+        if not name:
+            raise typer.BadParameter("--name 不能为空")
+    client = get_client(endpoint)
+    resolved = resolve_team(client, select_team(team))
+    before = resolve_label(client, label, resolved["id"])
+    fields = compact_input(
+        {
+            "name": name,
+            "description": None if clear_description else description,
+            "color": color,
+        }
+    )
+    if clear_description:
+        fields["description"] = None
+    if not fields:
+        raise typer.BadParameter("至少提供一个 Label 更新字段")
+    if not yes:
+        emit(
+            {
+                "action": "issueLabelUpdate",
+                "before": before,
+                "input": fields,
+                "preview": True,
+            }
+        )
+        return
+    result = client.query(
+        """
+        mutation UpdateIssueLabel($id: String!, $input: IssueLabelUpdateInput!) {
+          issueLabelUpdate(id: $id, input: $input) { success issueLabel { id } }
+        }
+        """,
+        {"id": before["id"], "input": fields},
+    )["issueLabelUpdate"]
+    if not result["success"]:
+        raise LinearError("issueLabelUpdate 返回 success=false")
+    emit(resolve_label(client, before["id"], resolved["id"]))
+
+
+@label_app.command("delete")
+def label_delete(
+    label: Annotated[str, typer.Argument()],
+    team: Annotated[str | None, typer.Option("--team")] = None,
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+    yes: Annotated[bool, typer.Option("--yes")] = False,
+) -> None:
+    """预览或删除 Label；删除会同时移除已有 Issue 关联。"""
+    client = get_client(endpoint)
+    resolved = resolve_team(client, select_team(team))
+    before = resolve_label(client, label, resolved["id"])
+    if not yes:
+        emit(
+            {
+                "action": "issueLabelDelete",
+                "before": before,
+                "preview": True,
+            }
+        )
+        return
+    result = client.query(
+        """
+        mutation DeleteIssueLabel($id: String!) {
+          issueLabelDelete(id: $id) { success }
+        }
+        """,
+        {"id": before["id"]},
+    )["issueLabelDelete"]
+    if not result["success"]:
+        raise LinearError("issueLabelDelete 返回 success=false")
+    remaining = [item for item in list_labels(client) if item["id"] == before["id"]]
+    if remaining:
+        raise LinearError("Label 删除后仍可回读")
+    emit({"deleted": True, "label": before})
 
 
 @team_automation_app.command("show")
