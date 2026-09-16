@@ -634,6 +634,66 @@ def test_comment_create_rejects_empty_body_file(
     assert "内容不能为空" in result.output
 
 
+@pytest.mark.parametrize(
+    ("command", "operation"),
+    [("archive", "issueArchive"), ("restore", "issueUnarchive")],
+)
+def test_issue_lifecycle_write_reads_back(
+    monkeypatch: pytest.MonkeyPatch, command: str, operation: str
+) -> None:
+    calls: list[dict] = []
+
+    class StubClient:
+        def query(self, query: str, variables: dict | None = None) -> dict:
+            calls.append(variables or {})
+            return {operation: {"success": True}}
+
+    client = StubClient()
+    monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: client)
+    readings = iter(
+        [
+            {"id": "issue-id", "identifier": "DCJ-77", "archivedAt": None},
+            {
+                "id": "issue-id",
+                "identifier": "DCJ-77",
+                "archivedAt": "2026-09-16T00:00:00Z" if command == "archive" else None,
+            },
+        ]
+    )
+    monkeypatch.setattr(
+        linear_cli, "read_issue", lambda selected, issue_id: next(readings)
+    )
+
+    result = CliRunner().invoke(linear_cli.app, ["issue", command, "DCJ-77", "--yes"])
+
+    assert result.exit_code == 0, result.output
+    assert calls == [{"id": "issue-id"}]
+    assert json.loads(result.output)["identifier"] == "DCJ-77"
+
+
+def test_issue_delete_is_recoverable_and_does_not_read_deleted_issue(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class StubClient:
+        def query(self, query: str, variables: dict | None = None) -> dict:
+            assert variables == {"id": "issue-id"}
+            return {"issueDelete": {"success": True}}
+
+    monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: StubClient())
+    monkeypatch.setattr(
+        linear_cli,
+        "read_issue",
+        lambda client, issue_id: {"id": "issue-id", "identifier": "DCJ-77"},
+    )
+
+    result = CliRunner().invoke(linear_cli.app, ["issue", "delete", "DCJ-77", "--yes"])
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["deleted"] is True
+    assert payload["recoverableForDays"] == 30
+
+
 def test_view_issues_returns_matching_issues(monkeypatch: pytest.MonkeyPatch) -> None:
     class StubClient:
         def query(self, query: str, variables: dict | None = None) -> dict:

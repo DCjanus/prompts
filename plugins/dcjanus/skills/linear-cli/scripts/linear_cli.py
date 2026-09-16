@@ -51,7 +51,7 @@ DEFAULT_CONFIG_PATH = (
 )
 
 ISSUE_FIELDS = """
-id identifier title description priority dueDate url
+id identifier title description priority dueDate url archivedAt
 state { id name type }
 team { id key name }
 cycle { id name number startsAt endsAt }
@@ -918,6 +918,81 @@ def issue_update(
     if not data["success"]:
         raise LinearError("issueUpdate 返回 success=false")
     emit(read_issue(client, before["id"]))
+
+
+@issue_app.command("archive")
+def issue_archive(
+    issue_id: Annotated[str, typer.Argument()],
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+    yes: Annotated[bool, typer.Option("--yes")] = False,
+) -> None:
+    """预览或归档 Issue，并在写入后回读。"""
+    client = get_client(endpoint)
+    before = read_issue(client, issue_id)
+    if not yes:
+        emit({"action": "issueArchive", "before": before, "preview": True})
+        return
+    result = client.query(
+        """
+        mutation ArchiveIssue($id: String!) {
+          issueArchive(id: $id) { success }
+        }
+        """,
+        {"id": before["id"]},
+    )["issueArchive"]
+    if not result["success"]:
+        raise LinearError("issueArchive 返回 success=false")
+    emit(read_issue(client, before["id"]))
+
+
+@issue_app.command("restore")
+def issue_restore(
+    issue_id: Annotated[str, typer.Argument()],
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+    yes: Annotated[bool, typer.Option("--yes")] = False,
+) -> None:
+    """预览或恢复已归档或最近删除的 Issue，并回读。"""
+    client = get_client(endpoint)
+    before = read_issue(client, issue_id)
+    if not yes:
+        emit({"action": "issueUnarchive", "before": before, "preview": True})
+        return
+    result = client.query(
+        """
+        mutation RestoreIssue($id: String!) {
+          issueUnarchive(id: $id) { success }
+        }
+        """,
+        {"id": before["id"]},
+    )["issueUnarchive"]
+    if not result["success"]:
+        raise LinearError("issueUnarchive 返回 success=false")
+    emit(read_issue(client, before["id"]))
+
+
+@issue_app.command("delete")
+def issue_delete(
+    issue_id: Annotated[str, typer.Argument()],
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+    yes: Annotated[bool, typer.Option("--yes")] = False,
+) -> None:
+    """预览或将 Issue 移入 Recently deleted；Linear 会保留 30 天。"""
+    client = get_client(endpoint)
+    before = read_issue(client, issue_id)
+    if not yes:
+        emit({"action": "issueDelete", "before": before, "preview": True})
+        return
+    result = client.query(
+        """
+        mutation DeleteIssue($id: String!) {
+          issueDelete(id: $id) { success }
+        }
+        """,
+        {"id": before["id"]},
+    )["issueDelete"]
+    if not result["success"]:
+        raise LinearError("issueDelete 返回 success=false")
+    emit({"deleted": True, "issue": before, "recoverableForDays": 30})
 
 
 @issue_relation_app.command("create")
