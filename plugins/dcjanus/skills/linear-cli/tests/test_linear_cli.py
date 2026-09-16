@@ -47,6 +47,10 @@ def test_help_uses_progressive_resource_groups() -> None:
     assert "comment" in issue.output
     assert "relation" in issue.output
 
+    api = runner.invoke(linear_cli.app, ["api", "--help"])
+    assert api.exit_code == 0, api.output
+    assert "graphql" in api.output
+
 
 def test_api_key_auth_and_graphql_errors() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
@@ -186,6 +190,78 @@ def test_config_show_masks_all_tokens(tmp_path: Path) -> None:
     payload = json.loads(result.output)
     assert payload["token"] == "********"
     assert payload["refresh_token"] == "********"
+
+
+def test_default_team_can_be_set_used_overridden_and_cleared(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    config = tmp_path / "config.toml"
+    linear_cli.save_config(
+        {"auth_type": "api-key", "token": "lin_api_saved-key"}, config
+    )
+    monkeypatch.setenv("LINEAR_CONFIG", str(config))
+    resolved_keys: list[str] = []
+
+    class StubClient:
+        pass
+
+    monkeypatch.setattr(
+        linear_cli, "get_client", lambda endpoint, config_path=None: StubClient()
+    )
+
+    def resolve(client: object, team: str) -> dict:
+        resolved_keys.append(team)
+        return {"id": f"{team}-id", "key": team.upper(), "name": team}
+
+    monkeypatch.setattr(linear_cli, "resolve_team", resolve)
+    runner = CliRunner()
+
+    saved = runner.invoke(
+        linear_cli.app,
+        ["config", "set-default-team", "dcj", "--config", str(config)],
+    )
+    assert saved.exit_code == 0, saved.output
+    assert linear_cli.load_config(config) == {
+        "auth_type": "api-key",
+        "token": "lin_api_saved-key",
+        "default_team": "DCJ",
+    }
+    assert linear_cli.select_team(None) == "DCJ"
+    assert linear_cli.select_team("OTHER") == "OTHER"
+
+    cleared = runner.invoke(
+        linear_cli.app,
+        ["config", "clear-default-team", "--config", str(config)],
+    )
+    assert cleared.exit_code == 0, cleared.output
+    assert "default_team" not in linear_cli.load_config(config)
+    with pytest.raises(linear_cli.typer.BadParameter, match="未设置 default_team"):
+        linear_cli.select_team(None)
+    assert resolved_keys == ["dcj"]
+
+
+def test_auth_update_preserves_default_team(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    config = tmp_path / "config.toml"
+    linear_cli.save_config({"default_team": "DCJ"}, config)
+    monkeypatch.setattr(linear_cli.getpass, "getpass", lambda prompt: "oauth-token")
+
+    result = CliRunner().invoke(
+        linear_cli.app,
+        [
+            "config",
+            "set",
+            "--config",
+            str(config),
+            "--auth-type",
+            "oauth",
+            "--prompt-token",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert linear_cli.load_config(config)["default_team"] == "DCJ"
 
 
 def test_auth_repair_reuses_saved_key_and_persists_working_mode(
@@ -372,6 +448,211 @@ def test_team_automation_update_can_preview_disabling_automation(
 
     assert result.exit_code == 0, result.output
     assert json.loads(result.output)["input"] == {"autoArchivePeriod": None}
+
+
+def test_issue_search_uses_native_full_text_with_strict_team_filter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, dict | None]] = []
+
+    class StubClient:
+        def query(self, query: str, variables: dict | None = None) -> dict:
+            calls.append((query, variables))
+            if "query Team(" in query:
+                return {
+                    "teams": {
+                        "nodes": [{"id": "team-id", "key": "DCJ", "name": "DCjanus"}]
+                    }
+                }
+            assert "searchIssues(" in query
+            return {
+                "searchIssues": {
+                    "totalCount": 1,
+                    "pageInfo": {"hasNextPage": False, "endCursor": "cursor-1"},
+                    "nodes": [
+                        {
+                            "id": "issue-id",
+                            "identifier": "DCJ-71",
+                            "title": "Grafana URL",
+                        }
+                    ],
+                }
+            }
+
+    monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: StubClient())
+    result = CliRunner().invoke(
+        linear_cli.app,
+        [
+            "issue",
+            "search",
+            "  monitorUri Grafana  ",
+            "--team",
+            "DCJ",
+            "--first",
+            "25",
+            "--after",
+            "cursor-0",
+            "--include-archived",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["totalCount"] == 1
+    assert payload["nodes"][0]["identifier"] == "DCJ-71"
+    search_query, variables = calls[-1]
+    assert "$filter: IssueFilter" in search_query
+    assert variables == {
+        "term": "monitorUri Grafana",
+        "filter": {"team": {"id": {"eq": "team-id"}}},
+        "first": 25,
+        "after": "cursor-0",
+        "includeComments": True,
+        "includeArchived": True,
+    }
+
+
+def test_issue_search_can_exclude_comments_and_rejects_blank_term(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[dict | None] = []
+
+    class StubClient:
+        def query(self, query: str, variables: dict | None = None) -> dict:
+            if "query Team(" in query:
+                return {
+                    "teams": {
+                        "nodes": [{"id": "team-id", "key": "DCJ", "name": "DCjanus"}]
+                    }
+                }
+            calls.append(variables)
+            return {
+                "searchIssues": {
+                    "totalCount": 0,
+                    "pageInfo": {"hasNextPage": False, "endCursor": None},
+                    "nodes": [],
+                }
+            }
+
+    monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: StubClient())
+    runner = CliRunner()
+    result = runner.invoke(
+        linear_cli.app,
+        ["issue", "search", "Grafana", "--team", "DCJ", "--no-include-comments"],
+    )
+    assert result.exit_code == 0, result.output
+    assert calls[-1]["includeComments"] is False
+
+    rejected = runner.invoke(
+        linear_cli.app, ["issue", "search", "   ", "--team", "DCJ"]
+    )
+    assert rejected.exit_code != 0
+    assert "搜索词不能为空" in rejected.output
+
+
+def test_api_graphql_executes_query_from_files(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    query_file = tmp_path / "query.graphql"
+    query_file.write_text(
+        "query Search($term: String!) { searchIssues(term: $term) { totalCount } }"
+    )
+    variables_file = tmp_path / "variables.json"
+    variables_file.write_text(json.dumps({"term": "Grafana"}))
+    calls: list[tuple[str, dict | None]] = []
+
+    class StubClient:
+        def query(self, query: str, variables: dict | None = None) -> dict:
+            calls.append((query, variables))
+            return {"searchIssues": {"totalCount": 2}}
+
+    monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: StubClient())
+    result = CliRunner().invoke(
+        linear_cli.app,
+        [
+            "api",
+            "graphql",
+            str(query_file),
+            "--variables-file",
+            str(variables_file),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output) == {"searchIssues": {"totalCount": 2}}
+    assert calls == [(query_file.read_text(), {"term": "Grafana"})]
+
+
+def test_api_graphql_requires_double_confirmation_for_mutations(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    query_file = tmp_path / "mutation.graphql"
+    query_file.write_text(
+        "mutation Update($id: String!) { issueUpdate(id: $id, input: {}) { success } }"
+    )
+    variables_file = tmp_path / "variables.json"
+    variables_file.write_text(json.dumps({"id": "DCJ-71"}))
+    calls: list[dict | None] = []
+
+    class StubClient:
+        def query(self, query: str, variables: dict | None = None) -> dict:
+            calls.append(variables)
+            return {"issueUpdate": {"success": True}}
+
+    monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: StubClient())
+    runner = CliRunner()
+    rejected = runner.invoke(
+        linear_cli.app,
+        ["api", "graphql", str(query_file), "--variables-file", str(variables_file)],
+    )
+    assert rejected.exit_code != 0
+    assert "--allow-mutation" in rejected.output
+    assert not calls
+
+    accepted = runner.invoke(
+        linear_cli.app,
+        [
+            "api",
+            "graphql",
+            str(query_file),
+            "--variables-file",
+            str(variables_file),
+            "--allow-mutation",
+            "--yes",
+        ],
+    )
+    assert accepted.exit_code == 0, accepted.output
+    assert calls == [{"id": "DCJ-71"}]
+
+
+def test_api_graphql_rejects_multiple_operations_and_non_object_variables(
+    tmp_path: Path,
+) -> None:
+    multiple = tmp_path / "multiple.graphql"
+    multiple.write_text("query One { viewer { id } } query Two { viewer { name } }")
+    runner = CliRunner()
+    rejected_multiple = runner.invoke(
+        linear_cli.app, ["api", "graphql", str(multiple)]
+    )
+    assert rejected_multiple.exit_code != 0
+    assert "只能包含一个 operation" in rejected_multiple.output
+
+    query_file = tmp_path / "query.graphql"
+    query_file.write_text("query Viewer { viewer { id } }")
+    variables_file = tmp_path / "variables.json"
+    variables_file.write_text("[]")
+    rejected_variables = runner.invoke(
+        linear_cli.app,
+        [
+            "api",
+            "graphql",
+            str(query_file),
+            "--variables-file",
+            str(variables_file),
+        ],
+    )
+    assert rejected_variables.exit_code != 0
+    assert "顶层必须是 object" in rejected_variables.output
 
 
 def test_team_automation_update_writes_and_reads_back(
