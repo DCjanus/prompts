@@ -1,6 +1,6 @@
 ---
 name: dcjanus-preferences
-description: 记录 DCjanus 的跨语言技术选型、哈希与无序集合摘要、API 与 Protobuf 契约选择以及 Python/Rust/Go 第三方库偏好，供 AI 在存储、分析、压缩、归档、消息呈现、协议设计、引入依赖或替换库时优先参考。适用于技术方案对比或需要遵循 DCjanus 个人偏好进行开发的场景。
+description: 记录 DCjanus 的 Skill 编写与技术选型偏好，包括哈希与无序集合摘要、API 与 Protobuf 契约选择以及 Python/Rust/Go 第三方库选择。适用于创建或修改 Skill、比较技术方案、引入或替换依赖，以及需要遵循 DCjanus 个人开发偏好的场景。
 ---
 
 ## Usage
