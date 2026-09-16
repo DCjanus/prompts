@@ -1,6 +1,6 @@
 ---
 name: dcjanus-preferences
-description: 记录 DCjanus 的 Skill 编写与技术选型偏好，包括哈希与无序集合摘要、API 与 Protobuf 契约选择以及 Python/Rust/Go 第三方库选择。适用于创建或修改 Skill、比较技术方案、引入或替换依赖，以及需要遵循 DCjanus 个人开发偏好的场景。
+description: 适用于创建、修改或评审 Skill，或在跨语言的数据存储、分析、压缩、归档、哈希、API/Protobuf 契约、Telegram Bot 消息呈现及 Python/Rust/Go 第三方库之间做技术选择的场景。
 ---
 
 ## Usage
@@ -9,6 +9,10 @@ description: 记录 DCjanus 的 Skill 编写与技术选型偏好，包括哈希
 - 引入或替换第三方库时优先使用偏好清单。
 - 当工作负载同时具有多种特征、偏好清单未覆盖或与明确需求冲突时，先说明主要工作负载、取舍与建议；结论仍不明确时再向用户确认。
 - 新增语言时创建 `references/<language>.md`；新增跨语言主题时创建聚焦该主题的 reference，避免将无关偏好堆入泛化的 general 文件。
+
+## Skill Preferences
+
+- Skill frontmatter 中的 `description` 只服务于发现与触发：用具体、可区分的任务、对象、症状或用户意图说明何时应该使用该 skill，并保留识别这些场景所需的关键词；不要概述内部实现、执行流程、工具步骤或正文细节。只有在能避免相邻 skill 实际误触发时，才补充排除边界。
 
 ## General Preferences
 
