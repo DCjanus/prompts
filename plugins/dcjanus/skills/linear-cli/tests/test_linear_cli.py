@@ -84,6 +84,12 @@ def test_config_set_requires_prompt_and_saves_mode_0600(
     assert "secret" not in saved.output
 
 
+@pytest.mark.parametrize("token", ["wrong", "lin_api_bad key", "lin_api_bad\nkey"])
+def test_personal_api_key_format_is_rejected_before_network(token: str) -> None:
+    with pytest.raises(linear_cli.LinearError):
+        linear_cli.validate_personal_api_key(token)
+
+
 def test_auth_login_api_key_hides_and_saves_key(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -155,6 +161,38 @@ def test_config_show_masks_all_tokens(tmp_path: Path) -> None:
     payload = json.loads(result.output)
     assert payload["token"] == "********"
     assert payload["refresh_token"] == "********"
+
+
+def test_auth_repair_reuses_saved_key_and_persists_working_mode(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    config = tmp_path / "config.toml"
+    linear_cli.save_config(
+        {"auth_type": "api-key", "token": "lin_api_saved-key"}, config
+    )
+
+    def identify(client: object) -> dict:
+        if not client.client.transport.kwargs["headers"]["Authorization"].startswith(
+            "Bearer "
+        ):
+            raise linear_cli.LinearError("unauthorized")
+        return {
+            "viewer": {"id": "me", "name": "Me"},
+            "organization": {"id": "org", "name": "Workspace", "urlKey": "ws"},
+        }
+
+    monkeypatch.setattr(linear_cli, "read_identity", identify)
+    result = CliRunner().invoke(
+        linear_cli.app,
+        ["auth", "repair", "--config", str(config)],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "lin_api_saved-key" not in result.output
+    assert linear_cli.load_config(config) == {
+        "auth_type": "api-key-bearer",
+        "token": "lin_api_saved-key",
+    }
 
 
 def test_view_create_preview_is_generic_and_non_mutating(

@@ -76,6 +76,15 @@ class Settings:
     oauth: bool
 
 
+def validate_personal_api_key(token: str) -> str:
+    """校验 Linear 个人 API key 的公开格式约束。"""
+    if not token.startswith("lin_api_"):
+        raise LinearError("Linear 个人 API key 必须以 lin_api_ 开头")
+    if any(character.isspace() for character in token):
+        raise LinearError("Linear 个人 API key 不能包含空白字符")
+    return token
+
+
 def save_config(data: dict[str, Any], path: Path = DEFAULT_CONFIG_PATH) -> None:
     """以 0600 原子保存配置。"""
     path = path.expanduser()
@@ -94,6 +103,17 @@ def save_config(data: dict[str, Any], path: Path = DEFAULT_CONFIG_PATH) -> None:
         path.chmod(0o600)
     finally:
         temporary_path.unlink(missing_ok=True)
+
+
+def load_config(path: Path = DEFAULT_CONFIG_PATH) -> dict[str, Any]:
+    """读取本地配置而不输出凭据。"""
+    path = path.expanduser()
+    try:
+        return tomllib.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError as error:
+        raise LinearError(f"配置不存在：{path}") from error
+    except (OSError, tomllib.TOMLDecodeError) as error:
+        raise LinearError(f"无法读取配置 {path}：{error}") from error
 
 
 def refresh_oauth_config(config: dict[str, Any], path: Path) -> dict[str, Any]:
@@ -132,15 +152,12 @@ def settings_from_env(endpoint: str) -> Settings:
     if access_token:
         return Settings(endpoint, access_token, True)
     if api_key:
-        return Settings(endpoint, api_key, False)
+        return Settings(endpoint, validate_personal_api_key(api_key), False)
     config_path = Path(
         os.environ.get("LINEAR_CONFIG", DEFAULT_CONFIG_PATH)
     ).expanduser()
     if config_path.exists():
-        try:
-            config = tomllib.loads(config_path.read_text(encoding="utf-8"))
-        except (OSError, tomllib.TOMLDecodeError) as error:
-            raise LinearError(f"无法读取配置 {config_path}：{error}") from error
+        config = load_config(config_path)
         auth_type = config.get("auth_type", "api-key")
         if (
             auth_type == "oauth"
@@ -149,8 +166,14 @@ def settings_from_env(endpoint: str) -> Settings:
         ):
             config = refresh_oauth_config(config, config_path)
         token = config.get("token")
-        if token and auth_type in {"api-key", "oauth"}:
-            return Settings(endpoint, str(token), auth_type == "oauth")
+        if token and auth_type in {"api-key", "api-key-bearer", "oauth"}:
+            if auth_type in {"api-key", "api-key-bearer"}:
+                token = validate_personal_api_key(str(token))
+            return Settings(
+                endpoint,
+                str(token),
+                auth_type in {"api-key-bearer", "oauth"},
+            )
     raise LinearError("缺少 Linear 凭据；设置环境变量或运行 auth login-api-key")
 
 
@@ -266,6 +289,8 @@ def config_set(
     )
     if not token:
         raise typer.BadParameter("token 不能为空")
+    if auth_type == "api-key":
+        token = validate_personal_api_key(token)
     path = config_path.expanduser()
     save_config({"auth_type": auth_type, "token": token}, path)
     emit({"authType": auth_type, "config": str(path), "saved": True})
@@ -296,6 +321,7 @@ def auth_login_api_key(
     token = getpass.getpass("Linear personal API key: ").strip()
     if not token:
         raise typer.BadParameter("API key 不能为空")
+    token = validate_personal_api_key(token)
     identity = read_identity(LinearClient(Settings(endpoint, token, False)))
     path = config_path.expanduser()
     save_config({"auth_type": "api-key", "token": token}, path)
@@ -307,6 +333,48 @@ def auth_login_api_key(
             **identity,
         }
     )
+
+
+@auth_app.command("repair")
+def auth_repair(
+    config_path: Annotated[Path, typer.Option("--config")] = DEFAULT_CONFIG_PATH,
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+) -> None:
+    """复用已保存凭据诊断并修复认证头模式。"""
+    path = config_path.expanduser()
+    config = load_config(path)
+    token = str(config.get("token", "")).strip()
+    if not token:
+        raise LinearError("配置中没有可修复的 token")
+    token = validate_personal_api_key(token.removeprefix("Bearer ").strip())
+
+    candidates: list[tuple[str, str, bool]] = [("api-key", token, False)]
+    candidates.append(("api-key-bearer", token, True))
+
+    attempted: list[str] = []
+    for auth_type, candidate, bearer in candidates:
+        if auth_type in attempted:
+            continue
+        attempted.append(auth_type)
+        try:
+            identity = read_identity(
+                LinearClient(Settings(endpoint, candidate, bearer))
+            )
+        except LinearError:
+            continue
+        config.update(auth_type=auth_type, token=candidate)
+        save_config(config, path)
+        emit(
+            {
+                "attempted": attempted,
+                "authType": auth_type,
+                "config": str(path),
+                "repaired": True,
+                **identity,
+            }
+        )
+        return
+    raise LinearError(f"已保存凭据使用认证模式 {attempted} 均被 Linear 拒绝")
 
 
 @auth_app.command("login")

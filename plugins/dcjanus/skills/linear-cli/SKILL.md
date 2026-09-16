@@ -11,12 +11,18 @@ GraphQL 客户端使用 `gql[httpx2]`。当前固定到首个支持 HTTPX2 的 `
 
 ## 认证
 
-默认配置位于 `~/.config/linear-cli/config.toml`，文件权限固定为 `0600`。个人 API key 由用户本人在 Linear 创建，再通过隐藏的交互输入验证并保存；验证失败不会覆盖已有配置。不要让 agent 接触 key，也不要把 key 放入命令行、剪贴板管道或日志：
+默认配置位于 `~/.config/linear-cli/config.toml`，文件权限固定为 `0600`。个人 API key 由用户本人在 Linear 创建，再通过隐藏的交互输入验证并保存；CLI 会先检查公开的 `lin_api_` 前缀与空白字符，再请求 Linear，验证失败不会覆盖已有配置。不要让 agent 接触 key，也不要把 key 放入命令行、剪贴板管道或日志：
 
 ```bash
 ./scripts/linear_cli.py auth login-api-key
 ./scripts/linear_cli.py config show
 ./scripts/linear_cli.py doctor
+```
+
+若已经保存 key 但服务端拒绝认证，使用 `auth repair` 复用现有凭据测试 API-key 与 Bearer 两种 header；命令只保存通过验证的模式，不显示 token，也不要求重新输入：
+
+```bash
+./scripts/linear_cli.py auth repair
 ```
 
 Linear OAuth 需要先注册 OAuth application，将 `http://127.0.0.1:45831/callback` 加入 redirect URI，然后使用 client ID 执行 PKCE 登录。CLI 会校验 `state`、保存 refresh token，并在 access token 过期后自动刷新：
