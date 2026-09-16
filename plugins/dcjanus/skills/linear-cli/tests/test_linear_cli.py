@@ -482,6 +482,83 @@ def test_issue_get_reads_back_assignee(monkeypatch: pytest.MonkeyPatch) -> None:
     assert json.loads(result.output)["assignee"]["name"] == "DCjanus"
 
 
+def test_issue_create_and_update_read_description_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    description_file = tmp_path / "issue.md"
+    description_file.write_text("## 目标\n\n- 保留 Markdown 结构\n", encoding="utf-8")
+    monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: object())
+    monkeypatch.setattr(
+        linear_cli,
+        "resolve_team",
+        lambda client, team: {"id": "team-id", "key": "DCJ", "name": "DCjanus"},
+    )
+    monkeypatch.setattr(linear_cli, "select_team", lambda team: team or "DCJ")
+    monkeypatch.setattr(
+        linear_cli,
+        "read_issue",
+        lambda client, issue_id: {
+            "id": "issue-id",
+            "identifier": issue_id,
+            "title": "旧标题",
+        },
+    )
+    runner = CliRunner()
+
+    created = runner.invoke(
+        linear_cli.app,
+        [
+            "issue",
+            "create",
+            "--title",
+            "新事项",
+            "--description-file",
+            str(description_file),
+        ],
+    )
+    assert created.exit_code == 0, created.output
+    assert json.loads(created.output)["input"]["description"] == (
+        "## 目标\n\n- 保留 Markdown 结构"
+    )
+
+    updated = runner.invoke(
+        linear_cli.app,
+        [
+            "issue",
+            "update",
+            "DCJ-101",
+            "--description-file",
+            str(description_file),
+        ],
+    )
+    assert updated.exit_code == 0, updated.output
+    assert json.loads(updated.output)["input"]["description"] == (
+        "## 目标\n\n- 保留 Markdown 结构"
+    )
+
+
+def test_issue_description_inputs_are_mutually_exclusive(tmp_path: Path) -> None:
+    description_file = tmp_path / "issue.md"
+    description_file.write_text("正文", encoding="utf-8")
+
+    result = CliRunner().invoke(
+        linear_cli.app,
+        [
+            "issue",
+            "create",
+            "--title",
+            "新事项",
+            "--description",
+            "内联正文",
+            "--description-file",
+            str(description_file),
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "不能同时使用" in result.output
+
+
 def test_label_lifecycle_previews_writes_and_reads_back(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
