@@ -1,6 +1,6 @@
 ---
 name: linear-cli
-description: 通过内置 Python CLI 直接调用 Linear 官方 GraphQL API，查询和管理 workspace、team、issue、原生关系与 Custom View。适用于需要可控、可回读的 Linear 操作，不包含项目或个人工作流偏好。
+description: 当需要查询或管理 Linear workspace、team、issue、原生关系或 Custom View 时使用。
 ---
 
 # Linear CLI
