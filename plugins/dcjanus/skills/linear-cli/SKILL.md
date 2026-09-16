@@ -48,6 +48,7 @@ Linear OAuth 需要先注册 OAuth application，将 `http://127.0.0.1:45831/cal
 - 万能 GraphQL 入口只用于临时探索或低频缺口。某类请求重复出现、进入日常流程，或每次都需要现场构造相同 GraphQL 时，应向用户建议扩展稳定的资源子命令及测试，不要长期依赖 `api graphql`。
 - Team 自动关闭与自动归档位于 `team automation`。周期单位为月；禁用设置使用对应的 `--disable-*`，自动关闭目标状态可传精确名称或 UUID。
 - Issue 写入后自动回读。关系写入回读两端。
+- Issue Label 使用 `label list/get/create/update/delete` 管理；创建、更新和删除默认预览，正式写入后回读。更新支持名称、颜色和描述，删除会移除已有 Issue 关联。
 - Issue 生命周期操作位于 `issue archive/restore/delete`；`delete` 默认进入可恢复 30 天的 Recently deleted，只有管理员明确授权不可恢复删除时才使用 `--permanent --yes`。
 - Comment 写入必须通过 `--body-file` 传入正文，默认预览，正式写入后按 Comment ID 回读。
 - Custom View 使用官方 `customViews`、`customViewCreate` 和 `customViewUpdate` GraphQL 字段。`--filter-json` 接受官方 `IssueFilter` JSON object，不自行发明过滤语法。个人展示偏好通过 `view preferences get/update` 管理；`update` 用可重复的 `--set KEY=JSON_VALUE` 或 `--patch-file` 合并现有显式值，JSON `null` 删除对应覆盖，不为每个 preference 增加独立参数。
@@ -60,6 +61,7 @@ Linear OAuth 需要先注册 OAuth application，将 `http://127.0.0.1:45831/cal
 ./scripts/linear_cli.py team --help
 ./scripts/linear_cli.py team automation --help
 ./scripts/linear_cli.py issue --help
+./scripts/linear_cli.py label --help
 ./scripts/linear_cli.py view preferences --help
 ```
 

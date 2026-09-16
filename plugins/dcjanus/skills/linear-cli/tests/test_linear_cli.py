@@ -47,6 +47,14 @@ def test_help_uses_progressive_resource_groups() -> None:
     assert "comment" in issue.output
     assert "relation" in issue.output
 
+    label = runner.invoke(linear_cli.app, ["label", "--help"])
+    assert label.exit_code == 0, label.output
+    assert "list" in label.output
+    assert "get" in label.output
+    assert "create" in label.output
+    assert "update" in label.output
+    assert "delete" in label.output
+
     api = runner.invoke(linear_cli.app, ["api", "--help"])
     assert api.exit_code == 0, api.output
     assert "graphql" in api.output
@@ -448,6 +456,223 @@ def test_team_automation_update_can_preview_disabling_automation(
 
     assert result.exit_code == 0, result.output
     assert json.loads(result.output)["input"] == {"autoArchivePeriod": None}
+
+
+def test_issue_get_reads_back_assignee(monkeypatch: pytest.MonkeyPatch) -> None:
+    class StubClient:
+        def query(self, query: str, variables: dict | None = None) -> dict:
+            assert "assignee { id name email }" in query
+            assert variables == {"id": "DCJ-93"}
+            return {
+                "issue": {
+                    "id": "issue-id",
+                    "identifier": "DCJ-93",
+                    "assignee": {
+                        "id": "user-id",
+                        "name": "DCjanus",
+                        "email": "dcjanus@example.com",
+                    },
+                }
+            }
+
+    monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: StubClient())
+    result = CliRunner().invoke(linear_cli.app, ["issue", "get", "DCJ-93"])
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output)["assignee"]["name"] == "DCjanus"
+
+
+def test_label_lifecycle_previews_writes_and_reads_back(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    labels = [
+        {
+            "id": "workspace-label",
+            "name": "workspace:shared",
+            "description": None,
+            "color": "#000000",
+            "createdAt": "2026-09-16T00:00:00Z",
+            "updatedAt": "2026-09-16T00:00:00Z",
+            "team": None,
+        }
+    ]
+
+    class StubClient:
+        def query(self, query: str, variables: dict | None = None) -> dict:
+            if "query IssueLabels" in query:
+                return {"issueLabels": {"nodes": labels}}
+            if "mutation CreateIssueLabel" in query:
+                assert variables == {
+                    "input": {
+                        "name": "area:de",
+                        "teamId": "team-id",
+                        "description": "数字员工相关事项",
+                        "color": "#5E6AD2",
+                    }
+                }
+                labels.append(
+                    {
+                        "id": "label-id",
+                        **variables["input"],
+                        "createdAt": "2026-09-16T00:00:00Z",
+                        "updatedAt": "2026-09-16T00:00:00Z",
+                        "team": {"id": "team-id", "key": "DCJ", "name": "DCjanus"},
+                    }
+                )
+                labels[-1].pop("teamId")
+                return {
+                    "issueLabelCreate": {
+                        "success": True,
+                        "issueLabel": {"id": "label-id"},
+                    }
+                }
+            if "mutation UpdateIssueLabel" in query:
+                assert variables == {
+                    "id": "label-id",
+                    "input": {
+                        "name": "area:middleware-de",
+                        "description": "数字员工能力建设",
+                    },
+                }
+                labels[-1].update(variables["input"])
+                return {
+                    "issueLabelUpdate": {
+                        "success": True,
+                        "issueLabel": {"id": "label-id"},
+                    }
+                }
+            if "mutation DeleteIssueLabel" in query:
+                assert variables == {"id": "label-id"}
+                labels.pop()
+                return {"issueLabelDelete": {"success": True}}
+            raise AssertionError(query)
+
+    monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: StubClient())
+    monkeypatch.setattr(
+        linear_cli,
+        "resolve_team",
+        lambda client, team: {"id": "team-id", "key": "DCJ", "name": "DCjanus"},
+    )
+    monkeypatch.setattr(linear_cli, "select_team", lambda team: team or "DCJ")
+    runner = CliRunner()
+
+    preview = runner.invoke(
+        linear_cli.app,
+        [
+            "label",
+            "create",
+            "--name",
+            "area:de",
+            "--description",
+            "数字员工相关事项",
+            "--color",
+            "#5E6AD2",
+        ],
+    )
+    assert preview.exit_code == 0, preview.output
+    assert json.loads(preview.output)["preview"] is True
+    assert len(labels) == 1
+
+    created = runner.invoke(
+        linear_cli.app,
+        [
+            "label",
+            "create",
+            "--name",
+            "area:de",
+            "--description",
+            "数字员工相关事项",
+            "--color",
+            "#5E6AD2",
+            "--yes",
+        ],
+    )
+    assert created.exit_code == 0, created.output
+    assert json.loads(created.output)["name"] == "area:de"
+
+    listed = runner.invoke(linear_cli.app, ["label", "list"])
+    assert listed.exit_code == 0, listed.output
+    assert [label["name"] for label in json.loads(listed.output)] == [
+        "workspace:shared",
+        "area:de",
+    ]
+
+    update_preview = runner.invoke(
+        linear_cli.app,
+        [
+            "label",
+            "update",
+            "area:de",
+            "--name",
+            "area:middleware-de",
+            "--description",
+            "数字员工能力建设",
+        ],
+    )
+    assert update_preview.exit_code == 0, update_preview.output
+    assert json.loads(update_preview.output)["input"] == {
+        "name": "area:middleware-de",
+        "description": "数字员工能力建设",
+    }
+
+    updated = runner.invoke(
+        linear_cli.app,
+        [
+            "label",
+            "update",
+            "area:de",
+            "--name",
+            "area:middleware-de",
+            "--description",
+            "数字员工能力建设",
+            "--yes",
+        ],
+    )
+    assert updated.exit_code == 0, updated.output
+    assert json.loads(updated.output)["description"] == "数字员工能力建设"
+
+    delete_preview = runner.invoke(
+        linear_cli.app, ["label", "delete", "area:middleware-de"]
+    )
+    assert delete_preview.exit_code == 0, delete_preview.output
+    assert json.loads(delete_preview.output)["preview"] is True
+
+    deleted = runner.invoke(
+        linear_cli.app, ["label", "delete", "area:middleware-de", "--yes"]
+    )
+    assert deleted.exit_code == 0, deleted.output
+    assert json.loads(deleted.output)["deleted"] is True
+    assert [label["name"] for label in labels] == ["workspace:shared"]
+
+
+def test_label_update_can_clear_description(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: object())
+    monkeypatch.setattr(
+        linear_cli,
+        "resolve_team",
+        lambda client, team: {"id": "team-id", "key": "DCJ", "name": "DCjanus"},
+    )
+    monkeypatch.setattr(linear_cli, "select_team", lambda team: team or "DCJ")
+    monkeypatch.setattr(
+        linear_cli,
+        "resolve_label",
+        lambda client, label, team_id: {
+            "id": "label-id",
+            "name": "area:de",
+            "description": "旧描述",
+            "team": {"id": "team-id"},
+        },
+    )
+
+    result = CliRunner().invoke(
+        linear_cli.app,
+        ["label", "update", "area:de", "--clear-description"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output)["input"] == {"description": None}
 
 
 def test_issue_search_uses_native_full_text_with_strict_team_filter(
