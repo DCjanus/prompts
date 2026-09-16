@@ -38,7 +38,8 @@ from gql import Client as GraphQLClient
 from gql import gql
 from gql.transport.exceptions import TransportError
 from gql.transport.httpx import HTTPXTransport
-from graphql import GraphQLError
+from graphql import GraphQLError, OperationType, parse
+from graphql.language.ast import OperationDefinitionNode
 
 app = typer.Typer(no_args_is_help=True, pretty_exceptions_show_locals=False)
 DEFAULT_ENDPOINT = "https://api.linear.app/graphql"
@@ -121,6 +122,35 @@ def load_config(path: Path = DEFAULT_CONFIG_PATH) -> dict[str, Any]:
         raise LinearError(f"无法读取配置 {path}：{error}") from error
 
 
+def update_config(updates: dict[str, Any], path: Path = DEFAULT_CONFIG_PATH) -> None:
+    """保留其它配置项并原子更新指定字段。"""
+    path = path.expanduser()
+    config = load_config(path) if path.exists() else {}
+    config.update(updates)
+    save_config(config, path)
+
+
+def default_team_from_config() -> str | None:
+    """读取可选默认 Team；环境变量指定的配置路径同样生效。"""
+    path = Path(os.environ.get("LINEAR_CONFIG", DEFAULT_CONFIG_PATH)).expanduser()
+    if not path.exists():
+        return None
+    team = load_config(path).get("default_team")
+    if not isinstance(team, str) or not team.strip():
+        return None
+    return team.strip()
+
+
+def select_team(team: str | None) -> str:
+    """显式 Team 优先，否则回退到本地可选默认值。"""
+    if team is not None and team.strip():
+        return team.strip()
+    default_team = default_team_from_config()
+    if default_team:
+        return default_team
+    raise typer.BadParameter("缺少 --team，且配置中未设置 default_team")
+
+
 def refresh_oauth_config(config: dict[str, Any], path: Path) -> dict[str, Any]:
     """使用 refresh token 刷新 OAuth access token。"""
     if not config.get("client_id") or not config.get("refresh_token"):
@@ -148,7 +178,7 @@ def refresh_oauth_config(config: dict[str, Any], path: Path) -> dict[str, Any]:
     return config
 
 
-def settings_from_env(endpoint: str) -> Settings:
+def settings_from_env(endpoint: str, config_path: Path | None = None) -> Settings:
     """从环境变量或 XDG 配置读取认证信息。"""
     api_key = os.environ.get("LINEAR_API_KEY")
     access_token = os.environ.get("LINEAR_ACCESS_TOKEN")
@@ -158,8 +188,10 @@ def settings_from_env(endpoint: str) -> Settings:
         return Settings(endpoint, access_token, True)
     if api_key:
         return Settings(endpoint, validate_personal_api_key(api_key), False)
-    config_path = Path(
-        os.environ.get("LINEAR_CONFIG", DEFAULT_CONFIG_PATH)
+    config_path = (
+        config_path
+        if config_path is not None
+        else Path(os.environ.get("LINEAR_CONFIG", DEFAULT_CONFIG_PATH))
     ).expanduser()
     if config_path.exists():
         config = load_config(config_path)
@@ -215,9 +247,9 @@ def emit(payload: Any) -> None:
     typer.echo(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
 
 
-def get_client(endpoint: str) -> LinearClient:
+def get_client(endpoint: str, config_path: Path | None = None) -> LinearClient:
     """创建命令行客户端。"""
-    return LinearClient(settings_from_env(endpoint))
+    return LinearClient(settings_from_env(endpoint, config_path))
 
 
 def read_identity(client: LinearClient) -> dict[str, Any]:
@@ -335,6 +367,7 @@ issue_app = typer.Typer(no_args_is_help=True, help="查询和管理 Issue。")
 issue_comment_app = typer.Typer(no_args_is_help=True, help="查询和创建 Issue 评论。")
 issue_relation_app = typer.Typer(no_args_is_help=True, help="管理 Issue 关系。")
 view_app = typer.Typer(no_args_is_help=True, help="查询和管理 Custom View。")
+api_app = typer.Typer(no_args_is_help=True, help="调用尚未封装的 Linear GraphQL API。")
 app.add_typer(config_app, name="config")
 app.add_typer(auth_app, name="auth")
 app.add_typer(team_app, name="team")
@@ -343,6 +376,55 @@ app.add_typer(issue_app, name="issue")
 issue_app.add_typer(issue_comment_app, name="comment")
 issue_app.add_typer(issue_relation_app, name="relation")
 app.add_typer(view_app, name="view")
+app.add_typer(api_app, name="api")
+
+
+@api_app.command("graphql")
+def api_graphql(
+    query_file: Annotated[Path, typer.Argument(exists=True, dir_okay=False)],
+    variables_file: Annotated[
+        Path | None, typer.Option("--variables-file", exists=True, dir_okay=False)
+    ] = None,
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+    allow_mutation: Annotated[bool, typer.Option("--allow-mutation")] = False,
+    yes: Annotated[bool, typer.Option("--yes")] = False,
+) -> None:
+    """执行文件中的单个 GraphQL operation；mutation 需要双重确认。"""
+    try:
+        query = query_file.read_text(encoding="utf-8")
+    except OSError as error:
+        raise LinearError(f"无法读取 GraphQL 文件 {query_file}：{error}") from error
+    try:
+        document = parse(query)
+    except GraphQLError as error:
+        raise LinearError(f"Linear GraphQL 文档错误：{error}") from error
+    operations = [
+        definition
+        for definition in document.definitions
+        if isinstance(definition, OperationDefinitionNode)
+    ]
+    if len(operations) != 1:
+        raise typer.BadParameter("GraphQL 文件必须且只能包含一个 operation")
+    operation = operations[0].operation
+    if operation is OperationType.SUBSCRIPTION:
+        raise typer.BadParameter("不支持 GraphQL subscription")
+    if operation is OperationType.MUTATION and not (allow_mutation and yes):
+        raise typer.BadParameter(
+            "GraphQL mutation 必须同时提供 --allow-mutation 和 --yes"
+        )
+
+    variables: dict[str, Any] = {}
+    if variables_file is not None:
+        try:
+            loaded_variables = json.loads(variables_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            raise LinearError(
+                f"无法读取 variables JSON {variables_file}：{error}"
+            ) from error
+        if not isinstance(loaded_variables, dict):
+            raise typer.BadParameter("variables JSON 顶层必须是 object")
+        variables = loaded_variables
+    emit(get_client(endpoint).query(query, variables))
 
 
 @config_app.command("set")
@@ -365,8 +447,36 @@ def config_set(
     if auth_type == "api-key":
         token = validate_personal_api_key(token)
     path = config_path.expanduser()
-    save_config({"auth_type": auth_type, "token": token}, path)
+    update_config({"auth_type": auth_type, "token": token}, path)
     emit({"authType": auth_type, "config": str(path), "saved": True})
+
+
+@config_app.command("set-default-team")
+def config_set_default_team(
+    team: Annotated[str, typer.Argument()],
+    config_path: Annotated[Path, typer.Option("--config")] = DEFAULT_CONFIG_PATH,
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+) -> None:
+    """验证并保存默认 Team key。"""
+    team = team.strip()
+    if not team:
+        raise typer.BadParameter("默认 Team 不能为空")
+    path = config_path.expanduser()
+    resolved = resolve_team(get_client(endpoint, path), team)
+    update_config({"default_team": resolved["key"]}, path)
+    emit({"config": str(path), "defaultTeam": resolved, "saved": True})
+
+
+@config_app.command("clear-default-team")
+def config_clear_default_team(
+    config_path: Annotated[Path, typer.Option("--config")] = DEFAULT_CONFIG_PATH,
+) -> None:
+    """清除可选默认 Team，保留认证配置。"""
+    path = config_path.expanduser()
+    config = load_config(path)
+    removed = config.pop("default_team", None) is not None
+    save_config(config, path)
+    emit({"config": str(path), "cleared": removed})
 
 
 @config_app.command("show")
@@ -397,7 +507,7 @@ def auth_login_api_key(
     token = validate_personal_api_key(token)
     identity = read_identity(LinearClient(Settings(endpoint, token, False)))
     path = config_path.expanduser()
-    save_config({"auth_type": "api-key", "token": token}, path)
+    update_config({"auth_type": "api-key", "token": token}, path)
     emit(
         {
             "authType": "api-key",
@@ -527,7 +637,7 @@ def auth_login(
     except (httpx.HTTPError, ValueError) as error:
         raise LinearError(f"OAuth code 交换失败：{error}") from error
     path = config_path.expanduser()
-    save_config(
+    update_config(
         {
             "auth_type": "oauth",
             "client_id": client_id,
@@ -574,19 +684,22 @@ def doctor(
     """验证认证、workspace 与目标 Team 的只读能力。"""
     client = get_client(endpoint)
     data = read_identity(client)
-    if team:
-        data["team"] = resolve_team(client, team)
+    selected_team = (
+        team.strip() if team and team.strip() else default_team_from_config()
+    )
+    if selected_team:
+        data["team"] = resolve_team(client, selected_team)
     emit(data)
 
 
 @team_app.command("show")
 def team_show(
-    team: Annotated[str, typer.Option("--team")],
+    team: Annotated[str | None, typer.Option("--team")] = None,
     endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
 ) -> None:
     """读取 Team 的状态、Cycle、Label 与 Project 候选。"""
     client = get_client(endpoint)
-    resolved = resolve_team(client, team)
+    resolved = resolve_team(client, select_team(team))
     data = client.query(
         """
         query TeamConfig($id: String!) {
@@ -606,18 +719,18 @@ def team_show(
 
 @team_automation_app.command("show")
 def team_automation_show(
-    team: Annotated[str, typer.Option("--team")],
+    team: Annotated[str | None, typer.Option("--team")] = None,
     endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
 ) -> None:
     """读取 Team 的自动关闭与自动归档设置。"""
     client = get_client(endpoint)
-    resolved = resolve_team(client, team)
+    resolved = resolve_team(client, select_team(team))
     emit(read_team_automations(client, resolved["id"]))
 
 
 @team_automation_app.command("update")
 def team_automation_update(
-    team: Annotated[str, typer.Option("--team")],
+    team: Annotated[str | None, typer.Option("--team")] = None,
     auto_archive_months: Annotated[
         float | None, typer.Option("--auto-archive-months", min=1)
     ] = None,
@@ -647,7 +760,7 @@ def team_automation_update(
         )
 
     client = get_client(endpoint)
-    resolved = resolve_team(client, team)
+    resolved = resolve_team(client, select_team(team))
     before = read_team_automations(client, resolved["id"])
     fields: dict[str, Any] = {}
     if auto_archive_months is not None or disable_auto_archive:
@@ -695,13 +808,13 @@ def issue_get(
 
 @issue_app.command("list")
 def issue_list(
-    team: Annotated[str, typer.Option("--team")],
+    team: Annotated[str | None, typer.Option("--team")] = None,
     endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
     first: Annotated[int, typer.Option(min=1, max=250)] = 100,
 ) -> None:
     """列出目标 Team 的近期 Issue。"""
     client = get_client(endpoint)
-    resolved = resolve_team(client, team)
+    resolved = resolve_team(client, select_team(team))
     data = client.query(
         f"""
         query Issues($id: ID!, $first: Int!) {{
@@ -715,6 +828,60 @@ def issue_list(
         {"id": resolved["id"], "first": first},
     )
     emit(data["issues"]["nodes"])
+
+
+@issue_app.command("search")
+def issue_search(
+    term: Annotated[str, typer.Argument()],
+    team: Annotated[str | None, typer.Option("--team")] = None,
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+    first: Annotated[int, typer.Option(min=1, max=250)] = 50,
+    after: Annotated[str | None, typer.Option()] = None,
+    include_comments: Annotated[
+        bool, typer.Option("--include-comments/--no-include-comments")
+    ] = True,
+    include_archived: Annotated[bool, typer.Option("--include-archived")] = False,
+) -> None:
+    """在目标 Team 的 Issue 标题、描述和可选评论中搜索。"""
+    term = term.strip()
+    if not term:
+        raise typer.BadParameter("搜索词不能为空")
+    client = get_client(endpoint)
+    resolved = resolve_team(client, select_team(team))
+    data = client.query(
+        f"""
+        query SearchIssues(
+          $term: String!
+          $filter: IssueFilter
+          $first: Int!
+          $after: String
+          $includeComments: Boolean!
+          $includeArchived: Boolean!
+        ) {{
+          searchIssues(
+            term: $term
+            filter: $filter
+            first: $first
+            after: $after
+            includeComments: $includeComments
+            includeArchived: $includeArchived
+          ) {{
+            totalCount
+            pageInfo {{ hasNextPage endCursor }}
+            nodes {{ {ISSUE_FIELDS} }}
+          }}
+        }}
+        """,
+        {
+            "term": term,
+            "filter": {"team": {"id": {"eq": resolved["id"]}}},
+            "first": first,
+            "after": after,
+            "includeComments": include_comments,
+            "includeArchived": include_archived,
+        },
+    )
+    emit(data["searchIssues"])
 
 
 @issue_comment_app.command("list")
@@ -815,7 +982,7 @@ def compact_input(values: dict[str, Any]) -> dict[str, Any]:
 @issue_app.command("create")
 def issue_create(
     title: Annotated[str, typer.Option()],
-    team: Annotated[str, typer.Option("--team")],
+    team: Annotated[str | None, typer.Option("--team")] = None,
     description: Annotated[str | None, typer.Option()] = None,
     state_id: Annotated[str | None, typer.Option()] = None,
     priority: Annotated[int | None, typer.Option(min=0, max=4)] = None,
@@ -830,7 +997,7 @@ def issue_create(
 ) -> None:
     """预览或创建 Issue，并在写入后回读。"""
     client = get_client(endpoint)
-    resolved = resolve_team(client, team)
+    resolved = resolve_team(client, select_team(team))
     fields = compact_input(
         {
             "teamId": resolved["id"],
