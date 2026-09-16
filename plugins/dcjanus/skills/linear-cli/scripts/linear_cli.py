@@ -616,7 +616,9 @@ def comment_create(
     try:
         body = body_file.read_text(encoding="utf-8").strip()
     except OSError as error:
-        raise typer.BadParameter(f"无法读取 --body-file {body_file}：{error}") from error
+        raise typer.BadParameter(
+            f"无法读取 --body-file {body_file}：{error}"
+        ) from error
     if not body:
         raise typer.BadParameter("--body-file 内容不能为空")
 

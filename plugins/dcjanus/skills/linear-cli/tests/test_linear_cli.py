@@ -311,9 +311,7 @@ def test_comment_create_writes_and_reads_back_comment(
 
     class StubClient:
         def query(self, query: str, variables: dict | None = None) -> dict:
-            assert variables == {
-                "input": {"issueId": "issue-id", "body": "最终结论"}
-            }
+            assert variables == {"input": {"issueId": "issue-id", "body": "最终结论"}}
             return {
                 "commentCreate": {
                     "success": True,
