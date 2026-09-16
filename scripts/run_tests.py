@@ -7,6 +7,7 @@
 #     "google-api-python-client>=2.200.0",
 #     "google-auth-httplib2>=0.4.2",
 #     "google-auth-oauthlib>=1.4.1",
+#     "gql[httpx2]==4.4.0b0",
 #     "httpx2>=2.13.0",
 #     "httpxyz>=0.42.1",
 #     "kittytgp>=0.0.2",
