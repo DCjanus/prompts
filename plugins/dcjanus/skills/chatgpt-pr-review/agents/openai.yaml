@@ -1,0 +1,4 @@
+interface:
+  display_name: "ChatGPT PR Review"
+  short_description: "通过 Chrome 委托 ChatGPT 审查公开 GitHub PR"
+  default_prompt: "使用 $dcjanus:chatgpt-pr-review 通过 Chrome 中的 ChatGPT Reviewer 审查这个公开 GitHub PR，并核验审查意见。"

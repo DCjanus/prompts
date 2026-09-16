@@ -10,7 +10,8 @@
     "skills": [
       "./plugins/dcjanus/skills",
       "!**/codex-session-reader",
-      "!**/codex-thread-namer"
+      "!**/codex-thread-namer",
+      "!**/chatgpt-pr-review"
     ]
   }
 }
