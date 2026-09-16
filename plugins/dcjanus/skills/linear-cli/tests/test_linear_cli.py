@@ -23,6 +23,31 @@ def response(data: dict, status: int = 200) -> httpx.Response:
     return httpx.Response(status, json=data, request=request)
 
 
+def test_help_uses_progressive_resource_groups() -> None:
+    runner = CliRunner()
+
+    root = runner.invoke(linear_cli.app, ["--help"])
+    assert root.exit_code == 0, root.output
+    assert "team" in root.output
+    assert "issue" in root.output
+    assert "team-show" not in root.output
+    assert "issue-get" not in root.output
+
+    team = runner.invoke(linear_cli.app, ["team", "--help"])
+    assert team.exit_code == 0, team.output
+    assert "automation" in team.output
+
+    automation = runner.invoke(linear_cli.app, ["team", "automation", "--help"])
+    assert automation.exit_code == 0, automation.output
+    assert "show" in automation.output
+    assert "update" in automation.output
+
+    issue = runner.invoke(linear_cli.app, ["issue", "--help"])
+    assert issue.exit_code == 0, issue.output
+    assert "comment" in issue.output
+    assert "relation" in issue.output
+
+
 def test_api_key_auth_and_graphql_errors() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.headers["Authorization"] == "lin_api_key"
@@ -232,7 +257,7 @@ def test_team_automation_show_resolves_auto_close_state(
 
     monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: StubClient())
     result = CliRunner().invoke(
-        linear_cli.app, ["team-automation-show", "--team", "DCJ"]
+        linear_cli.app, ["team", "automation", "show", "--team", "DCJ"]
     )
 
     assert result.exit_code == 0, result.output
@@ -294,7 +319,9 @@ def test_team_automation_update_previews_periods_and_resolved_state(
     result = CliRunner().invoke(
         linear_cli.app,
         [
-            "team-automation-update",
+            "team",
+            "automation",
+            "update",
             "--team",
             "DCJ",
             "--auto-archive-months",
@@ -334,7 +361,9 @@ def test_team_automation_update_can_preview_disabling_automation(
     result = CliRunner().invoke(
         linear_cli.app,
         [
-            "team-automation-update",
+            "team",
+            "automation",
+            "update",
             "--team",
             "DCJ",
             "--disable-auto-archive",
@@ -377,7 +406,9 @@ def test_team_automation_update_writes_and_reads_back(
     result = CliRunner().invoke(
         linear_cli.app,
         [
-            "team-automation-update",
+            "team",
+            "automation",
+            "update",
             "--team",
             "DCJ",
             "--auto-archive-months",
@@ -395,7 +426,9 @@ def test_team_automation_update_rejects_conflicting_archive_options() -> None:
     result = CliRunner().invoke(
         linear_cli.app,
         [
-            "team-automation-update",
+            "team",
+            "automation",
+            "update",
             "--team",
             "DCJ",
             "--auto-archive-months",
@@ -471,7 +504,7 @@ def test_comment_list_returns_comments_in_chronological_order(
 
     result = CliRunner().invoke(
         linear_cli.app,
-        ["comment", "list", "DCJ-77", "--first", "25"],
+        ["issue", "comment", "list", "DCJ-77", "--first", "25"],
     )
 
     assert result.exit_code == 0, result.output
@@ -503,7 +536,14 @@ def test_comment_create_previews_file_body_without_mutation(
 
     result = CliRunner().invoke(
         linear_cli.app,
-        ["comment", "create", "DCJ-77", "--body-file", str(body_file)],
+        [
+            "issue",
+            "comment",
+            "create",
+            "DCJ-77",
+            "--body-file",
+            str(body_file),
+        ],
     )
 
     assert result.exit_code == 0, result.output
@@ -552,6 +592,7 @@ def test_comment_create_writes_and_reads_back_comment(
     result = CliRunner().invoke(
         linear_cli.app,
         [
+            "issue",
             "comment",
             "create",
             "DCJ-77",
@@ -579,7 +620,14 @@ def test_comment_create_rejects_empty_body_file(
 
     result = CliRunner().invoke(
         linear_cli.app,
-        ["comment", "create", "DCJ-77", "--body-file", str(body_file)],
+        [
+            "issue",
+            "comment",
+            "create",
+            "DCJ-77",
+            "--body-file",
+            str(body_file),
+        ],
     )
 
     assert result.exit_code != 0

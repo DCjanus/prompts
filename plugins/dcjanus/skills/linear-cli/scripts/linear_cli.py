@@ -327,14 +327,22 @@ def read_view(client: LinearClient, view_id: str) -> dict[str, Any]:
     return view
 
 
-config_app = typer.Typer(no_args_is_help=True)
-auth_app = typer.Typer(no_args_is_help=True)
-view_app = typer.Typer(no_args_is_help=True)
-comment_app = typer.Typer(no_args_is_help=True)
+config_app = typer.Typer(no_args_is_help=True, help="管理本地认证配置。")
+auth_app = typer.Typer(no_args_is_help=True, help="登录或修复 Linear 认证。")
+team_app = typer.Typer(no_args_is_help=True, help="查询和管理 Team。")
+team_automation_app = typer.Typer(no_args_is_help=True, help="查询和管理 Team 自动化。")
+issue_app = typer.Typer(no_args_is_help=True, help="查询和管理 Issue。")
+issue_comment_app = typer.Typer(no_args_is_help=True, help="查询和创建 Issue 评论。")
+issue_relation_app = typer.Typer(no_args_is_help=True, help="管理 Issue 关系。")
+view_app = typer.Typer(no_args_is_help=True, help="查询和管理 Custom View。")
 app.add_typer(config_app, name="config")
 app.add_typer(auth_app, name="auth")
+app.add_typer(team_app, name="team")
+team_app.add_typer(team_automation_app, name="automation")
+app.add_typer(issue_app, name="issue")
+issue_app.add_typer(issue_comment_app, name="comment")
+issue_app.add_typer(issue_relation_app, name="relation")
 app.add_typer(view_app, name="view")
-app.add_typer(comment_app, name="comment")
 
 
 @config_app.command("set")
@@ -571,7 +579,7 @@ def doctor(
     emit(data)
 
 
-@app.command("team-show")
+@team_app.command("show")
 def team_show(
     team: Annotated[str, typer.Option("--team")],
     endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
@@ -596,7 +604,7 @@ def team_show(
     emit(data["team"])
 
 
-@app.command("team-automation-show")
+@team_automation_app.command("show")
 def team_automation_show(
     team: Annotated[str, typer.Option("--team")],
     endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
@@ -607,7 +615,7 @@ def team_automation_show(
     emit(read_team_automations(client, resolved["id"]))
 
 
-@app.command("team-automation-update")
+@team_automation_app.command("update")
 def team_automation_update(
     team: Annotated[str, typer.Option("--team")],
     auto_archive_months: Annotated[
@@ -676,7 +684,7 @@ def team_automation_update(
     emit(read_team_automations(client, resolved["id"]))
 
 
-@app.command("issue-get")
+@issue_app.command("get")
 def issue_get(
     issue_id: Annotated[str, typer.Argument()],
     endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
@@ -685,7 +693,7 @@ def issue_get(
     emit(read_issue(get_client(endpoint), issue_id))
 
 
-@app.command("issue-list")
+@issue_app.command("list")
 def issue_list(
     team: Annotated[str, typer.Option("--team")],
     endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
@@ -709,7 +717,7 @@ def issue_list(
     emit(data["issues"]["nodes"])
 
 
-@comment_app.command("list")
+@issue_comment_app.command("list")
 def comment_list(
     issue_id: Annotated[str, typer.Argument()],
     endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
@@ -743,7 +751,7 @@ def comment_list(
     )
 
 
-@comment_app.command("create")
+@issue_comment_app.command("create")
 def comment_create(
     issue_id: Annotated[str, typer.Argument()],
     body_file: Annotated[Path, typer.Option("--body-file")],
@@ -804,7 +812,7 @@ def compact_input(values: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in values.items() if value is not None}
 
 
-@app.command("issue-create")
+@issue_app.command("create")
 def issue_create(
     title: Annotated[str, typer.Option()],
     team: Annotated[str, typer.Option("--team")],
@@ -854,7 +862,7 @@ def issue_create(
     emit(read_issue(client, data["issue"]["id"]))
 
 
-@app.command("issue-update")
+@issue_app.command("update")
 def issue_update(
     issue_id: Annotated[str, typer.Argument()],
     title: Annotated[str | None, typer.Option()] = None,
@@ -912,7 +920,7 @@ def issue_update(
     emit(read_issue(client, before["id"]))
 
 
-@app.command("relation-create")
+@issue_relation_app.command("create")
 def relation_create(
     issue_id: Annotated[str, typer.Argument()],
     related_issue_id: Annotated[str, typer.Argument()],

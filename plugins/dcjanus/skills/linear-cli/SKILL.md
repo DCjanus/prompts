@@ -1,6 +1,6 @@
 ---
 name: linear-cli
-description: 当需要查询或管理 Linear workspace、team、issue、原生关系或 Custom View 时使用。
+description: 当需要查询或管理 Linear workspace、team 自动化、issue、评论、原生关系或 Custom View 时使用。
 ---
 
 # Linear CLI
@@ -37,38 +37,22 @@ Linear OAuth 需要先注册 OAuth application，将 `http://127.0.0.1:45831/cal
 
 ## 调用约定
 
-- 查看全部命令：`./scripts/linear_cli.py --help`。
+- CLI 按资源分组；从 `./scripts/linear_cli.py --help` 开始，再对 `team`、`issue`、`view` 等逐级使用 `--help`，不要依赖本文件穷举命令。
 - 读操作直接执行；写操作默认输出 JSON 预览，明确授权后才加 `--yes`。
-- Team 必须通过 `--team` 显式提供，不设业务默认。先使用 `doctor --team KEY` 或 `team-show --team KEY` 解析实际 ID。
-- Team 自动关闭与自动归档使用 `team-automation-show` 查询、`team-automation-update` 更新。周期单位为月；更新默认只预览，禁用设置使用对应的 `--disable-*`，自动关闭目标状态可传精确名称或 UUID。
+- Team 必须通过 `--team` 显式提供，不设业务默认。先使用 `doctor --team KEY` 或 `team show --team KEY` 解析实际 ID。
+- Team 自动关闭与自动归档位于 `team automation`。周期单位为月；禁用设置使用对应的 `--disable-*`，自动关闭目标状态可传精确名称或 UUID。
 - Issue 写入后自动回读。关系写入回读两端。
 - Comment 写入必须通过 `--body-file` 传入正文，默认预览，正式写入后按 Comment ID 回读。
 - Custom View 使用官方 `customViews`、`customViewCreate` 和 `customViewUpdate` GraphQL 字段。`--filter-json` 接受官方 `IssueFilter` JSON object，不自行发明过滤语法。
 - 写入前先读取现有 Issue 或 View 并查重；不把预览或 GraphQL HTTP 200 当成写入成功。
 
-## 常用命令
+## 入口
 
 ```bash
-./scripts/linear_cli.py doctor --team ENG
-./scripts/linear_cli.py team-show --team ENG
-./scripts/linear_cli.py team-automation-show --team ENG
-./scripts/linear_cli.py team-automation-update --team ENG \
-  --auto-archive-months 6 --auto-close-months 6 \
-  --auto-close-state Canceled
-./scripts/linear_cli.py team-automation-update --team ENG \
-  --disable-auto-close --yes
-./scripts/linear_cli.py issue-list --team ENG
-./scripts/linear_cli.py issue-get ENG-123
-./scripts/linear_cli.py issue-create --team ENG --title '标题'
-./scripts/linear_cli.py issue-update ENG-123 --priority 2
-./scripts/linear_cli.py comment list ENG-123
-./scripts/linear_cli.py comment create ENG-123 --body-file /tmp/progress.md
-./scripts/linear_cli.py relation-create ENG-123 ENG-456 --type related
-./scripts/linear_cli.py view list
-./scripts/linear_cli.py view get VIEW_ID
-./scripts/linear_cli.py view issues VIEW_ID
-./scripts/linear_cli.py view create --name 'My work' --team-id TEAM_UUID \
-  --filter-json '{"assignee":{"id":{"eq":"USER_UUID"}}}'
+./scripts/linear_cli.py --help
+./scripts/linear_cli.py team --help
+./scripts/linear_cli.py team automation --help
+./scripts/linear_cli.py issue --help
 ```
 
 复杂 Issue 正文或过滤器应由调用方先在可审阅的临时文件中准备；当前 CLI 接受内联 JSON，调用方必须注意 shell 引号。Comment 正文只从 UTF-8 文件读取，避免多行内容进入 shell 参数。
