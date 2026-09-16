@@ -250,6 +250,64 @@ def resolve_team(client: LinearClient, team_key: str) -> dict[str, Any]:
     return teams[0]
 
 
+def read_team_automations(client: LinearClient, team_id: str) -> dict[str, Any]:
+    """读取 Team 的自动关闭和自动归档设置，并解析目标状态。"""
+    data = client.query(
+        """
+        query TeamAutomations($id: String!) {
+          team(id: $id) {
+            id key name
+            autoArchivePeriod
+            autoClosePeriod
+            autoCloseStateId
+            autoCloseParentIssues
+            autoCloseChildIssues
+            states { nodes { id name type } }
+          }
+        }
+        """,
+        {"id": team_id},
+    )
+    team = data.get("team")
+    if not team:
+        raise LinearError(f"找不到 Linear Team {team_id}")
+    state_id = team.pop("autoCloseStateId")
+    states = team.pop("states")["nodes"]
+    team["autoCloseState"] = next(
+        (state for state in states if state["id"] == state_id), None
+    )
+    return team
+
+
+def resolve_team_state(
+    client: LinearClient, team_id: str, state_name_or_id: str
+) -> dict[str, Any]:
+    """按 UUID 或名称精确解析 Team workflow state。"""
+    data = client.query(
+        """
+        query TeamStates($id: String!) {
+          team(id: $id) { states { nodes { id name type } } }
+        }
+        """,
+        {"id": team_id},
+    )
+    team = data.get("team")
+    if not team:
+        raise LinearError(f"找不到 Linear Team {team_id}")
+    states = [
+        state
+        for state in team["states"]["nodes"]
+        if state["id"] == state_name_or_id or state["name"] == state_name_or_id
+    ]
+    if len(states) != 1:
+        raise LinearError(
+            f"Workflow state {state_name_or_id!r} 精确匹配数量为 {len(states)}"
+        )
+    if states[0]["type"] not in {"completed", "canceled"}:
+        raise LinearError("自动关闭目标必须是 completed 或 canceled 状态")
+    return states[0]
+
+
 def read_view(client: LinearClient, view_id: str) -> dict[str, Any]:
     """按 UUID 或 slug 回读 Custom View。"""
     data = client.query(
@@ -536,6 +594,86 @@ def team_show(
         {"id": resolved["id"]},
     )
     emit(data["team"])
+
+
+@app.command("team-automation-show")
+def team_automation_show(
+    team: Annotated[str, typer.Option("--team")],
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+) -> None:
+    """读取 Team 的自动关闭与自动归档设置。"""
+    client = get_client(endpoint)
+    resolved = resolve_team(client, team)
+    emit(read_team_automations(client, resolved["id"]))
+
+
+@app.command("team-automation-update")
+def team_automation_update(
+    team: Annotated[str, typer.Option("--team")],
+    auto_archive_months: Annotated[
+        float | None, typer.Option("--auto-archive-months", min=1)
+    ] = None,
+    disable_auto_archive: Annotated[
+        bool, typer.Option("--disable-auto-archive")
+    ] = False,
+    auto_close_months: Annotated[
+        float | None, typer.Option("--auto-close-months", min=1)
+    ] = None,
+    disable_auto_close: Annotated[bool, typer.Option("--disable-auto-close")] = False,
+    auto_close_state: Annotated[str | None, typer.Option("--auto-close-state")] = None,
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+    yes: Annotated[bool, typer.Option("--yes")] = False,
+) -> None:
+    """预览或更新 Team 的自动关闭与自动归档设置，并回读。"""
+    if auto_archive_months is not None and disable_auto_archive:
+        raise typer.BadParameter(
+            "--auto-archive-months 与 --disable-auto-archive 不能同时使用"
+        )
+    if auto_close_months is not None and disable_auto_close:
+        raise typer.BadParameter(
+            "--auto-close-months 与 --disable-auto-close 不能同时使用"
+        )
+    if auto_close_state is not None and disable_auto_close:
+        raise typer.BadParameter(
+            "--auto-close-state 与 --disable-auto-close 不能同时使用"
+        )
+
+    client = get_client(endpoint)
+    resolved = resolve_team(client, team)
+    before = read_team_automations(client, resolved["id"])
+    fields: dict[str, Any] = {}
+    if auto_archive_months is not None or disable_auto_archive:
+        fields["autoArchivePeriod"] = (
+            None if disable_auto_archive else auto_archive_months
+        )
+    if auto_close_months is not None or disable_auto_close:
+        fields["autoClosePeriod"] = None if disable_auto_close else auto_close_months
+    if auto_close_state is not None:
+        state = resolve_team_state(client, resolved["id"], auto_close_state)
+        fields["autoCloseStateId"] = state["id"]
+    if not fields:
+        raise typer.BadParameter("至少提供一个自动化更新字段")
+    if not yes:
+        emit(
+            {
+                "action": "teamUpdate",
+                "before": before,
+                "input": fields,
+                "preview": True,
+            }
+        )
+        return
+    result = client.query(
+        """
+        mutation UpdateTeamAutomations($id: String!, $input: TeamUpdateInput!) {
+          teamUpdate(id: $id, input: $input) { success team { id } }
+        }
+        """,
+        {"id": resolved["id"], "input": fields},
+    )["teamUpdate"]
+    if not result["success"]:
+        raise LinearError("teamUpdate 返回 success=false")
+    emit(read_team_automations(client, resolved["id"]))
 
 
 @app.command("issue-get")

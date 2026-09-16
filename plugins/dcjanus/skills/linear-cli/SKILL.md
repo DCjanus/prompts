@@ -40,6 +40,7 @@ Linear OAuth 需要先注册 OAuth application，将 `http://127.0.0.1:45831/cal
 - 查看全部命令：`./scripts/linear_cli.py --help`。
 - 读操作直接执行；写操作默认输出 JSON 预览，明确授权后才加 `--yes`。
 - Team 必须通过 `--team` 显式提供，不设业务默认。先使用 `doctor --team KEY` 或 `team-show --team KEY` 解析实际 ID。
+- Team 自动关闭与自动归档使用 `team-automation-show` 查询、`team-automation-update` 更新。周期单位为月；更新默认只预览，禁用设置使用对应的 `--disable-*`，自动关闭目标状态可传精确名称或 UUID。
 - Issue 写入后自动回读。关系写入回读两端。
 - Comment 写入必须通过 `--body-file` 传入正文，默认预览，正式写入后按 Comment ID 回读。
 - Custom View 使用官方 `customViews`、`customViewCreate` 和 `customViewUpdate` GraphQL 字段。`--filter-json` 接受官方 `IssueFilter` JSON object，不自行发明过滤语法。
@@ -50,6 +51,12 @@ Linear OAuth 需要先注册 OAuth application，将 `http://127.0.0.1:45831/cal
 ```bash
 ./scripts/linear_cli.py doctor --team ENG
 ./scripts/linear_cli.py team-show --team ENG
+./scripts/linear_cli.py team-automation-show --team ENG
+./scripts/linear_cli.py team-automation-update --team ENG \
+  --auto-archive-months 6 --auto-close-months 6 \
+  --auto-close-state Canceled
+./scripts/linear_cli.py team-automation-update --team ENG \
+  --disable-auto-close --yes
 ./scripts/linear_cli.py issue-list --team ENG
 ./scripts/linear_cli.py issue-get ENG-123
 ./scripts/linear_cli.py issue-create --team ENG --title '标题'

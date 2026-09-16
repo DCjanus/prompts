@@ -195,6 +195,219 @@ def test_auth_repair_reuses_saved_key_and_persists_working_mode(
     }
 
 
+def test_team_automation_show_resolves_auto_close_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class StubClient:
+        def query(self, query: str, variables: dict | None = None) -> dict:
+            if "query Team(" in query:
+                return {
+                    "teams": {
+                        "nodes": [{"id": "team-id", "key": "DCJ", "name": "DCjanus"}]
+                    }
+                }
+            assert variables == {"id": "team-id"}
+            return {
+                "team": {
+                    "id": "team-id",
+                    "key": "DCJ",
+                    "name": "DCjanus",
+                    "autoArchivePeriod": 6.0,
+                    "autoClosePeriod": 6.0,
+                    "autoCloseStateId": "canceled-id",
+                    "autoCloseParentIssues": None,
+                    "autoCloseChildIssues": None,
+                    "states": {
+                        "nodes": [
+                            {"id": "done-id", "name": "Done", "type": "completed"},
+                            {
+                                "id": "canceled-id",
+                                "name": "Canceled",
+                                "type": "canceled",
+                            },
+                        ]
+                    },
+                }
+            }
+
+    monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: StubClient())
+    result = CliRunner().invoke(
+        linear_cli.app, ["team-automation-show", "--team", "DCJ"]
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["autoArchivePeriod"] == 6.0
+    assert payload["autoCloseState"] == {
+        "id": "canceled-id",
+        "name": "Canceled",
+        "type": "canceled",
+    }
+
+
+def test_team_automation_update_previews_periods_and_resolved_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class StubClient:
+        def query(self, query: str, variables: dict | None = None) -> dict:
+            if "query Team(" in query:
+                return {
+                    "teams": {
+                        "nodes": [{"id": "team-id", "key": "DCJ", "name": "DCjanus"}]
+                    }
+                }
+            if "query TeamAutomations" in query:
+                return {
+                    "team": {
+                        "id": "team-id",
+                        "key": "DCJ",
+                        "name": "DCjanus",
+                        "autoArchivePeriod": 6.0,
+                        "autoClosePeriod": 6.0,
+                        "autoCloseStateId": "old-state",
+                        "autoCloseParentIssues": None,
+                        "autoCloseChildIssues": None,
+                        "states": {
+                            "nodes": [
+                                {
+                                    "id": "old-state",
+                                    "name": "Canceled",
+                                    "type": "canceled",
+                                }
+                            ]
+                        },
+                    }
+                }
+            if "query TeamStates" in query:
+                return {
+                    "team": {
+                        "states": {
+                            "nodes": [
+                                {"id": "done-id", "name": "Done", "type": "completed"}
+                            ]
+                        }
+                    }
+                }
+            raise AssertionError("preview must not call teamUpdate")
+
+    monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: StubClient())
+    result = CliRunner().invoke(
+        linear_cli.app,
+        [
+            "team-automation-update",
+            "--team",
+            "DCJ",
+            "--auto-archive-months",
+            "12",
+            "--auto-close-months",
+            "3",
+            "--auto-close-state",
+            "Done",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["preview"] is True
+    assert payload["input"] == {
+        "autoArchivePeriod": 12.0,
+        "autoClosePeriod": 3.0,
+        "autoCloseStateId": "done-id",
+    }
+
+
+def test_team_automation_update_can_preview_disabling_automation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        linear_cli,
+        "resolve_team",
+        lambda client, team: {"id": "team-id", "key": team, "name": "DCjanus"},
+    )
+    monkeypatch.setattr(
+        linear_cli,
+        "read_team_automations",
+        lambda client, team_id: {"id": team_id, "autoArchivePeriod": 6.0},
+    )
+    monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: object())
+
+    result = CliRunner().invoke(
+        linear_cli.app,
+        [
+            "team-automation-update",
+            "--team",
+            "DCJ",
+            "--disable-auto-archive",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output)["input"] == {"autoArchivePeriod": None}
+
+
+def test_team_automation_update_writes_and_reads_back(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mutation_calls: list[dict] = []
+
+    class MutationClient:
+        def query(self, query: str, variables: dict | None = None) -> dict:
+            mutation_calls.append(variables or {})
+            return {"teamUpdate": {"success": True, "team": {"id": "team-id"}}}
+
+    mutation_client = MutationClient()
+    monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: mutation_client)
+    monkeypatch.setattr(
+        linear_cli,
+        "resolve_team",
+        lambda selected, team: {"id": "team-id", "key": team, "name": "DCjanus"},
+    )
+    readings = iter(
+        [
+            {"id": "team-id", "autoArchivePeriod": 6.0},
+            {"id": "team-id", "autoArchivePeriod": 12.0},
+        ]
+    )
+    monkeypatch.setattr(
+        linear_cli,
+        "read_team_automations",
+        lambda selected, team_id: next(readings),
+    )
+
+    result = CliRunner().invoke(
+        linear_cli.app,
+        [
+            "team-automation-update",
+            "--team",
+            "DCJ",
+            "--auto-archive-months",
+            "12",
+            "--yes",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert mutation_calls == [{"id": "team-id", "input": {"autoArchivePeriod": 12.0}}]
+    assert json.loads(result.output)["autoArchivePeriod"] == 12.0
+
+
+def test_team_automation_update_rejects_conflicting_archive_options() -> None:
+    result = CliRunner().invoke(
+        linear_cli.app,
+        [
+            "team-automation-update",
+            "--team",
+            "DCJ",
+            "--auto-archive-months",
+            "6",
+            "--disable-auto-archive",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "不能同时使用" in result.output
+
+
 def test_view_create_preview_is_generic_and_non_mutating(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
