@@ -601,12 +601,17 @@ def test_api_graphql_requires_double_confirmation_for_mutations(
 
     monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: StubClient())
     runner = CliRunner()
-    rejected = runner.invoke(
-        linear_cli.app,
-        ["api", "graphql", str(query_file), "--variables-file", str(variables_file)],
-    )
-    assert rejected.exit_code != 0
-    assert "--allow-mutation" in rejected.output
+    with pytest.raises(
+        linear_cli.typer.BadParameter,
+        match="必须同时提供 --allow-mutation 和 --yes",
+    ):
+        linear_cli.api_graphql(
+            query_file,
+            variables_file,
+            linear_cli.DEFAULT_ENDPOINT,
+            False,
+            False,
+        )
     assert not calls
 
     accepted = runner.invoke(
@@ -631,9 +636,7 @@ def test_api_graphql_rejects_multiple_operations_and_non_object_variables(
     multiple = tmp_path / "multiple.graphql"
     multiple.write_text("query One { viewer { id } } query Two { viewer { name } }")
     runner = CliRunner()
-    rejected_multiple = runner.invoke(
-        linear_cli.app, ["api", "graphql", str(multiple)]
-    )
+    rejected_multiple = runner.invoke(linear_cli.app, ["api", "graphql", str(multiple)])
     assert rejected_multiple.exit_code != 0
     assert "只能包含一个 operation" in rejected_multiple.output
 

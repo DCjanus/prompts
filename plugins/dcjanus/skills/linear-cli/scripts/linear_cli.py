@@ -409,14 +409,18 @@ def api_graphql(
     if operation is OperationType.SUBSCRIPTION:
         raise typer.BadParameter("不支持 GraphQL subscription")
     if operation is OperationType.MUTATION and not (allow_mutation and yes):
-        raise typer.BadParameter("GraphQL mutation 必须同时提供 --allow-mutation 和 --yes")
+        raise typer.BadParameter(
+            "GraphQL mutation 必须同时提供 --allow-mutation 和 --yes"
+        )
 
     variables: dict[str, Any] = {}
     if variables_file is not None:
         try:
             loaded_variables = json.loads(variables_file.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as error:
-            raise LinearError(f"无法读取 variables JSON {variables_file}：{error}") from error
+            raise LinearError(
+                f"无法读取 variables JSON {variables_file}：{error}"
+            ) from error
         if not isinstance(loaded_variables, dict):
             raise typer.BadParameter("variables JSON 顶层必须是 object")
         variables = loaded_variables
@@ -680,7 +684,9 @@ def doctor(
     """验证认证、workspace 与目标 Team 的只读能力。"""
     client = get_client(endpoint)
     data = read_identity(client)
-    selected_team = team.strip() if team and team.strip() else default_team_from_config()
+    selected_team = (
+        team.strip() if team and team.strip() else default_team_from_config()
+    )
     if selected_team:
         data["team"] = resolve_team(client, selected_team)
     emit(data)
