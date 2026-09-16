@@ -13,11 +13,20 @@
 
 from __future__ import annotations
 
+import base64
 import getpass
+import hashlib
 import json
 import os
+import secrets
+import sys
 import tempfile
+import threading
+import time
+import urllib.parse
+import webbrowser
 from dataclasses import dataclass
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
@@ -28,6 +37,8 @@ import typer
 
 app = typer.Typer(no_args_is_help=True, pretty_exceptions_show_locals=False)
 DEFAULT_ENDPOINT = "https://api.linear.app/graphql"
+OAUTH_AUTHORIZE_URL = "https://linear.app/oauth/authorize"
+OAUTH_TOKEN_URL = "https://api.linear.app/oauth/token"
 DEFAULT_CONFIG_PATH = (
     Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
     / "linear-cli"
@@ -60,6 +71,53 @@ class Settings:
     oauth: bool
 
 
+def save_config(data: dict[str, Any], path: Path = DEFAULT_CONFIG_PATH) -> None:
+    """以 0600 原子保存配置。"""
+    path = path.expanduser()
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", dir=path.parent
+    )
+    temporary_path = Path(temporary_name)
+    try:
+        os.fchmod(descriptor, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(tomli_w.dumps(data))
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_path, path)
+        path.chmod(0o600)
+    finally:
+        temporary_path.unlink(missing_ok=True)
+
+
+def refresh_oauth_config(config: dict[str, Any], path: Path) -> dict[str, Any]:
+    """使用 refresh token 刷新 OAuth access token。"""
+    if not config.get("client_id") or not config.get("refresh_token"):
+        raise LinearError("OAuth token 已过期且配置缺少 client_id/refresh_token")
+    try:
+        response = httpx.post(
+            OAUTH_TOKEN_URL,
+            data={
+                "grant_type": "refresh_token",
+                "client_id": config["client_id"],
+                "refresh_token": config["refresh_token"],
+            },
+            timeout=30,
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except (httpx.HTTPError, ValueError) as error:
+        raise LinearError(f"OAuth token 刷新失败：{error}") from error
+    config.update(
+        token=payload["access_token"],
+        refresh_token=payload.get("refresh_token", config["refresh_token"]),
+        expires_at=int(time.time()) + int(payload.get("expires_in", 86400)) - 60,
+    )
+    save_config(config, path)
+    return config
+
+
 def settings_from_env(endpoint: str) -> Settings:
     """从环境变量或 XDG 配置读取认证信息。"""
     api_key = os.environ.get("LINEAR_API_KEY")
@@ -78,11 +136,17 @@ def settings_from_env(endpoint: str) -> Settings:
             config = tomllib.loads(config_path.read_text(encoding="utf-8"))
         except (OSError, tomllib.TOMLDecodeError) as error:
             raise LinearError(f"无法读取配置 {config_path}：{error}") from error
-        token = config.get("token")
         auth_type = config.get("auth_type", "api-key")
+        if (
+            auth_type == "oauth"
+            and config.get("refresh_token")
+            and int(config.get("expires_at", 0)) <= int(time.time())
+        ):
+            config = refresh_oauth_config(config, config_path)
+        token = config.get("token")
         if token and auth_type in {"api-key", "oauth"}:
             return Settings(endpoint, str(token), auth_type == "oauth")
-    raise LinearError("缺少 Linear 凭据；设置环境变量或运行 config set --prompt-token")
+    raise LinearError("缺少 Linear 凭据；设置环境变量或运行 auth login-api-key")
 
 
 class LinearClient:
@@ -171,8 +235,10 @@ def read_view(client: LinearClient, view_id: str) -> dict[str, Any]:
 
 
 config_app = typer.Typer(no_args_is_help=True)
+auth_app = typer.Typer(no_args_is_help=True)
 view_app = typer.Typer(no_args_is_help=True)
 app.add_typer(config_app, name="config")
+app.add_typer(auth_app, name="auth")
 app.add_typer(view_app, name="view")
 
 
@@ -180,32 +246,21 @@ app.add_typer(view_app, name="view")
 def config_set(
     auth_type: Annotated[Literal["api-key", "oauth"], typer.Option()] = "api-key",
     prompt_token: Annotated[bool, typer.Option("--prompt-token")] = False,
+    token_stdin: Annotated[bool, typer.Option("--token-stdin")] = False,
     config_path: Annotated[Path, typer.Option("--config")] = DEFAULT_CONFIG_PATH,
 ) -> None:
     """安全保存 API key 或已获取的 OAuth access token。"""
-    if not prompt_token:
-        raise typer.BadParameter(
-            "必须使用 --prompt-token，避免 token 进入 shell history"
-        )
-    token = getpass.getpass("Linear token: ").strip()
+    if prompt_token == token_stdin:
+        raise typer.BadParameter("必须且只能使用 --prompt-token 或 --token-stdin")
+    token = (
+        getpass.getpass("Linear token: ").strip()
+        if prompt_token
+        else sys.stdin.read().strip()
+    )
     if not token:
         raise typer.BadParameter("token 不能为空")
     path = config_path.expanduser()
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    descriptor, temporary_name = tempfile.mkstemp(
-        prefix=f".{path.name}.", dir=path.parent
-    )
-    temporary_path = Path(temporary_name)
-    try:
-        os.fchmod(descriptor, 0o600)
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            handle.write(tomli_w.dumps({"auth_type": auth_type, "token": token}))
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary_path, path)
-        path.chmod(0o600)
-    finally:
-        temporary_path.unlink(missing_ok=True)
+    save_config({"auth_type": auth_type, "token": token}, path)
     emit({"authType": auth_type, "config": str(path), "saved": True})
 
 
@@ -219,9 +274,115 @@ def config_show(
         emit({"config": str(path), "exists": False})
         return
     data = tomllib.loads(path.read_text(encoding="utf-8"))
-    if data.get("token"):
-        data["token"] = "********"
+    for key in ("token", "refresh_token"):
+        if data.get(key):
+            data[key] = "********"
     emit({"config": str(path), "exists": True, **data})
+
+
+@auth_app.command("login-api-key")
+def auth_login_api_key(
+    config_path: Annotated[Path, typer.Option("--config")] = DEFAULT_CONFIG_PATH,
+) -> None:
+    """交互式隐藏输入并安全保存个人 API key。"""
+    token = getpass.getpass("Linear personal API key: ").strip()
+    if not token:
+        raise typer.BadParameter("API key 不能为空")
+    path = config_path.expanduser()
+    save_config({"auth_type": "api-key", "token": token}, path)
+    emit({"authType": "api-key", "config": str(path), "loggedIn": True})
+
+
+@auth_app.command("login")
+def auth_login(
+    client_id: Annotated[str, typer.Option("--client-id")],
+    port: Annotated[int, typer.Option(min=1024, max=65535)] = 45831,
+    scope: Annotated[str, typer.Option()] = "read,write",
+    config_path: Annotated[Path, typer.Option("--config")] = DEFAULT_CONFIG_PATH,
+) -> None:
+    """通过本机回调执行 Linear OAuth PKCE 登录。"""
+    state = secrets.token_urlsafe(32)
+    verifier = secrets.token_urlsafe(64)
+    challenge = (
+        base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest())
+        .decode()
+        .rstrip("=")
+    )
+    redirect_uri = f"http://127.0.0.1:{port}/callback"
+    result: dict[str, str] = {}
+
+    class CallbackHandler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:  # noqa: N802
+            query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            result["code"] = query.get("code", [""])[0]
+            result["state"] = query.get("state", [""])[0]
+            result["error"] = query.get("error", [""])[0]
+            body = b"Linear CLI authorization received. You may close this tab."
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format: str, *args: Any) -> None:
+            return
+
+    server = HTTPServer(("127.0.0.1", port), CallbackHandler)
+    server.timeout = 180
+    authorize_url = (
+        OAUTH_AUTHORIZE_URL
+        + "?"
+        + urllib.parse.urlencode(
+            {
+                "client_id": client_id,
+                "redirect_uri": redirect_uri,
+                "response_type": "code",
+                "scope": scope,
+                "state": state,
+                "actor": "user",
+                "code_challenge": challenge,
+                "code_challenge_method": "S256",
+            }
+        )
+    )
+    typer.echo(f"Open this URL to authorize:\n{authorize_url}")
+    threading.Thread(target=webbrowser.open, args=(authorize_url,), daemon=True).start()
+    server.handle_request()
+    server.server_close()
+    if result.get("error"):
+        raise LinearError(f"OAuth 授权失败：{result['error']}")
+    if not result.get("code") or result.get("state") != state:
+        raise LinearError("OAuth 回调缺少 code 或 state 校验失败")
+    try:
+        response = httpx.post(
+            OAUTH_TOKEN_URL,
+            data={
+                "grant_type": "authorization_code",
+                "client_id": client_id,
+                "redirect_uri": redirect_uri,
+                "code": result["code"],
+                "code_verifier": verifier,
+            },
+            timeout=30,
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except (httpx.HTTPError, ValueError) as error:
+        raise LinearError(f"OAuth code 交换失败：{error}") from error
+    path = config_path.expanduser()
+    save_config(
+        {
+            "auth_type": "oauth",
+            "client_id": client_id,
+            "token": payload["access_token"],
+            "refresh_token": payload.get("refresh_token", ""),
+            "expires_at": int(time.time()) + int(payload.get("expires_in", 86400)) - 60,
+            "scope": payload.get("scope", scope),
+            "redirect_uri": redirect_uri,
+        },
+        path,
+    )
+    emit({"authType": "oauth", "config": str(path), "loggedIn": True})
 
 
 def read_issue(client: LinearClient, issue_id: str) -> dict[str, Any]:

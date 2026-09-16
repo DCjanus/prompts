@@ -9,21 +9,21 @@ description: 通过内置 Python CLI 直接调用 Linear 官方 GraphQL API，�
 
 ## 认证
 
-默认配置位于 `~/.config/linear-cli/config.toml`，文件权限固定为 `0600`。使用交互输入保存 token，不要把 token 放入命令行：
+默认配置位于 `~/.config/linear-cli/config.toml`，文件权限固定为 `0600`。个人 API key 由用户本人在 Linear 创建，再通过隐藏的交互输入保存；不要让 agent 接触 key，也不要把 key 放入命令行、剪贴板管道或日志：
 
 ```bash
-./scripts/linear_cli.py config set --auth-type api-key --prompt-token
+./scripts/linear_cli.py auth login-api-key
 ./scripts/linear_cli.py config show
 ./scripts/linear_cli.py doctor
 ```
 
-Linear OAuth 需要先注册 OAuth application 并取得 client ID。CLI 可以使用已取得的 OAuth access token：
+Linear OAuth 需要先注册 OAuth application，将 `http://127.0.0.1:45831/callback` 加入 redirect URI，然后使用 client ID 执行 PKCE 登录。CLI 会校验 `state`、保存 refresh token，并在 access token 过期后自动刷新：
 
 ```bash
-./scripts/linear_cli.py config set --auth-type oauth --prompt-token
+./scripts/linear_cli.py auth login --client-id CLIENT_ID
 ```
 
-当前不内置共享 OAuth client，避免在公开 Skill 中捆绑 client secret。需要完整的 authorization-code/PKCE 与 refresh-token 流时，先为使用方注册 OAuth app，再扩展本 CLI。
+不内置共享 OAuth client 或 client secret；每个使用方显式选择自己的 OAuth app 和授权范围。已有 OAuth access token 时，也可用 `config set --auth-type oauth --prompt-token` 导入，但没有 refresh token 时无法自动刷新。
 
 环境变量优先于配置文件，适合 CI 和临时调用：`LINEAR_ACCESS_TOKEN`、`LINEAR_API_KEY`、`LINEAR_CONFIG`。OAuth token 使用 Bearer header，API key 直接作为 Authorization header。
 

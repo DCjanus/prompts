@@ -84,6 +84,50 @@ def test_config_set_requires_prompt_and_saves_mode_0600(
     assert "secret" not in saved.output
 
 
+def test_auth_login_api_key_hides_and_saves_key(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    config = tmp_path / "linear" / "config.toml"
+    monkeypatch.setattr(linear_cli.getpass, "getpass", lambda prompt: "lin_api_secret")
+
+    result = CliRunner().invoke(
+        linear_cli.app,
+        ["auth", "login-api-key", "--config", str(config)],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "lin_api_secret" not in result.output
+    assert stat.S_IMODE(config.stat().st_mode) == 0o600
+    assert linear_cli.tomllib.loads(config.read_text()) == {
+        "auth_type": "api-key",
+        "token": "lin_api_secret",
+    }
+
+
+def test_config_show_masks_all_tokens(tmp_path: Path) -> None:
+    config = tmp_path / "config.toml"
+    linear_cli.save_config(
+        {
+            "auth_type": "oauth",
+            "token": "access-secret",
+            "refresh_token": "refresh-secret",
+        },
+        config,
+    )
+
+    result = CliRunner().invoke(
+        linear_cli.app,
+        ["config", "show", "--config", str(config)],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "access-secret" not in result.output
+    assert "refresh-secret" not in result.output
+    payload = json.loads(result.output)
+    assert payload["token"] == "********"
+    assert payload["refresh_token"] == "********"
+
+
 def test_view_create_preview_is_generic_and_non_mutating(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
