@@ -230,6 +230,149 @@ def test_view_create_preview_is_generic_and_non_mutating(
     }
 
 
+def test_comment_list_returns_comments_in_chronological_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class StubClient:
+        def query(self, query: str, variables: dict | None = None) -> dict:
+            assert variables == {"id": "issue-id", "first": 25}
+            return {
+                "issue": {
+                    "id": "issue-id",
+                    "identifier": "DCJ-77",
+                    "comments": {
+                        "nodes": [
+                            {"id": "new", "createdAt": "2026-09-16T02:00:00Z"},
+                            {"id": "old", "createdAt": "2026-09-16T01:00:00Z"},
+                        ]
+                    },
+                }
+            }
+
+    monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: StubClient())
+    monkeypatch.setattr(
+        linear_cli,
+        "read_issue",
+        lambda client, issue_id: {"id": "issue-id", "identifier": "DCJ-77"},
+    )
+
+    result = CliRunner().invoke(
+        linear_cli.app,
+        ["comment", "list", "DCJ-77", "--first", "25"],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["issue"]["identifier"] == "DCJ-77"
+    assert [comment["id"] for comment in payload["comments"]] == ["old", "new"]
+
+
+def test_comment_create_previews_file_body_without_mutation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    body_file = tmp_path / "comment.md"
+    body_file.write_text("阶段结论\n", encoding="utf-8")
+
+    class StubClient:
+        def query(self, query: str, variables: dict | None = None) -> dict:
+            raise AssertionError("preview must not call commentCreate")
+
+    monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: StubClient())
+    monkeypatch.setattr(
+        linear_cli,
+        "read_issue",
+        lambda client, issue_id: {
+            "id": "issue-id",
+            "identifier": "DCJ-77",
+            "title": "AIDE",
+        },
+    )
+
+    result = CliRunner().invoke(
+        linear_cli.app,
+        ["comment", "create", "DCJ-77", "--body-file", str(body_file)],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload == {
+        "action": "commentCreate",
+        "input": {"body": "阶段结论", "issueId": "issue-id"},
+        "issue": {"id": "issue-id", "identifier": "DCJ-77", "title": "AIDE"},
+        "preview": True,
+    }
+
+
+def test_comment_create_writes_and_reads_back_comment(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    body_file = tmp_path / "comment.md"
+    body_file.write_text("最终结论", encoding="utf-8")
+
+    class StubClient:
+        def query(self, query: str, variables: dict | None = None) -> dict:
+            assert variables == {"input": {"issueId": "issue-id", "body": "最终结论"}}
+            return {
+                "commentCreate": {
+                    "success": True,
+                    "comment": {"id": "comment-id"},
+                }
+            }
+
+    client = StubClient()
+    monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: client)
+    monkeypatch.setattr(
+        linear_cli,
+        "read_issue",
+        lambda selected, issue_id: {
+            "id": "issue-id",
+            "identifier": "DCJ-77",
+            "title": "AIDE",
+        },
+    )
+    monkeypatch.setattr(
+        linear_cli,
+        "read_comment",
+        lambda selected, comment_id: {"id": comment_id, "body": "最终结论"},
+    )
+
+    result = CliRunner().invoke(
+        linear_cli.app,
+        [
+            "comment",
+            "create",
+            "DCJ-77",
+            "--body-file",
+            str(body_file),
+            "--yes",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["comment"] == {"id": "comment-id", "body": "最终结论"}
+
+
+def test_comment_create_rejects_empty_body_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    body_file = tmp_path / "comment.md"
+    body_file.write_text("\n", encoding="utf-8")
+    monkeypatch.setattr(
+        linear_cli,
+        "get_client",
+        lambda endpoint: pytest.fail("empty body must fail before network"),
+    )
+
+    result = CliRunner().invoke(
+        linear_cli.app,
+        ["comment", "create", "DCJ-77", "--body-file", str(body_file)],
+    )
+
+    assert result.exit_code != 0
+    assert "内容不能为空" in result.output
+
+
 def test_view_issues_returns_matching_issues(monkeypatch: pytest.MonkeyPatch) -> None:
     class StubClient:
         def query(self, query: str, variables: dict | None = None) -> dict:
