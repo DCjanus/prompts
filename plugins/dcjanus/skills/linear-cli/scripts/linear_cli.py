@@ -1317,11 +1317,31 @@ def compact_input(values: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in values.items() if value is not None}
 
 
+def load_description(
+    description: str | None, description_file: Path | None
+) -> str | None:
+    """读取内联或文件形式的 Issue 描述，并拒绝同时指定。"""
+    if description is not None and description_file is not None:
+        raise typer.BadParameter("--description 与 --description-file 不能同时使用")
+    if description_file is None:
+        return description
+    try:
+        return description_file.read_text(encoding="utf-8").strip()
+    except OSError as error:
+        raise typer.BadParameter(
+            f"无法读取 --description-file {description_file}：{error}"
+        ) from error
+
+
 @issue_app.command("create")
 def issue_create(
     title: Annotated[str, typer.Option()],
     team: Annotated[str | None, typer.Option("--team")] = None,
     description: Annotated[str | None, typer.Option()] = None,
+    description_file: Annotated[
+        Path | None,
+        typer.Option("--description-file", exists=True, dir_okay=False),
+    ] = None,
     state_id: Annotated[str | None, typer.Option()] = None,
     priority: Annotated[int | None, typer.Option(min=0, max=4)] = None,
     cycle_id: Annotated[str | None, typer.Option()] = None,
@@ -1334,6 +1354,7 @@ def issue_create(
     yes: Annotated[bool, typer.Option("--yes")] = False,
 ) -> None:
     """预览或创建 Issue，并在写入后回读。"""
+    description = load_description(description, description_file)
     client = get_client(endpoint)
     resolved = resolve_team(client, select_team(team))
     fields = compact_input(
@@ -1372,6 +1393,10 @@ def issue_update(
     issue_id: Annotated[str, typer.Argument()],
     title: Annotated[str | None, typer.Option()] = None,
     description: Annotated[str | None, typer.Option()] = None,
+    description_file: Annotated[
+        Path | None,
+        typer.Option("--description-file", exists=True, dir_okay=False),
+    ] = None,
     state_id: Annotated[str | None, typer.Option()] = None,
     priority: Annotated[int | None, typer.Option(min=0, max=4)] = None,
     cycle_id: Annotated[str | None, typer.Option()] = None,
@@ -1384,6 +1409,7 @@ def issue_update(
     yes: Annotated[bool, typer.Option("--yes")] = False,
 ) -> None:
     """预览或更新 Issue，并在写入后回读。"""
+    description = load_description(description, description_file)
     client = get_client(endpoint)
     before = read_issue(client, issue_id)
     fields = compact_input(
