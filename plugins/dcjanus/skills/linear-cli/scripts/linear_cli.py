@@ -3,7 +3,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#     "httpx>=0.28,<1",
+#     "gql[httpx2]==4.4.0b0",
 #     "tomli-w>=1.2.0",
 #     "typer>=0.16,<1",
 # ]
@@ -30,10 +30,15 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
-import httpx
+import httpx2 as httpx
 import tomli_w
 import tomllib
 import typer
+from gql import Client as GraphQLClient
+from gql import gql
+from gql.transport.exceptions import TransportError
+from gql.transport.httpx import HTTPXTransport
+from graphql import GraphQLError
 
 app = typer.Typer(no_args_is_help=True, pretty_exceptions_show_locals=False)
 DEFAULT_ENDPOINT = "https://api.linear.app/graphql"
@@ -159,32 +164,22 @@ class LinearClient:
         transport: httpx.BaseTransport | None = None,
     ) -> None:
         authorization = f"Bearer {settings.token}" if settings.oauth else settings.token
-        self.client = httpx.Client(
+        graphql_transport = HTTPXTransport(
+            url=settings.endpoint,
             headers={"Authorization": authorization},
             timeout=30,
             transport=transport,
         )
-        self.endpoint = settings.endpoint
+        self.client = GraphQLClient(transport=graphql_transport)
 
     def query(self, query: str, variables: dict[str, Any] | None = None) -> Any:
         """执行 GraphQL 请求并拒绝部分成功响应。"""
         try:
-            response = self.client.post(
-                self.endpoint,
-                json={"query": query, "variables": variables or {}},
-            )
-            response.raise_for_status()
-            payload = response.json()
-        except (httpx.HTTPError, ValueError) as error:
-            raise LinearError(f"Linear 请求失败：{error}") from error
-        if payload.get("errors"):
-            messages = "; ".join(
-                str(item.get("message", item)) for item in payload["errors"]
-            )
-            raise LinearError(f"Linear GraphQL 错误：{messages}")
-        if "data" not in payload:
-            raise LinearError("Linear 响应缺少 data")
-        return payload["data"]
+            return self.client.execute(gql(query), variable_values=variables or {})
+        except GraphQLError as error:
+            raise LinearError(f"Linear GraphQL 文档错误：{error}") from error
+        except TransportError as error:
+            raise LinearError(f"Linear GraphQL 请求失败：{error}") from error
 
 
 def emit(payload: Any) -> None:

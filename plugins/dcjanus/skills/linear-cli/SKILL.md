@@ -7,6 +7,8 @@ description: 通过内置 Python CLI 直接调用 Linear 官方 GraphQL API，�
 
 使用 [linear_cli.py](scripts/linear_cli.py) 调用 Linear 官方 GraphQL API。本 Skill 只提供通用平台能力；不决定应该使用哪个 Team、状态、View、负责人或优先级，这些决策由调用它的项目 Skill 或用户请求提供。
 
+GraphQL 客户端使用 `gql[httpx2]`。当前固定到首个支持 HTTPX2 的 `4.4.0b0` 预发布版本；升级前先确认后续稳定版仍保留 `httpx2` transport 行为。
+
 ## 认证
 
 默认配置位于 `~/.config/linear-cli/config.toml`，文件权限固定为 `0600`。个人 API key 由用户本人在 Linear 创建，再通过隐藏的交互输入保存；不要让 agent 接触 key，也不要把 key 放入命令行、剪贴板管道或日志：

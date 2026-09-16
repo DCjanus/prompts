@@ -6,7 +6,7 @@ import stat
 import sys
 from pathlib import Path
 
-import httpx
+import httpx2 as httpx
 import pytest
 from typer.testing import CliRunner
 
@@ -32,7 +32,7 @@ def test_api_key_auth_and_graphql_errors() -> None:
         linear_cli.Settings("https://linear.test/graphql", "lin_api_key", False),
         transport=httpx.MockTransport(handler),
     )
-    assert client.query("query")["viewer"]["id"] == "me"
+    assert client.query("query Viewer { viewer { id } }")["viewer"]["id"] == "me"
 
     broken = linear_cli.LinearClient(
         linear_cli.Settings("https://linear.test/graphql", "key", False),
@@ -43,7 +43,7 @@ def test_api_key_auth_and_graphql_errors() -> None:
         ),
     )
     with pytest.raises(linear_cli.LinearError, match="denied"):
-        broken.query("query")
+        broken.query("query Issue { issue { id } }")
 
 
 def test_oauth_uses_bearer_header() -> None:
@@ -55,7 +55,7 @@ def test_oauth_uses_bearer_header() -> None:
         linear_cli.Settings("https://linear.test/graphql", "oauth-token", True),
         transport=httpx.MockTransport(handler),
     )
-    assert client.query("query")["viewer"]["id"] == "me"
+    assert client.query("query Viewer { viewer { id } }")["viewer"]["id"] == "me"
 
 
 def test_config_set_requires_prompt_and_saves_mode_0600(
