@@ -1,0 +1,3 @@
+interface:
+  display_name: "Linear CLI"
+  short_description: "通过官方 GraphQL API 管理 Linear"
