@@ -62,6 +62,11 @@ relations { nodes { id type relatedIssue { id identifier title } } }
 inverseRelations { nodes { id type issue { id identifier title } } }
 """
 
+COMMENT_FIELDS = """
+id body createdAt updatedAt url
+user { id name email }
+"""
+
 
 class LinearError(RuntimeError):
     """Linear 请求或响应错误。"""
@@ -267,9 +272,11 @@ def read_view(client: LinearClient, view_id: str) -> dict[str, Any]:
 config_app = typer.Typer(no_args_is_help=True)
 auth_app = typer.Typer(no_args_is_help=True)
 view_app = typer.Typer(no_args_is_help=True)
+comment_app = typer.Typer(no_args_is_help=True)
 app.add_typer(config_app, name="config")
 app.add_typer(auth_app, name="auth")
 app.add_typer(view_app, name="view")
+app.add_typer(comment_app, name="comment")
 
 
 @config_app.command("set")
@@ -481,6 +488,18 @@ def read_issue(client: LinearClient, issue_id: str) -> dict[str, Any]:
     return issue
 
 
+def read_comment(client: LinearClient, comment_id: str) -> dict[str, Any]:
+    """按 UUID 回读 Comment。"""
+    data = client.query(
+        f"query Comment($id: String!) {{ comment(id: $id) {{ {COMMENT_FIELDS} }} }}",
+        {"id": comment_id},
+    )
+    comment = data.get("comment")
+    if not comment:
+        raise LinearError(f"找不到 Linear Comment {comment_id}")
+    return comment
+
+
 @app.command("doctor")
 def doctor(
     endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
@@ -550,6 +569,94 @@ def issue_list(
         {"id": resolved["id"], "first": first},
     )
     emit(data["issues"]["nodes"])
+
+
+@comment_app.command("list")
+def comment_list(
+    issue_id: Annotated[str, typer.Argument()],
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+    first: Annotated[int, typer.Option(min=1, max=250)] = 100,
+) -> None:
+    """按创建时间正序列出 Issue 的 Comments。"""
+    client = get_client(endpoint)
+    issue = read_issue(client, issue_id)
+    data = client.query(
+        f"""
+        query Comments($id: String!, $first: Int!) {{
+          issue(id: $id) {{
+            id identifier
+            comments(first: $first) {{ nodes {{ {COMMENT_FIELDS} }} }}
+          }}
+        }}
+        """,
+        {"id": issue["id"], "first": first},
+    )
+    resolved = data.get("issue")
+    if not resolved:
+        raise LinearError(f"找不到 Linear Issue {issue_id}")
+    comments = sorted(
+        resolved["comments"]["nodes"], key=lambda comment: comment["createdAt"]
+    )
+    emit(
+        {
+            "issue": {"id": resolved["id"], "identifier": resolved["identifier"]},
+            "comments": comments,
+        }
+    )
+
+
+@comment_app.command("create")
+def comment_create(
+    issue_id: Annotated[str, typer.Argument()],
+    body_file: Annotated[Path, typer.Option("--body-file")],
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+    yes: Annotated[bool, typer.Option("--yes")] = False,
+) -> None:
+    """从 UTF-8 文件预览或创建 Comment，并在写入后回读。"""
+    try:
+        body = body_file.read_text(encoding="utf-8").strip()
+    except OSError as error:
+        raise typer.BadParameter(f"无法读取 --body-file {body_file}：{error}") from error
+    if not body:
+        raise typer.BadParameter("--body-file 内容不能为空")
+
+    client = get_client(endpoint)
+    issue = read_issue(client, issue_id)
+    fields = {"issueId": issue["id"], "body": body}
+    if not yes:
+        emit(
+            {
+                "action": "commentCreate",
+                "issue": {
+                    "id": issue["id"],
+                    "identifier": issue["identifier"],
+                    "title": issue["title"],
+                },
+                "input": fields,
+                "preview": True,
+            }
+        )
+        return
+    data = client.query(
+        """
+        mutation CreateComment($input: CommentCreateInput!) {
+          commentCreate(input: $input) { success comment { id } }
+        }
+        """,
+        {"input": fields},
+    )["commentCreate"]
+    if not data["success"]:
+        raise LinearError("commentCreate 返回 success=false")
+    emit(
+        {
+            "issue": {
+                "id": issue["id"],
+                "identifier": issue["identifier"],
+                "title": issue["title"],
+            },
+            "comment": read_comment(client, data["comment"]["id"]),
+        }
+    )
 
 
 def compact_input(values: dict[str, Any]) -> dict[str, Any]:
