@@ -1031,6 +1031,359 @@ def test_view_issues_returns_matching_issues(monkeypatch: pytest.MonkeyPatch) ->
     assert payload["issues"][0]["identifier"] == "DCJ-1"
 
 
+def test_view_preferences_get_returns_explicit_and_effective_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class StubClient:
+        def query(self, query: str, variables: dict | None = None) -> dict:
+            if "ViewPreferenceSchema" in query:
+                assert variables is None
+                return {
+                    "__type": {
+                        "fields": [
+                            {
+                                "name": "fieldDueDate",
+                                "type": {
+                                    "kind": "SCALAR",
+                                    "name": "Boolean",
+                                    "ofType": None,
+                                },
+                            },
+                            {
+                                "name": "issueGrouping",
+                                "type": {
+                                    "kind": "SCALAR",
+                                    "name": "String",
+                                    "ofType": None,
+                                },
+                            },
+                        ]
+                    }
+                }
+            assert "ViewPreferences" in query
+            assert variables == {"id": "view-id"}
+            return {
+                "customView": {
+                    "id": "view-id",
+                    "slugId": "recent",
+                    "name": "近期完成",
+                    "modelName": "Issue",
+                    "userViewPreferences": {
+                        "id": "preference-id",
+                        "type": "user",
+                        "viewType": "customView",
+                        "preferences": {
+                            "fieldDueDate": False,
+                            "issueGrouping": None,
+                        },
+                    },
+                    "viewPreferencesValues": {
+                        "fieldDueDate": False,
+                        "issueGrouping": "workflowState",
+                    },
+                }
+            }
+
+    monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: StubClient())
+    result = CliRunner().invoke(
+        linear_cli.app, ["view", "preferences", "get", "view-id"]
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["preferenceId"] == "preference-id"
+    assert payload["explicit"] == {"fieldDueDate": False}
+    assert payload["effective"] == {
+        "fieldDueDate": False,
+        "issueGrouping": "workflowState",
+    }
+
+
+def test_view_preferences_update_previews_merged_patch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        linear_cli,
+        "get_client",
+        lambda endpoint: object(),
+    )
+    monkeypatch.setattr(
+        linear_cli,
+        "read_view_preference_schema",
+        lambda client: {
+            "closedIssuesOrderedByRecency": "Boolean",
+            "fieldDueDate": "Boolean",
+            "issueGrouping": "String",
+        },
+    )
+    monkeypatch.setattr(
+        linear_cli,
+        "read_view_preferences",
+        lambda client, view_id, schema: {
+            "view": {"id": "view-id", "name": "近期完成"},
+            "preferenceId": "preference-id",
+            "explicit": {"issueGrouping": "workflowState"},
+            "effective": {},
+        },
+    )
+
+    result = CliRunner().invoke(
+        linear_cli.app,
+        [
+            "view",
+            "preferences",
+            "update",
+            "view-id",
+            "--set",
+            "fieldDueDate=false",
+            "--set",
+            "closedIssuesOrderedByRecency=true",
+            "--set",
+            "issueGrouping=null",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["action"] == "viewPreferencesUpdate"
+    assert payload["before"] == {"issueGrouping": "workflowState"}
+    assert payload["after"] == {
+        "closedIssuesOrderedByRecency": True,
+        "fieldDueDate": False,
+    }
+    assert payload["preview"] is True
+
+
+def test_view_preferences_update_writes_full_merged_object_and_reads_back(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mutation_calls: list[dict] = []
+
+    class StubClient:
+        def query(self, query: str, variables: dict | None = None) -> dict:
+            assert "UpdateViewPreferences" in query
+            mutation_calls.append(variables or {})
+            return {
+                "viewPreferencesUpdate": {
+                    "success": True,
+                    "viewPreferences": {"id": "preference-id"},
+                }
+            }
+
+    client = StubClient()
+    monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: client)
+    monkeypatch.setattr(
+        linear_cli,
+        "read_view_preference_schema",
+        lambda selected: {
+            "fieldDueDate": "Boolean",
+            "issueGrouping": "String",
+        },
+    )
+    readings = iter(
+        [
+            {
+                "view": {"id": "view-id", "name": "近期完成"},
+                "preferenceId": "preference-id",
+                "explicit": {"issueGrouping": "workflowState"},
+                "effective": {},
+            },
+            {
+                "view": {"id": "view-id", "name": "近期完成"},
+                "preferenceId": "preference-id",
+                "explicit": {
+                    "fieldDueDate": False,
+                    "issueGrouping": "workflowState",
+                },
+                "effective": {
+                    "fieldDueDate": False,
+                    "issueGrouping": "workflowState",
+                },
+            },
+        ]
+    )
+    monkeypatch.setattr(
+        linear_cli,
+        "read_view_preferences",
+        lambda selected, view_id, schema: next(readings),
+    )
+
+    result = CliRunner().invoke(
+        linear_cli.app,
+        [
+            "view",
+            "preferences",
+            "update",
+            "view-id",
+            "--set",
+            "fieldDueDate=false",
+            "--yes",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert mutation_calls == [
+        {
+            "id": "preference-id",
+            "input": {
+                "preferences": {
+                    "fieldDueDate": False,
+                    "issueGrouping": "workflowState",
+                }
+            },
+        }
+    ]
+    assert json.loads(result.output)["explicit"]["fieldDueDate"] is False
+
+
+def test_view_preferences_update_creates_missing_preferences(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mutation_calls: list[dict] = []
+
+    class StubClient:
+        def query(self, query: str, variables: dict | None = None) -> dict:
+            assert "CreateViewPreferences" in query
+            mutation_calls.append(variables or {})
+            return {
+                "viewPreferencesCreate": {
+                    "success": True,
+                    "viewPreferences": {"id": "new-preference-id"},
+                }
+            }
+
+    monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: StubClient())
+    monkeypatch.setattr(
+        linear_cli,
+        "read_view_preference_schema",
+        lambda client: {"fieldDueDate": "Boolean", "issueGrouping": "String"},
+    )
+    readings = iter(
+        [
+            {
+                "view": {"id": "view-id", "name": "近期完成"},
+                "preferenceId": None,
+                "explicit": {},
+                "effective": {},
+            },
+            {
+                "view": {"id": "view-id", "name": "近期完成"},
+                "preferenceId": "new-preference-id",
+                "explicit": {"fieldDueDate": False},
+                "effective": {"fieldDueDate": False},
+            },
+        ]
+    )
+    monkeypatch.setattr(
+        linear_cli,
+        "read_view_preferences",
+        lambda client, view_id, schema: next(readings),
+    )
+
+    result = CliRunner().invoke(
+        linear_cli.app,
+        [
+            "view",
+            "preferences",
+            "update",
+            "view-id",
+            "--set",
+            "fieldDueDate=false",
+            "--yes",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert mutation_calls == [
+        {
+            "input": {
+                "type": "user",
+                "viewType": "customView",
+                "customViewId": "view-id",
+                "preferences": {"fieldDueDate": False},
+            }
+        }
+    ]
+
+
+def test_view_preferences_update_patch_file_then_set_override(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    patch_file = tmp_path / "preferences.json"
+    patch_file.write_text(
+        '{"fieldDueDate": true, "issueGrouping": "assignee"}',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: object())
+    monkeypatch.setattr(
+        linear_cli,
+        "read_view_preference_schema",
+        lambda client: {"fieldDueDate": "Boolean", "issueGrouping": "String"},
+    )
+    monkeypatch.setattr(
+        linear_cli,
+        "read_view_preferences",
+        lambda client, view_id, schema: {
+            "view": {"id": "view-id"},
+            "preferenceId": "preference-id",
+            "explicit": {},
+            "effective": {},
+        },
+    )
+
+    result = CliRunner().invoke(
+        linear_cli.app,
+        [
+            "view",
+            "preferences",
+            "update",
+            "view-id",
+            "--patch-file",
+            str(patch_file),
+            "--set",
+            "fieldDueDate=false",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output)["patch"] == {
+        "fieldDueDate": False,
+        "issueGrouping": "assignee",
+    }
+
+
+def test_view_preferences_update_rejects_unknown_or_wrong_typed_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: object())
+    monkeypatch.setattr(
+        linear_cli,
+        "read_view_preference_schema",
+        lambda client: {"fieldDueDate": "Boolean"},
+    )
+
+    unknown = CliRunner().invoke(
+        linear_cli.app,
+        ["view", "preferences", "update", "view-id", "--set", "typo=true"],
+    )
+    wrong_type = CliRunner().invoke(
+        linear_cli.app,
+        [
+            "view",
+            "preferences",
+            "update",
+            "view-id",
+            "--set",
+            'fieldDueDate="false"',
+        ],
+    )
+
+    assert unknown.exit_code != 0
+    assert "未知 View preference" in unknown.output
+    assert wrong_type.exit_code != 0
+    assert "需要 Boolean" in wrong_type.output
+
+
 def test_view_update_rejects_invalid_filter_before_write(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
