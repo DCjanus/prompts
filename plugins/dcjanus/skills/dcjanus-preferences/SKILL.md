@@ -5,18 +5,11 @@ description: 适用于创建、修改或评审 Skill，或在跨语言的数据�
 
 ## Usage
 
+- 创建、修改或评审 Skill 时读取 `references/skill-writing.md`。
 - 先确认选型问题是否跨语言：数据库、分析、压缩或归档场景读取 `references/data-storage.md`；Protobuf 字段 presence 与兼容性判断读取 `references/protobuf.md`；Telegram Bot 消息能力选择读取 `references/telegram-bot-api.md`；语言生态库选择则读取对应语言参考文件。
 - 引入或替换第三方库时优先使用偏好清单。
 - 当工作负载同时具有多种特征、偏好清单未覆盖或与明确需求冲突时，先说明主要工作负载、取舍与建议；结论仍不明确时再向用户确认。
 - 新增语言时创建 `references/<language>.md`；新增跨语言主题时创建聚焦该主题的 reference，避免将无关偏好堆入泛化的 general 文件。
-
-## Skill Preferences
-
-- Skill frontmatter 中的 `description` 只服务于发现与触发：用具体、可区分的任务、对象、症状或用户意图说明何时应该使用该 skill，并保留识别这些场景所需的关键词；不要概述内部实现、执行流程、工具步骤或正文细节。只有在能避免相邻 skill 实际误触发时，才补充排除边界。
-- 自行维护的 CLI 型 skill 应让命令行界面本身支持渐进探索：按稳定的领域或资源与动作组织子命令，并让每层 `--help` 都能发现下一层能力。`SKILL.md` 只保留入口、路由与关键约束，引导 Agent 从顶层到目标子命令逐层查看帮助，不平铺全部命令、参数和示例；简单 CLI 不为了分层而增加层级。
-- 判断 skill 修改是否属于 breaking change 时，以用户或 Agent 实际使用的对外契约为准，不因内部脚本的命令、参数或 API 变化机械地添加 breaking 标记。脚本仅由同一 skill 驱动且指令已同步更新，用户仍能完成同样的任务时，通常不属于 breaking change。只有当变更使用户可见能力、输出或持久化格式、显式调用方式失效，或该脚本已被明确承诺给用户、自动化或其它 skill 直接调用时，才按 breaking change 处理并说明迁移方法。
-  - 通常不是 breaking：仅供 skill 内部调用的 CLI 将 `cluster list` 重组为 `cluster query list`，同时更新 `SKILL.md`；用户仍然只需要提出“列出集群”，Agent 也能完成同样的任务。
-  - 属于 breaking：某个命令或 `--json` 输出结构已明确提供给用户自动化或其它 skill 直接调用，变更却删除命令、重命名字段或改变语义，导致这些调用者失效。
 
 ## General Preferences
 
@@ -27,6 +20,7 @@ description: 适用于创建、修改或评审 Skill，或在跨语言的数据�
 
 ## References
 
+- Skill 编写与修改：`references/skill-writing.md`
 - 跨语言数据存储、分析、压缩与归档：`references/data-storage.md`
 - Protobuf 字段 presence 与兼容性：`references/protobuf.md`
 - Telegram Bot API 消息能力选择：`references/telegram-bot-api.md`
