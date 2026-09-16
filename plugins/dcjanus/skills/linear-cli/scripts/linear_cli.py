@@ -51,7 +51,7 @@ DEFAULT_CONFIG_PATH = (
 )
 
 ISSUE_FIELDS = """
-id identifier title description priority dueDate url
+id identifier title description priority dueDate url archivedAt
 state { id name type }
 team { id key name }
 cycle { id name number startsAt endsAt }
@@ -250,6 +250,64 @@ def resolve_team(client: LinearClient, team_key: str) -> dict[str, Any]:
     return teams[0]
 
 
+def read_team_automations(client: LinearClient, team_id: str) -> dict[str, Any]:
+    """读取 Team 的自动关闭和自动归档设置，并解析目标状态。"""
+    data = client.query(
+        """
+        query TeamAutomations($id: String!) {
+          team(id: $id) {
+            id key name
+            autoArchivePeriod
+            autoClosePeriod
+            autoCloseStateId
+            autoCloseParentIssues
+            autoCloseChildIssues
+            states { nodes { id name type } }
+          }
+        }
+        """,
+        {"id": team_id},
+    )
+    team = data.get("team")
+    if not team:
+        raise LinearError(f"找不到 Linear Team {team_id}")
+    state_id = team.pop("autoCloseStateId")
+    states = team.pop("states")["nodes"]
+    team["autoCloseState"] = next(
+        (state for state in states if state["id"] == state_id), None
+    )
+    return team
+
+
+def resolve_team_state(
+    client: LinearClient, team_id: str, state_name_or_id: str
+) -> dict[str, Any]:
+    """按 UUID 或名称精确解析 Team workflow state。"""
+    data = client.query(
+        """
+        query TeamStates($id: String!) {
+          team(id: $id) { states { nodes { id name type } } }
+        }
+        """,
+        {"id": team_id},
+    )
+    team = data.get("team")
+    if not team:
+        raise LinearError(f"找不到 Linear Team {team_id}")
+    states = [
+        state
+        for state in team["states"]["nodes"]
+        if state["id"] == state_name_or_id or state["name"] == state_name_or_id
+    ]
+    if len(states) != 1:
+        raise LinearError(
+            f"Workflow state {state_name_or_id!r} 精确匹配数量为 {len(states)}"
+        )
+    if states[0]["type"] not in {"completed", "canceled"}:
+        raise LinearError("自动关闭目标必须是 completed 或 canceled 状态")
+    return states[0]
+
+
 def read_view(client: LinearClient, view_id: str) -> dict[str, Any]:
     """按 UUID 或 slug 回读 Custom View。"""
     data = client.query(
@@ -269,14 +327,22 @@ def read_view(client: LinearClient, view_id: str) -> dict[str, Any]:
     return view
 
 
-config_app = typer.Typer(no_args_is_help=True)
-auth_app = typer.Typer(no_args_is_help=True)
-view_app = typer.Typer(no_args_is_help=True)
-comment_app = typer.Typer(no_args_is_help=True)
+config_app = typer.Typer(no_args_is_help=True, help="管理本地认证配置。")
+auth_app = typer.Typer(no_args_is_help=True, help="登录或修复 Linear 认证。")
+team_app = typer.Typer(no_args_is_help=True, help="查询和管理 Team。")
+team_automation_app = typer.Typer(no_args_is_help=True, help="查询和管理 Team 自动化。")
+issue_app = typer.Typer(no_args_is_help=True, help="查询和管理 Issue。")
+issue_comment_app = typer.Typer(no_args_is_help=True, help="查询和创建 Issue 评论。")
+issue_relation_app = typer.Typer(no_args_is_help=True, help="管理 Issue 关系。")
+view_app = typer.Typer(no_args_is_help=True, help="查询和管理 Custom View。")
 app.add_typer(config_app, name="config")
 app.add_typer(auth_app, name="auth")
+app.add_typer(team_app, name="team")
+team_app.add_typer(team_automation_app, name="automation")
+app.add_typer(issue_app, name="issue")
+issue_app.add_typer(issue_comment_app, name="comment")
+issue_app.add_typer(issue_relation_app, name="relation")
 app.add_typer(view_app, name="view")
-app.add_typer(comment_app, name="comment")
 
 
 @config_app.command("set")
@@ -513,7 +579,7 @@ def doctor(
     emit(data)
 
 
-@app.command("team-show")
+@team_app.command("show")
 def team_show(
     team: Annotated[str, typer.Option("--team")],
     endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
@@ -538,7 +604,87 @@ def team_show(
     emit(data["team"])
 
 
-@app.command("issue-get")
+@team_automation_app.command("show")
+def team_automation_show(
+    team: Annotated[str, typer.Option("--team")],
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+) -> None:
+    """读取 Team 的自动关闭与自动归档设置。"""
+    client = get_client(endpoint)
+    resolved = resolve_team(client, team)
+    emit(read_team_automations(client, resolved["id"]))
+
+
+@team_automation_app.command("update")
+def team_automation_update(
+    team: Annotated[str, typer.Option("--team")],
+    auto_archive_months: Annotated[
+        float | None, typer.Option("--auto-archive-months", min=1)
+    ] = None,
+    disable_auto_archive: Annotated[
+        bool, typer.Option("--disable-auto-archive")
+    ] = False,
+    auto_close_months: Annotated[
+        float | None, typer.Option("--auto-close-months", min=1)
+    ] = None,
+    disable_auto_close: Annotated[bool, typer.Option("--disable-auto-close")] = False,
+    auto_close_state: Annotated[str | None, typer.Option("--auto-close-state")] = None,
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+    yes: Annotated[bool, typer.Option("--yes")] = False,
+) -> None:
+    """预览或更新 Team 的自动关闭与自动归档设置，并回读。"""
+    if auto_archive_months is not None and disable_auto_archive:
+        raise typer.BadParameter(
+            "--auto-archive-months 与 --disable-auto-archive 不能同时使用"
+        )
+    if auto_close_months is not None and disable_auto_close:
+        raise typer.BadParameter(
+            "--auto-close-months 与 --disable-auto-close 不能同时使用"
+        )
+    if auto_close_state is not None and disable_auto_close:
+        raise typer.BadParameter(
+            "--auto-close-state 与 --disable-auto-close 不能同时使用"
+        )
+
+    client = get_client(endpoint)
+    resolved = resolve_team(client, team)
+    before = read_team_automations(client, resolved["id"])
+    fields: dict[str, Any] = {}
+    if auto_archive_months is not None or disable_auto_archive:
+        fields["autoArchivePeriod"] = (
+            None if disable_auto_archive else auto_archive_months
+        )
+    if auto_close_months is not None or disable_auto_close:
+        fields["autoClosePeriod"] = None if disable_auto_close else auto_close_months
+    if auto_close_state is not None:
+        state = resolve_team_state(client, resolved["id"], auto_close_state)
+        fields["autoCloseStateId"] = state["id"]
+    if not fields:
+        raise typer.BadParameter("至少提供一个自动化更新字段")
+    if not yes:
+        emit(
+            {
+                "action": "teamUpdate",
+                "before": before,
+                "input": fields,
+                "preview": True,
+            }
+        )
+        return
+    result = client.query(
+        """
+        mutation UpdateTeamAutomations($id: String!, $input: TeamUpdateInput!) {
+          teamUpdate(id: $id, input: $input) { success team { id } }
+        }
+        """,
+        {"id": resolved["id"], "input": fields},
+    )["teamUpdate"]
+    if not result["success"]:
+        raise LinearError("teamUpdate 返回 success=false")
+    emit(read_team_automations(client, resolved["id"]))
+
+
+@issue_app.command("get")
 def issue_get(
     issue_id: Annotated[str, typer.Argument()],
     endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
@@ -547,7 +693,7 @@ def issue_get(
     emit(read_issue(get_client(endpoint), issue_id))
 
 
-@app.command("issue-list")
+@issue_app.command("list")
 def issue_list(
     team: Annotated[str, typer.Option("--team")],
     endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
@@ -571,7 +717,7 @@ def issue_list(
     emit(data["issues"]["nodes"])
 
 
-@comment_app.command("list")
+@issue_comment_app.command("list")
 def comment_list(
     issue_id: Annotated[str, typer.Argument()],
     endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
@@ -605,7 +751,7 @@ def comment_list(
     )
 
 
-@comment_app.command("create")
+@issue_comment_app.command("create")
 def comment_create(
     issue_id: Annotated[str, typer.Argument()],
     body_file: Annotated[Path, typer.Option("--body-file")],
@@ -666,7 +812,7 @@ def compact_input(values: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in values.items() if value is not None}
 
 
-@app.command("issue-create")
+@issue_app.command("create")
 def issue_create(
     title: Annotated[str, typer.Option()],
     team: Annotated[str, typer.Option("--team")],
@@ -716,7 +862,7 @@ def issue_create(
     emit(read_issue(client, data["issue"]["id"]))
 
 
-@app.command("issue-update")
+@issue_app.command("update")
 def issue_update(
     issue_id: Annotated[str, typer.Argument()],
     title: Annotated[str | None, typer.Option()] = None,
@@ -774,7 +920,97 @@ def issue_update(
     emit(read_issue(client, before["id"]))
 
 
-@app.command("relation-create")
+@issue_app.command("archive")
+def issue_archive(
+    issue_id: Annotated[str, typer.Argument()],
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+    yes: Annotated[bool, typer.Option("--yes")] = False,
+) -> None:
+    """预览或归档 Issue，并在写入后回读。"""
+    client = get_client(endpoint)
+    before = read_issue(client, issue_id)
+    if not yes:
+        emit({"action": "issueArchive", "before": before, "preview": True})
+        return
+    result = client.query(
+        """
+        mutation ArchiveIssue($id: String!) {
+          issueArchive(id: $id) { success }
+        }
+        """,
+        {"id": before["id"]},
+    )["issueArchive"]
+    if not result["success"]:
+        raise LinearError("issueArchive 返回 success=false")
+    emit(read_issue(client, before["id"]))
+
+
+@issue_app.command("restore")
+def issue_restore(
+    issue_id: Annotated[str, typer.Argument()],
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+    yes: Annotated[bool, typer.Option("--yes")] = False,
+) -> None:
+    """预览或恢复已归档或最近删除的 Issue，并回读。"""
+    client = get_client(endpoint)
+    before = read_issue(client, issue_id)
+    if not yes:
+        emit({"action": "issueUnarchive", "before": before, "preview": True})
+        return
+    result = client.query(
+        """
+        mutation RestoreIssue($id: String!) {
+          issueUnarchive(id: $id) { success }
+        }
+        """,
+        {"id": before["id"]},
+    )["issueUnarchive"]
+    if not result["success"]:
+        raise LinearError("issueUnarchive 返回 success=false")
+    emit(read_issue(client, before["id"]))
+
+
+@issue_app.command("delete")
+def issue_delete(
+    issue_id: Annotated[str, typer.Argument()],
+    permanent: Annotated[bool, typer.Option("--permanent")] = False,
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+    yes: Annotated[bool, typer.Option("--yes")] = False,
+) -> None:
+    """预览或删除 Issue；默认可恢复 30 天，永久删除需要管理员权限。"""
+    client = get_client(endpoint)
+    before = read_issue(client, issue_id)
+    if not yes:
+        emit(
+            {
+                "action": "issueDelete",
+                "before": before,
+                "permanent": permanent,
+                "preview": True,
+            }
+        )
+        return
+    result = client.query(
+        """
+        mutation DeleteIssue($id: String!, $permanentlyDelete: Boolean) {
+          issueDelete(id: $id, permanentlyDelete: $permanentlyDelete) { success }
+        }
+        """,
+        {"id": before["id"], "permanentlyDelete": permanent},
+    )["issueDelete"]
+    if not result["success"]:
+        raise LinearError("issueDelete 返回 success=false")
+    emit(
+        {
+            "deleted": True,
+            "issue": before,
+            "permanent": permanent,
+            "recoverableForDays": 0 if permanent else 30,
+        }
+    )
+
+
+@issue_relation_app.command("create")
 def relation_create(
     issue_id: Annotated[str, typer.Argument()],
     related_issue_id: Annotated[str, typer.Argument()],
