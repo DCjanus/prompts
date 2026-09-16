@@ -1,10 +1,11 @@
 ---
 name: dcjanus-preferences
-description: 记录 DCjanus 的跨语言技术选型、哈希与无序集合摘要、API 与 Protobuf 契约选择以及 Python/Rust/Go 第三方库偏好，供 AI 在存储、分析、压缩、归档、消息呈现、协议设计、引入依赖或替换库时优先参考。适用于技术方案对比或需要遵循 DCjanus 个人偏好进行开发的场景。
+description: 适用于创建、修改或评审 Skill，或在跨语言的数据存储、分析、压缩、归档、哈希、API/Protobuf 契约、Telegram Bot 消息呈现及 Python/Rust/Go 第三方库之间做技术选择的场景。
 ---
 
 ## Usage
 
+- 创建、修改或评审 Skill 时读取 `references/skill-writing.md`。
 - 先确认选型问题是否跨语言：数据库、分析、压缩或归档场景读取 `references/data-storage.md`；Protobuf 字段 presence 与兼容性判断读取 `references/protobuf.md`；Telegram Bot 消息能力选择读取 `references/telegram-bot-api.md`；语言生态库选择则读取对应语言参考文件。
 - 引入或替换第三方库时优先使用偏好清单。
 - 当工作负载同时具有多种特征、偏好清单未覆盖或与明确需求冲突时，先说明主要工作负载、取舍与建议；结论仍不明确时再向用户确认。
@@ -19,6 +20,7 @@ description: 记录 DCjanus 的跨语言技术选型、哈希与无序集合摘�
 
 ## References
 
+- Skill 编写与修改：`references/skill-writing.md`
 - 跨语言数据存储、分析、压缩与归档：`references/data-storage.md`
 - Protobuf 字段 presence 与兼容性：`references/protobuf.md`
 - Telegram Bot API 消息能力选择：`references/telegram-bot-api.md`
