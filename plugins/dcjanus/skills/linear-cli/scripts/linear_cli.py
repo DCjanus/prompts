@@ -747,6 +747,43 @@ def view_get(
     emit(read_view(get_client(endpoint), view_id))
 
 
+@view_app.command("issues")
+def view_issues(
+    view_id: Annotated[str, typer.Argument()],
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+    first: Annotated[int, typer.Option(min=1, max=250)] = 100,
+) -> None:
+    """列出一个 Issue Custom View 当前命中的事项。"""
+    client = get_client(endpoint)
+    data = client.query(
+        """
+        query ViewIssues($id: String!, $first: Int!) {
+          customView(id: $id) {
+            id name modelName
+            issues(first: $first) { nodes {
+              id identifier title priority dueDate url
+              state { id name type }
+              assignee { id name }
+            } }
+          }
+        }
+        """,
+        {"id": view_id, "first": first},
+    )
+    view = data.get("customView")
+    if not view:
+        raise LinearError(f"找不到 Linear Custom View {view_id}")
+    if view["modelName"] != "Issue":
+        raise LinearError(f"Custom View {view_id} 不是 Issue View")
+    emit(
+        {
+            "id": view["id"],
+            "name": view["name"],
+            "issues": view["issues"]["nodes"],
+        }
+    )
+
+
 @view_app.command("create")
 def view_create(
     name: Annotated[str, typer.Option()],

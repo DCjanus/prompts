@@ -56,6 +56,7 @@ Linear OAuth 需要先注册 OAuth application，将 `http://127.0.0.1:45831/cal
 ./scripts/linear_cli.py relation-create ENG-123 ENG-456 --type related
 ./scripts/linear_cli.py view list
 ./scripts/linear_cli.py view get VIEW_ID
+./scripts/linear_cli.py view issues VIEW_ID
 ./scripts/linear_cli.py view create --name 'My work' --team-id TEAM_UUID \
   --filter-json '{"assignee":{"id":{"eq":"USER_UUID"}}}'
 ```

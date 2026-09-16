@@ -230,6 +230,31 @@ def test_view_create_preview_is_generic_and_non_mutating(
     }
 
 
+def test_view_issues_returns_matching_issues(monkeypatch: pytest.MonkeyPatch) -> None:
+    class StubClient:
+        def query(self, query: str, variables: dict | None = None) -> dict:
+            assert variables == {"id": "view-id", "first": 25}
+            return {
+                "customView": {
+                    "id": "view-id",
+                    "name": "Now",
+                    "modelName": "Issue",
+                    "issues": {"nodes": [{"id": "issue-id", "identifier": "DCJ-1"}]},
+                }
+            }
+
+    monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: StubClient())
+    result = CliRunner().invoke(
+        linear_cli.app,
+        ["view", "issues", "view-id", "--first", "25"],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["name"] == "Now"
+    assert payload["issues"][0]["identifier"] == "DCJ-1"
+
+
 def test_view_update_rejects_invalid_filter_before_write(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
