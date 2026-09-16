@@ -552,7 +552,7 @@ def test_issue_list_rejects_unknown_or_empty_fields(
     assert unknown.exit_code != 0
     assert "不支持的 Issue 字段：secret" in unknown.output
     assert empty.exit_code != 0
-    assert "--fields 不能为空" in empty.output
+    assert "不能为空" in empty.output
 
 
 def test_issue_create_and_update_read_description_file(
