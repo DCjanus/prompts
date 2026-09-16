@@ -973,26 +973,41 @@ def issue_restore(
 @issue_app.command("delete")
 def issue_delete(
     issue_id: Annotated[str, typer.Argument()],
+    permanent: Annotated[bool, typer.Option("--permanent")] = False,
     endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
     yes: Annotated[bool, typer.Option("--yes")] = False,
 ) -> None:
-    """预览或将 Issue 移入 Recently deleted；Linear 会保留 30 天。"""
+    """预览或删除 Issue；默认可恢复 30 天，永久删除需要管理员权限。"""
     client = get_client(endpoint)
     before = read_issue(client, issue_id)
     if not yes:
-        emit({"action": "issueDelete", "before": before, "preview": True})
+        emit(
+            {
+                "action": "issueDelete",
+                "before": before,
+                "permanent": permanent,
+                "preview": True,
+            }
+        )
         return
     result = client.query(
         """
-        mutation DeleteIssue($id: String!) {
-          issueDelete(id: $id) { success }
+        mutation DeleteIssue($id: String!, $permanentlyDelete: Boolean) {
+          issueDelete(id: $id, permanentlyDelete: $permanentlyDelete) { success }
         }
         """,
-        {"id": before["id"]},
+        {"id": before["id"], "permanentlyDelete": permanent},
     )["issueDelete"]
     if not result["success"]:
         raise LinearError("issueDelete 返回 success=false")
-    emit({"deleted": True, "issue": before, "recoverableForDays": 30})
+    emit(
+        {
+            "deleted": True,
+            "issue": before,
+            "permanent": permanent,
+            "recoverableForDays": 0 if permanent else 30,
+        }
+    )
 
 
 @issue_relation_app.command("create")

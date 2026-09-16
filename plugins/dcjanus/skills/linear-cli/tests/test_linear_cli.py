@@ -676,7 +676,7 @@ def test_issue_delete_is_recoverable_and_does_not_read_deleted_issue(
 ) -> None:
     class StubClient:
         def query(self, query: str, variables: dict | None = None) -> dict:
-            assert variables == {"id": "issue-id"}
+            assert variables == {"id": "issue-id", "permanentlyDelete": False}
             return {"issueDelete": {"success": True}}
 
     monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: StubClient())
@@ -691,7 +691,35 @@ def test_issue_delete_is_recoverable_and_does_not_read_deleted_issue(
     assert result.exit_code == 0, result.output
     payload = json.loads(result.output)
     assert payload["deleted"] is True
+    assert payload["permanent"] is False
     assert payload["recoverableForDays"] == 30
+
+
+def test_issue_delete_can_permanently_delete_with_explicit_flags(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class StubClient:
+        def query(self, query: str, variables: dict | None = None) -> dict:
+            assert variables == {"id": "issue-id", "permanentlyDelete": True}
+            return {"issueDelete": {"success": True}}
+
+    monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: StubClient())
+    monkeypatch.setattr(
+        linear_cli,
+        "read_issue",
+        lambda client, issue_id: {"id": "issue-id", "identifier": "DCJ-77"},
+    )
+
+    result = CliRunner().invoke(
+        linear_cli.app,
+        ["issue", "delete", "DCJ-77", "--permanent", "--yes"],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["deleted"] is True
+    assert payload["permanent"] is True
+    assert payload["recoverableForDays"] == 0
 
 
 def test_view_issues_returns_matching_issues(monkeypatch: pytest.MonkeyPatch) -> None:
