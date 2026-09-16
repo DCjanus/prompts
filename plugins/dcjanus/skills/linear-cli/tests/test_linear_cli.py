@@ -89,6 +89,14 @@ def test_auth_login_api_key_hides_and_saves_key(
 ) -> None:
     config = tmp_path / "linear" / "config.toml"
     monkeypatch.setattr(linear_cli.getpass, "getpass", lambda prompt: "lin_api_secret")
+    monkeypatch.setattr(
+        linear_cli,
+        "read_identity",
+        lambda client: {
+            "viewer": {"id": "me", "name": "Me"},
+            "organization": {"id": "org", "name": "Workspace", "urlKey": "ws"},
+        },
+    )
 
     result = CliRunner().invoke(
         linear_cli.app,
@@ -102,6 +110,27 @@ def test_auth_login_api_key_hides_and_saves_key(
         "auth_type": "api-key",
         "token": "lin_api_secret",
     }
+
+
+def test_auth_login_api_key_does_not_replace_config_when_validation_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    config = tmp_path / "linear" / "config.toml"
+    linear_cli.save_config({"auth_type": "api-key", "token": "existing"}, config)
+    monkeypatch.setattr(linear_cli.getpass, "getpass", lambda prompt: "invalid")
+
+    def reject(client: object) -> dict:
+        raise linear_cli.LinearError("unauthorized")
+
+    monkeypatch.setattr(linear_cli, "read_identity", reject)
+    result = CliRunner().invoke(
+        linear_cli.app,
+        ["auth", "login-api-key", "--config", str(config)],
+    )
+
+    assert result.exit_code != 0
+    assert "invalid" not in result.output
+    assert linear_cli.tomllib.loads(config.read_text())["token"] == "existing"
 
 
 def test_config_show_masks_all_tokens(tmp_path: Path) -> None:

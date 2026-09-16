@@ -192,6 +192,18 @@ def get_client(endpoint: str) -> LinearClient:
     return LinearClient(settings_from_env(endpoint))
 
 
+def read_identity(client: LinearClient) -> dict[str, Any]:
+    """读取当前用户与 workspace，验证认证是否真实可用。"""
+    return client.query(
+        """
+        query Identity {
+          viewer { id name }
+          organization { id name urlKey }
+        }
+        """
+    )
+
+
 def resolve_team(client: LinearClient, team_key: str) -> dict[str, Any]:
     """按 key 精确解析 Team，并拒绝猜测。"""
     data = client.query(
@@ -278,14 +290,23 @@ def config_show(
 @auth_app.command("login-api-key")
 def auth_login_api_key(
     config_path: Annotated[Path, typer.Option("--config")] = DEFAULT_CONFIG_PATH,
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
 ) -> None:
-    """交互式隐藏输入并安全保存个人 API key。"""
+    """交互式验证并安全保存个人 API key。"""
     token = getpass.getpass("Linear personal API key: ").strip()
     if not token:
         raise typer.BadParameter("API key 不能为空")
+    identity = read_identity(LinearClient(Settings(endpoint, token, False)))
     path = config_path.expanduser()
     save_config({"auth_type": "api-key", "token": token}, path)
-    emit({"authType": "api-key", "config": str(path), "loggedIn": True})
+    emit(
+        {
+            "authType": "api-key",
+            "config": str(path),
+            "loggedIn": True,
+            **identity,
+        }
+    )
 
 
 @auth_app.command("login")
@@ -399,14 +420,7 @@ def doctor(
 ) -> None:
     """验证认证、workspace 与目标 Team 的只读能力。"""
     client = get_client(endpoint)
-    data = client.query(
-        """
-        query Doctor {
-          viewer { id name email }
-          organization { id name urlKey }
-        }
-        """
-    )
+    data = read_identity(client)
     if team:
         data["team"] = resolve_team(client, team)
     emit(data)
