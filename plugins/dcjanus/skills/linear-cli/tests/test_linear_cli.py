@@ -482,6 +482,79 @@ def test_issue_get_reads_back_assignee(monkeypatch: pytest.MonkeyPatch) -> None:
     assert json.loads(result.output)["assignee"]["name"] == "DCjanus"
 
 
+def test_issue_list_selects_requested_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, dict | None]] = []
+
+    class StubClient:
+        def query(self, query: str, variables: dict | None = None) -> dict:
+            calls.append((query, variables))
+            return {
+                "issues": {
+                    "nodes": [
+                        {
+                            "identifier": "DCJ-104",
+                            "title": "校准身份契约",
+                            "state": {"name": "Doing", "type": "started"},
+                        }
+                    ]
+                }
+            }
+
+    monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: StubClient())
+    monkeypatch.setattr(
+        linear_cli,
+        "resolve_team",
+        lambda client, team: {"id": "team-id", "key": "DCJ", "name": "DCjanus"},
+    )
+    monkeypatch.setattr(linear_cli, "select_team", lambda team: team or "DCJ")
+
+    result = CliRunner().invoke(
+        linear_cli.app,
+        [
+            "issue",
+            "list",
+            "--fields",
+            "identifier,title,state",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output) == [
+        {
+            "identifier": "DCJ-104",
+            "state": {"name": "Doing", "type": "started"},
+            "title": "校准身份契约",
+        }
+    ]
+    query, variables = calls[-1]
+    assert "identifier title state { id name type }" in " ".join(query.split())
+    assert "description" not in query
+    assert variables == {"id": "team-id", "first": 100}
+
+
+def test_issue_list_rejects_unknown_or_empty_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: object())
+    runner = CliRunner()
+
+    unknown = runner.invoke(
+        linear_cli.app,
+        ["issue", "list", "--team", "DCJ", "--fields", "identifier,secret"],
+    )
+    empty = runner.invoke(
+        linear_cli.app,
+        ["issue", "list", "--team", "DCJ", "--fields", " , "],
+    )
+
+    assert unknown.exit_code != 0
+    assert "不支持的 Issue 字段：secret" in unknown.output
+    assert empty.exit_code != 0
+    assert "--fields 不能为空" in empty.output
+
+
 def test_issue_create_and_update_read_description_file(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
