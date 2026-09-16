@@ -359,6 +359,138 @@ def read_view(client: LinearClient, view_id: str) -> dict[str, Any]:
     return view
 
 
+def read_view_preference_schema(client: LinearClient) -> dict[str, str]:
+    """读取当前 Linear 支持的 View preference 字段与标量类型。"""
+    data = client.query(
+        """
+        query ViewPreferenceSchema {
+          __type(name: "ViewPreferencesValues") {
+            fields { name type { kind name ofType { kind name } } }
+          }
+        }
+        """
+    )
+    view_preferences_type = data.get("__type")
+    if not view_preferences_type:
+        raise LinearError("Linear schema 中缺少 ViewPreferencesValues")
+    schema: dict[str, str] = {}
+    for field in view_preferences_type["fields"]:
+        field_type = field["type"]
+        if field_type["kind"] == "NON_NULL":
+            field_type = field_type["ofType"]
+        if field_type["kind"] not in {"SCALAR", "ENUM"}:
+            continue
+        schema[field["name"]] = field_type["name"]
+    return schema
+
+
+def read_view_preferences(
+    client: LinearClient,
+    view_id: str,
+    schema: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """读取 Custom View 的当前用户偏好与最终有效值。"""
+    schema = schema or read_view_preference_schema(client)
+    if not schema:
+        raise LinearError("Linear schema 没有可读取的 View preference 字段")
+    fields = "\n".join(sorted(schema))
+    data = client.query(
+        f"""
+        query ViewPreferences($id: String!) {{
+          customView(id: $id) {{
+            id slugId name modelName
+            userViewPreferences {{
+              id type viewType
+              preferences {{ {fields} }}
+            }}
+            viewPreferencesValues {{ {fields} }}
+          }}
+        }}
+        """,
+        {"id": view_id},
+    )
+    view = data.get("customView")
+    if not view:
+        raise LinearError(f"找不到 Linear Custom View {view_id}")
+    if view["modelName"] != "Issue":
+        raise LinearError(f"Custom View {view_id} 不是 Issue View")
+    user_preferences = view.pop("userViewPreferences")
+    effective = view.pop("viewPreferencesValues")
+    explicit = {
+        key: value
+        for key, value in (user_preferences or {}).get("preferences", {}).items()
+        if value is not None
+    }
+    return {
+        "view": view,
+        "preferenceId": user_preferences["id"] if user_preferences else None,
+        "explicit": explicit,
+        "effective": {
+            key: value for key, value in effective.items() if value is not None
+        },
+    }
+
+
+def parse_view_preference_assignment(raw: str) -> tuple[str, Any]:
+    """解析 KEY=JSON_VALUE 形式的 preference patch。"""
+    key, separator, raw_value = raw.partition("=")
+    key = key.strip()
+    if not separator or not key:
+        raise typer.BadParameter("--set 必须使用 KEY=JSON_VALUE 格式")
+    try:
+        value = json.loads(raw_value)
+    except json.JSONDecodeError as error:
+        raise typer.BadParameter(f"--set {key} 的值不是有效 JSON：{error}") from error
+    return key, value
+
+
+def validate_view_preference_patch(
+    patch: dict[str, Any], schema: dict[str, str]
+) -> None:
+    """拒绝未知 preference 和明显不匹配的 JSON 值。"""
+    python_types: dict[str, type[Any] | tuple[type[Any], ...]] = {
+        "Boolean": bool,
+        "Float": (int, float),
+        "Int": int,
+        "String": str,
+    }
+    for key, value in patch.items():
+        if key not in schema:
+            raise typer.BadParameter(f"未知 View preference：{key}")
+        if value is None:
+            continue
+        expected = python_types.get(schema[key])
+        if expected is not None and (
+            not isinstance(value, expected)
+            or schema[key] in {"Float", "Int"}
+            and isinstance(value, bool)
+        ):
+            raise typer.BadParameter(f"View preference {key} 需要 {schema[key]} 值")
+
+
+def load_view_preference_patch(
+    assignments: list[str], patch_file: Path | None
+) -> dict[str, Any]:
+    """合并 JSON patch file 与可重复的 --set；--set 后写并覆盖同名 key。"""
+    patch: dict[str, Any] = {}
+    if patch_file is not None:
+        try:
+            loaded = json.loads(patch_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            raise LinearError(
+                f"无法读取 preference patch {patch_file}：{error}"
+            ) from error
+        if not isinstance(loaded, dict):
+            raise typer.BadParameter("preference patch 顶层必须是 JSON object")
+        patch.update(loaded)
+    for assignment in assignments:
+        key, value = parse_view_preference_assignment(assignment)
+        patch[key] = value
+    if not patch:
+        raise typer.BadParameter("至少提供一个 --set 或 --patch-file")
+    return patch
+
+
 config_app = typer.Typer(no_args_is_help=True, help="管理本地认证配置。")
 auth_app = typer.Typer(no_args_is_help=True, help="登录或修复 Linear 认证。")
 team_app = typer.Typer(no_args_is_help=True, help="查询和管理 Team。")
@@ -367,6 +499,9 @@ issue_app = typer.Typer(no_args_is_help=True, help="查询和管理 Issue。")
 issue_comment_app = typer.Typer(no_args_is_help=True, help="查询和创建 Issue 评论。")
 issue_relation_app = typer.Typer(no_args_is_help=True, help="管理 Issue 关系。")
 view_app = typer.Typer(no_args_is_help=True, help="查询和管理 Custom View。")
+view_preferences_app = typer.Typer(
+    no_args_is_help=True, help="查询和管理 Custom View 的个人展示偏好。"
+)
 api_app = typer.Typer(no_args_is_help=True, help="调用尚未封装的 Linear GraphQL API。")
 app.add_typer(config_app, name="config")
 app.add_typer(auth_app, name="auth")
@@ -376,6 +511,7 @@ app.add_typer(issue_app, name="issue")
 issue_app.add_typer(issue_comment_app, name="comment")
 issue_app.add_typer(issue_relation_app, name="relation")
 app.add_typer(view_app, name="view")
+view_app.add_typer(view_preferences_app, name="preferences")
 app.add_typer(api_app, name="api")
 
 
@@ -1259,6 +1395,102 @@ def view_get(
     emit(read_view(get_client(endpoint), view_id))
 
 
+@view_preferences_app.command("get")
+def view_preferences_get(
+    view_id: Annotated[str, typer.Argument()],
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+) -> None:
+    """读取当前用户在一个 Issue Custom View 上的显式与有效偏好。"""
+    emit(read_view_preferences(get_client(endpoint), view_id))
+
+
+@view_preferences_app.command("update")
+def view_preferences_update(
+    view_id: Annotated[str, typer.Argument()],
+    set_values: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--set",
+            help="可重复的 KEY=JSON_VALUE；null 删除显式覆盖。",
+        ),
+    ] = None,
+    patch_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--patch-file",
+            exists=True,
+            dir_okay=False,
+            help="JSON object patch；同名 --set 值优先。",
+        ),
+    ] = None,
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+    yes: Annotated[bool, typer.Option("--yes")] = False,
+) -> None:
+    """合并更新当前用户的 View preferences；null 删除显式覆盖。"""
+    client = get_client(endpoint)
+    schema = read_view_preference_schema(client)
+    patch = load_view_preference_patch(set_values or [], patch_file)
+    validate_view_preference_patch(patch, schema)
+    before = read_view_preferences(client, view_id, schema)
+    after = dict(before["explicit"])
+    for key, value in patch.items():
+        if value is None:
+            after.pop(key, None)
+        else:
+            after[key] = value
+    action = (
+        "viewPreferencesUpdate" if before["preferenceId"] else "viewPreferencesCreate"
+    )
+    preview = {
+        "action": action,
+        "view": before["view"],
+        "before": before["explicit"],
+        "patch": patch,
+        "after": after,
+        "preview": True,
+    }
+    if not yes:
+        emit(preview)
+        return
+    if before["preferenceId"]:
+        result = client.query(
+            """
+            mutation UpdateViewPreferences(
+              $id: String!, $input: ViewPreferencesUpdateInput!
+            ) {
+              viewPreferencesUpdate(id: $id, input: $input) {
+                success viewPreferences { id }
+              }
+            }
+            """,
+            {
+                "id": before["preferenceId"],
+                "input": {"preferences": after},
+            },
+        )["viewPreferencesUpdate"]
+    else:
+        result = client.query(
+            """
+            mutation CreateViewPreferences($input: ViewPreferencesCreateInput!) {
+              viewPreferencesCreate(input: $input) {
+                success viewPreferences { id }
+              }
+            }
+            """,
+            {
+                "input": {
+                    "type": "user",
+                    "viewType": "customView",
+                    "customViewId": before["view"]["id"],
+                    "preferences": after,
+                }
+            },
+        )["viewPreferencesCreate"]
+    if not result["success"]:
+        raise LinearError(f"{action} 返回 success=false")
+    emit(read_view_preferences(client, before["view"]["id"], schema))
+
+
 @view_app.command("issues")
 def view_issues(
     view_id: Annotated[str, typer.Argument()],
@@ -1273,7 +1505,7 @@ def view_issues(
           customView(id: $id) {
             id name modelName
             issues(first: $first) { nodes {
-              id identifier title priority dueDate url
+              id identifier title priority dueDate completedAt canceledAt url
               state { id name type }
               assignee { id name }
             } }

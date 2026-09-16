@@ -50,7 +50,7 @@ Linear OAuth 需要先注册 OAuth application，将 `http://127.0.0.1:45831/cal
 - Issue 写入后自动回读。关系写入回读两端。
 - Issue 生命周期操作位于 `issue archive/restore/delete`；`delete` 默认进入可恢复 30 天的 Recently deleted，只有管理员明确授权不可恢复删除时才使用 `--permanent --yes`。
 - Comment 写入必须通过 `--body-file` 传入正文，默认预览，正式写入后按 Comment ID 回读。
-- Custom View 使用官方 `customViews`、`customViewCreate` 和 `customViewUpdate` GraphQL 字段。`--filter-json` 接受官方 `IssueFilter` JSON object，不自行发明过滤语法。
+- Custom View 使用官方 `customViews`、`customViewCreate` 和 `customViewUpdate` GraphQL 字段。`--filter-json` 接受官方 `IssueFilter` JSON object，不自行发明过滤语法。个人展示偏好通过 `view preferences get/update` 管理；`update` 用可重复的 `--set KEY=JSON_VALUE` 或 `--patch-file` 合并现有显式值，JSON `null` 删除对应覆盖，不为每个 preference 增加独立参数。
 - 写入前先读取现有 Issue 或 View 并查重；不把预览或 GraphQL HTTP 200 当成写入成功。
 
 ## 入口
@@ -60,6 +60,7 @@ Linear OAuth 需要先注册 OAuth application，将 `http://127.0.0.1:45831/cal
 ./scripts/linear_cli.py team --help
 ./scripts/linear_cli.py team automation --help
 ./scripts/linear_cli.py issue --help
+./scripts/linear_cli.py view preferences --help
 ```
 
 复杂 Issue 正文或过滤器应由调用方先在可审阅的临时文件中准备；当前 CLI 接受内联 JSON，调用方必须注意 shell 引号。Comment 正文只从 UTF-8 文件读取，避免多行内容进入 shell 参数。
