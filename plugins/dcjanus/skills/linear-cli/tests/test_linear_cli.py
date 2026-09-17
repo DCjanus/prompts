@@ -30,6 +30,7 @@ def test_help_uses_progressive_resource_groups() -> None:
     assert root.exit_code == 0, root.output
     assert "team" in root.output
     assert "issue" in root.output
+    assert "workflow-state" in root.output
     assert "team-show" not in root.output
     assert "issue-get" not in root.output
 
@@ -54,6 +55,12 @@ def test_help_uses_progressive_resource_groups() -> None:
     assert "create" in label.output
     assert "update" in label.output
     assert "delete" in label.output
+
+    workflow_state = runner.invoke(linear_cli.app, ["workflow-state", "--help"])
+    assert workflow_state.exit_code == 0, workflow_state.output
+    assert "list" in workflow_state.output
+    assert "create" in workflow_state.output
+    assert "update" in workflow_state.output
 
     api = runner.invoke(linear_cli.app, ["api", "--help"])
     assert api.exit_code == 0, api.output
@@ -720,6 +727,217 @@ def test_label_lifecycle_previews_writes_and_reads_back(
     assert deleted.exit_code == 0, deleted.output
     assert json.loads(deleted.output)["deleted"] is True
     assert [label["name"] for label in labels] == ["workspace:shared"]
+
+
+def test_workflow_state_create_previews_writes_reads_back_and_rejects_duplicate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    states = [
+        {
+            "id": "backlog-id",
+            "name": "Backlog",
+            "type": "backlog",
+            "color": "#bec2c8",
+            "description": None,
+            "position": 0.0,
+            "team": {"id": "team-id", "key": "SD", "name": "Side"},
+        }
+    ]
+
+    class StubClient:
+        def query(self, query: str, variables: dict | None = None) -> dict:
+            if "query WorkflowStates" in query:
+                return {"team": {"states": {"nodes": states}}}
+            if "mutation CreateWorkflowState" in query:
+                assert variables == {
+                    "input": {
+                        "name": "Idea",
+                        "type": "backlog",
+                        "teamId": "team-id",
+                        "color": "#95a2b3",
+                        "description": "尚未承诺的想法和调研",
+                    }
+                }
+                states.append(
+                    {
+                        "id": "idea-id",
+                        "name": "Idea",
+                        "type": "backlog",
+                        "color": "#95a2b3",
+                        "description": "尚未承诺的想法和调研",
+                        "position": 1.0,
+                        "team": {"id": "team-id", "key": "SD", "name": "Side"},
+                    }
+                )
+                return {
+                    "workflowStateCreate": {
+                        "success": True,
+                        "workflowState": {"id": "idea-id"},
+                    }
+                }
+            raise AssertionError(query)
+
+    monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: StubClient())
+    monkeypatch.setattr(
+        linear_cli,
+        "resolve_team",
+        lambda client, team: {"id": "team-id", "key": "SD", "name": "Side"},
+    )
+    monkeypatch.setattr(linear_cli, "select_team", lambda team: team or "SD")
+    runner = CliRunner()
+    arguments = [
+        "workflow-state",
+        "create",
+        "--name",
+        "Idea",
+        "--type",
+        "backlog",
+        "--description",
+        "尚未承诺的想法和调研",
+    ]
+
+    preview = runner.invoke(linear_cli.app, arguments)
+    assert preview.exit_code == 0, preview.output
+    assert json.loads(preview.output) == {
+        "action": "workflowStateCreate",
+        "input": {
+            "name": "Idea",
+            "type": "backlog",
+            "teamId": "team-id",
+            "color": "#95a2b3",
+            "description": "尚未承诺的想法和调研",
+        },
+        "preview": True,
+    }
+    assert len(states) == 1
+
+    created = runner.invoke(linear_cli.app, [*arguments, "--yes"])
+    assert created.exit_code == 0, created.output
+    assert json.loads(created.output)["id"] == "idea-id"
+
+    listed = runner.invoke(linear_cli.app, ["workflow-state", "list"])
+    assert listed.exit_code == 0, listed.output
+    assert [state["name"] for state in json.loads(listed.output)] == [
+        "Backlog",
+        "Idea",
+    ]
+
+    duplicate = runner.invoke(linear_cli.app, arguments)
+    assert duplicate.exit_code != 0
+    assert isinstance(duplicate.exception, linear_cli.LinearError)
+    assert "已存在于 Team SD" in str(duplicate.exception)
+
+
+def test_workflow_state_update_previews_writes_and_reads_back(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = {
+        "id": "backlog-id",
+        "name": "Backlog",
+        "type": "backlog",
+        "color": "#bec2c8",
+        "description": None,
+        "position": 0.0,
+        "team": {"id": "team-id", "key": "SD", "name": "Side"},
+    }
+
+    class StubClient:
+        def query(self, query: str, variables: dict | None = None) -> dict:
+            if "query WorkflowStates" in query:
+                return {"team": {"states": {"nodes": [state]}}}
+            if "mutation UpdateWorkflowState" in query:
+                assert variables == {
+                    "id": "backlog-id",
+                    "input": {"description": "已记录但尚未排期的候选事项。"},
+                }
+                state.update(variables["input"])
+                return {
+                    "workflowStateUpdate": {
+                        "success": True,
+                        "workflowState": {"id": "backlog-id"},
+                    }
+                }
+            raise AssertionError(query)
+
+    monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: StubClient())
+    monkeypatch.setattr(
+        linear_cli,
+        "resolve_team",
+        lambda client, team: {"id": "team-id", "key": "SD", "name": "Side"},
+    )
+    monkeypatch.setattr(linear_cli, "select_team", lambda team: team or "SD")
+    runner = CliRunner()
+    arguments = [
+        "workflow-state",
+        "update",
+        "Backlog",
+        "--description",
+        "已记录但尚未排期的候选事项。",
+    ]
+
+    preview = runner.invoke(linear_cli.app, arguments)
+    assert preview.exit_code == 0, preview.output
+    assert json.loads(preview.output)["input"] == {
+        "description": "已记录但尚未排期的候选事项。"
+    }
+    assert state["description"] is None
+
+    updated = runner.invoke(linear_cli.app, [*arguments, "--yes"])
+    assert updated.exit_code == 0, updated.output
+    assert json.loads(updated.output)["description"] == "已记录但尚未排期的候选事项。"
+
+
+def test_workflow_state_update_rejects_conflicting_description_options() -> None:
+    result = CliRunner().invoke(
+        linear_cli.app,
+        [
+            "workflow-state",
+            "update",
+            "Backlog",
+            "--description",
+            "候选事项",
+            "--clear-description",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "不能同时使用" in result.output
+
+
+def test_workflow_state_update_rejects_reserved_duplicate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: object())
+    monkeypatch.setattr(
+        linear_cli,
+        "resolve_team",
+        lambda client, team: {"id": "team-id", "key": "SD", "name": "Side"},
+    )
+    monkeypatch.setattr(linear_cli, "select_team", lambda team: team or "SD")
+    monkeypatch.setattr(
+        linear_cli,
+        "resolve_workflow_state",
+        lambda client, team_id, state: {
+            "id": "duplicate-id",
+            "name": "Duplicate",
+            "type": "duplicate",
+        },
+    )
+
+    result = CliRunner().invoke(
+        linear_cli.app,
+        [
+            "workflow-state",
+            "update",
+            "Duplicate",
+            "--description",
+            "重复事项",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert isinstance(result.exception, linear_cli.LinearError)
+    assert "保留的 Duplicate" in str(result.exception)
 
 
 def test_label_update_can_clear_description(
