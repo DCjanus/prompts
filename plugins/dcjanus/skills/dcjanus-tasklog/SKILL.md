@@ -5,7 +5,7 @@ description: 当需要使用 DCjanus 的个人任务模型查询或管理 Linear
 
 # DCjanus Tasklog
 
-把 Linear 作为 DCjanus 的个人任务与注意力索引，并使用 [linear_cli.py](scripts/linear_cli.py) 调用 Linear 官方 GraphQL API。公司内部的信息边界和收尾规则由上层工作 Skill 补充；本 Skill 负责跨场景的个人 Linear 任务模型与平台操作。
+把 Linear 作为 DCjanus 的个人任务与注意力索引，并使用 [linear_cli.py](scripts/linear_cli.py) 调用 Linear 官方 GraphQL API。本 Skill 负责个人 Linear 任务模型与平台操作。
 
 ## 任务模型
 
@@ -64,7 +64,6 @@ Linear OAuth 需要先注册 OAuth application，将 `http://127.0.0.1:45831/cal
 - Issue 生命周期操作位于 `issue archive/restore/delete`；`delete` 默认进入可恢复 30 天的 Recently deleted，只有管理员明确授权不可恢复删除时才使用 `--permanent --yes`。
 - Comment 写入必须通过 `--body-file` 传入正文，默认预览，正式写入后按 Comment ID 回读。
 - Custom View 使用官方 `customViews`、`customViewCreate` 和 `customViewUpdate` GraphQL 字段。`--filter-json` 接受官方 `IssueFilter` JSON object，不自行发明过滤语法。个人展示偏好通过 `view preferences get/update` 管理；`update` 用可重复的 `--set KEY=JSON_VALUE` 或 `--patch-file` 合并现有显式值，JSON `null` 删除对应覆盖，不为每个 preference 增加独立参数。
-- 具体工作 Skill 可以在本 Skill 之上补充 Team、状态流转、优先级、日期、证据和外部系统约定，但不重复或放宽本 Skill 的默认分配、`Todo`、查重、预览和回读规则。
 
 ## 入口
 
