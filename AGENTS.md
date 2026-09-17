@@ -29,17 +29,11 @@
 - 为 BUG 新增回归测试时，先确认测试因目标问题失败，再修复并保留测试。
 - 完成项目要求及与改动风险匹配的检查；通过后无新证据不重复或扩大验证。修 BUG 未补回归测试或必要验证未完成时，简述原因。
 
-## 个人 Linear 工作流
-
-- 创建 Linear Issue 时，默认将 Assignee 设为用户本人（当前 Linear 登录用户）；只有用户明确指定其他负责人或要求不分配时才例外。
-- `draft` Label 表示 Issue 的标题、描述、范围或完成条件尚未稳定。对齐或调整这类 Issue 时，优先原地重写标题与描述，使其始终呈现当前完整、自洽的定义，仿佛从一开始就这样写；除非用户明确要求，否则不通过 Comment 记录草稿演变。
-- 没有 `draft` Label 的 Issue 默认视为稳定；后续进展、证据、决策和方向变化优先通过 Comment 追加。只有用户明确要求，或需要修正描述中的事实错误时，才改写其稳定描述。
-- 移除 `draft` Label 是由用户决定的稳定化动作。Agent 不自行移除，也不在用户移除后擅自重新添加；`draft` 只表达 Issue 定义是否稳定，不代替 Status 所表达的执行与承诺状态。
-
 ## 按需工作流
 
 仅在任务相关时使用以下 skills。
 
 - Git 提交与协作交付：repository-workflow；GitHub/GitLab 交互：对应平台 skill。
+- Linear 个人任务管理与平台操作：dcjanus-tasklog。
 - 临时 Python、执行环境与 Python 检查：python-execution；可复用单文件 CLI：uv-cli-creator。
 - 依赖或项目版本变更：dependency-management；技术选型：dcjanus-preferences。

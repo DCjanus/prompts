@@ -1,0 +1,3 @@
+interface:
+  display_name: "DCjanus Tasklog"
+  short_description: "用 Linear 管理 DCjanus 的个人任务"
