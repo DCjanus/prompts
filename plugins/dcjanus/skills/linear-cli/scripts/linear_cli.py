@@ -1007,6 +1007,71 @@ def workflow_state_create(
     emit(resolve_workflow_state(client, resolved["id"], result["workflowState"]["id"]))
 
 
+@workflow_state_app.command("update")
+def workflow_state_update(
+    state: Annotated[str, typer.Argument()],
+    team: Annotated[str | None, typer.Option("--team")] = None,
+    name: Annotated[str | None, typer.Option("--name")] = None,
+    color: Annotated[str | None, typer.Option("--color")] = None,
+    description: Annotated[str | None, typer.Option("--description")] = None,
+    clear_description: Annotated[bool, typer.Option("--clear-description")] = False,
+    position: Annotated[float | None, typer.Option("--position")] = None,
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+    yes: Annotated[bool, typer.Option("--yes")] = False,
+) -> None:
+    """预览或更新 Team workflow state，并在写入后回读。"""
+    if description is not None and clear_description:
+        raise typer.BadParameter("--description 与 --clear-description 不能同时使用")
+    if name is not None:
+        name = name.strip()
+        if not name:
+            raise typer.BadParameter("--name 不能为空")
+    client = get_client(endpoint)
+    resolved = resolve_team(client, select_team(team))
+    before = resolve_workflow_state(client, resolved["id"], state)
+    if before["type"] == "duplicate":
+        raise LinearError("Linear 保留的 Duplicate workflow state 不支持更新")
+    fields = compact_input(
+        {
+            "name": name,
+            "color": color,
+            "description": None if clear_description else description,
+            "position": position,
+        }
+    )
+    if clear_description:
+        fields["description"] = None
+    if not fields:
+        raise typer.BadParameter("至少提供一个 workflow state 更新字段")
+    if not yes:
+        emit(
+            {
+                "action": "workflowStateUpdate",
+                "before": before,
+                "input": fields,
+                "preview": True,
+            }
+        )
+        return
+    result = client.query(
+        """
+        mutation UpdateWorkflowState(
+          $id: String!
+          $input: WorkflowStateUpdateInput!
+        ) {
+          workflowStateUpdate(id: $id, input: $input) {
+            success
+            workflowState { id }
+          }
+        }
+        """,
+        {"id": before["id"], "input": fields},
+    )["workflowStateUpdate"]
+    if not result["success"]:
+        raise LinearError("workflowStateUpdate 返回 success=false")
+    emit(resolve_workflow_state(client, resolved["id"], before["id"]))
+
+
 @label_app.command("list")
 def label_list(
     team: Annotated[str | None, typer.Option("--team")] = None,

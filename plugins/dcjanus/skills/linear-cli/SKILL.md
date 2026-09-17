@@ -47,7 +47,7 @@ Linear OAuth 需要先注册 OAuth application，将 `http://127.0.0.1:45831/cal
 - 尚未封装的低频能力可用 `api graphql QUERY_FILE --variables-file VARIABLES_JSON` 执行单个 GraphQL operation。query 可直接运行；mutation 必须同时提供 `--allow-mutation --yes`。GraphQL 和 variables 都从文件读取，不把复杂文档、变量或敏感内容拼进命令行。
 - 万能 GraphQL 入口只用于临时探索或低频缺口。某类请求重复出现、进入日常流程，或每次都需要现场构造相同 GraphQL 时，应向用户建议扩展稳定的资源子命令及测试，不要长期依赖 `api graphql`。
 - Team 自动关闭与自动归档位于 `team automation`。周期单位为月；禁用设置使用对应的 `--disable-*`，自动关闭目标状态可传精确名称或 UUID。
-- Workflow status 使用 `workflow-state list/create` 管理；创建前精确查重，默认预览，正式写入后按 ID 回读。`--type` 使用 Linear 原生类型，如 `backlog`、`unstarted` 或 `started`。
+- Workflow status 使用 `workflow-state list/create/update` 管理；创建前精确查重，写入默认预览并在完成后按 ID 回读。创建时的 `--type` 使用 Linear 原生类型，如 `backlog`、`unstarted` 或 `started`；更新支持名称、颜色、描述和位置，但 Linear 保留的 `Duplicate` 状态不可更新。
 - Issue 写入后自动回读。关系写入回读两端。
 - 复杂 Issue 描述通过 `issue create/update --description-file FILE` 从 UTF-8 Markdown 文件读取；短描述可继续使用 `--description`，两者不能同时指定。
 - Issue Label 使用 `label list/get/create/update/delete` 管理；创建、更新和删除默认预览，正式写入后回读。更新支持名称、颜色和描述，删除会移除已有 Issue 关联。
