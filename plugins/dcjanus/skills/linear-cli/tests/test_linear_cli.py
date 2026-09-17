@@ -722,6 +722,77 @@ def test_label_lifecycle_previews_writes_and_reads_back(
     assert [label["name"] for label in labels] == ["workspace:shared"]
 
 
+def test_label_create_supports_workspace_scope_and_rejects_duplicate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    labels: list[dict] = []
+
+    class StubClient:
+        def query(self, query: str, variables: dict | None = None) -> dict:
+            if "query IssueLabels" in query:
+                return {"issueLabels": {"nodes": labels}}
+            if "mutation CreateIssueLabel" in query:
+                assert variables == {
+                    "input": {
+                        "name": "draft",
+                        "description": "Issue 尚未稳定",
+                        "color": "#95a2b3",
+                    }
+                }
+                labels.append(
+                    {
+                        "id": "draft-id",
+                        **variables["input"],
+                        "createdAt": "2026-09-17T00:00:00Z",
+                        "updatedAt": "2026-09-17T00:00:00Z",
+                        "team": None,
+                    }
+                )
+                return {
+                    "issueLabelCreate": {
+                        "success": True,
+                        "issueLabel": {"id": "draft-id"},
+                    }
+                }
+            raise AssertionError(query)
+
+    monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: StubClient())
+    runner = CliRunner()
+    arguments = [
+        "label",
+        "create",
+        "--workspace",
+        "--name",
+        "draft",
+        "--description",
+        "Issue 尚未稳定",
+        "--color",
+        "#95a2b3",
+    ]
+
+    preview = runner.invoke(linear_cli.app, arguments)
+    assert preview.exit_code == 0, preview.output
+    assert json.loads(preview.output)["input"] == {
+        "name": "draft",
+        "description": "Issue 尚未稳定",
+        "color": "#95a2b3",
+    }
+    assert labels == []
+
+    created = runner.invoke(linear_cli.app, [*arguments, "--yes"])
+    assert created.exit_code == 0, created.output
+    assert json.loads(created.output)["team"] is None
+
+    duplicate = runner.invoke(linear_cli.app, arguments)
+    assert duplicate.exit_code != 0
+    assert isinstance(duplicate.exception, linear_cli.LinearError)
+    assert "已存在于 workspace" in str(duplicate.exception)
+
+    conflicting_scope = runner.invoke(linear_cli.app, [*arguments, "--team", "SD"])
+    assert conflicting_scope.exit_code != 0
+    assert "不能同时使用" in conflicting_scope.output
+
+
 def test_label_update_can_clear_description(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

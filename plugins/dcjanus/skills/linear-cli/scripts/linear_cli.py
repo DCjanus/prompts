@@ -929,21 +929,41 @@ def label_get(
 def label_create(
     name: Annotated[str, typer.Option("--name")],
     team: Annotated[str | None, typer.Option("--team")] = None,
+    workspace: Annotated[bool, typer.Option("--workspace")] = False,
     description: Annotated[str | None, typer.Option("--description")] = None,
     color: Annotated[str | None, typer.Option("--color")] = None,
     endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
     yes: Annotated[bool, typer.Option("--yes")] = False,
 ) -> None:
-    """预览或创建 Team Label，并在写入后回读。"""
+    """预览或创建 Team 或 workspace Label，并在写入后回读。"""
     name = name.strip()
     if not name:
         raise typer.BadParameter("--name 不能为空")
+    if workspace and team is not None:
+        raise typer.BadParameter("--workspace 与 --team 不能同时使用")
     client = get_client(endpoint)
-    resolved = resolve_team(client, select_team(team))
+    resolved = None if workspace else resolve_team(client, select_team(team))
+    team_id = resolved["id"] if resolved else None
+    existing = [
+        label
+        for label in list_labels(client)
+        if label["name"] == name
+        and (
+            (workspace and label.get("team") is None)
+            or (
+                resolved is not None
+                and label.get("team") is not None
+                and label["team"]["id"] == team_id
+            )
+        )
+    ]
+    if existing:
+        scope = "workspace" if workspace else f"Team {resolved['key']}"
+        raise LinearError(f"Issue Label {name!r} 已存在于 {scope}")
     fields = compact_input(
         {
             "name": name,
-            "teamId": resolved["id"],
+            "teamId": team_id,
             "description": description,
             "color": color,
         }
@@ -961,7 +981,7 @@ def label_create(
     )["issueLabelCreate"]
     if not result["success"]:
         raise LinearError("issueLabelCreate 返回 success=false")
-    emit(resolve_label(client, result["issueLabel"]["id"], resolved["id"]))
+    emit(resolve_label(client, result["issueLabel"]["id"], team_id))
 
 
 @label_app.command("update")
