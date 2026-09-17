@@ -64,8 +64,39 @@ relations { nodes { id type relatedIssue { id identifier title } } }
 inverseRelations { nodes { id type issue { id identifier title } } }
 """
 
+ISSUE_FIELD_SELECTIONS = {
+    "id": "id",
+    "identifier": "identifier",
+    "title": "title",
+    "description": "description",
+    "priority": "priority",
+    "dueDate": "dueDate",
+    "url": "url",
+    "archivedAt": "archivedAt",
+    "createdAt": "createdAt",
+    "updatedAt": "updatedAt",
+    "state": "state { id name type }",
+    "team": "team { id key name }",
+    "cycle": "cycle { id name number startsAt endsAt }",
+    "project": "project { id name }",
+    "parent": "parent { id identifier title }",
+    "assignee": "assignee { id name email }",
+    "labels": "labels { nodes { id name } }",
+    "relations": (
+        "relations { nodes { id type relatedIssue { id identifier title } } }"
+    ),
+    "inverseRelations": (
+        "inverseRelations { nodes { id type issue { id identifier title } } }"
+    ),
+}
+
 LABEL_FIELDS = """
 id name description color createdAt updatedAt
+team { id key name }
+"""
+
+WORKFLOW_STATE_FIELDS = """
+id name type color description position
 team { id key name }
 """
 
@@ -77,6 +108,21 @@ user { id name email }
 
 class LinearError(RuntimeError):
     """Linear 请求或响应错误。"""
+
+
+def select_issue_fields(fields: str | None) -> str:
+    """把公开字段名转换为安全的 Issue GraphQL selection set。"""
+    if fields is None:
+        return ISSUE_FIELDS
+    names = list(
+        dict.fromkeys(name.strip() for name in fields.split(",") if name.strip())
+    )
+    if not names:
+        raise typer.BadParameter("--fields 不能为空")
+    unknown = [name for name in names if name not in ISSUE_FIELD_SELECTIONS]
+    if unknown:
+        raise typer.BadParameter(f"不支持的 Issue 字段：{', '.join(unknown)}")
+    return "\n".join(ISSUE_FIELD_SELECTIONS[name] for name in names)
 
 
 @dataclass(frozen=True)
@@ -346,6 +392,40 @@ def resolve_team_state(
     return states[0]
 
 
+def list_workflow_states(client: LinearClient, team_id: str) -> list[dict[str, Any]]:
+    """读取目标 Team 的 workflow states。"""
+    data = client.query(
+        f"""
+        query WorkflowStates($id: String!) {{
+          team(id: $id) {{
+            states {{ nodes {{ {WORKFLOW_STATE_FIELDS} }} }}
+          }}
+        }}
+        """,
+        {"id": team_id},
+    )
+    team = data.get("team")
+    if not team:
+        raise LinearError(f"找不到 Linear Team {team_id}")
+    return team["states"]["nodes"]
+
+
+def resolve_workflow_state(
+    client: LinearClient, team_id: str, state_name_or_id: str
+) -> dict[str, Any]:
+    """在目标 Team 内按 UUID 或名称精确解析 workflow state。"""
+    states = [
+        state
+        for state in list_workflow_states(client, team_id)
+        if state["id"] == state_name_or_id or state["name"] == state_name_or_id
+    ]
+    if len(states) != 1:
+        raise LinearError(
+            f"Workflow state {state_name_or_id!r} 精确匹配数量为 {len(states)}"
+        )
+    return states[0]
+
+
 def list_labels(client: LinearClient) -> list[dict[str, Any]]:
     """读取 workspace 中的 Issue Labels。"""
     data = client.query(
@@ -539,6 +619,9 @@ team_app = typer.Typer(no_args_is_help=True, help="查询和管理 Team。")
 team_automation_app = typer.Typer(no_args_is_help=True, help="查询和管理 Team 自动化。")
 issue_app = typer.Typer(no_args_is_help=True, help="查询和管理 Issue。")
 label_app = typer.Typer(no_args_is_help=True, help="查询和管理 Issue Label。")
+workflow_state_app = typer.Typer(
+    no_args_is_help=True, help="查询和管理 workflow state。"
+)
 issue_comment_app = typer.Typer(no_args_is_help=True, help="查询和创建 Issue 评论。")
 issue_relation_app = typer.Typer(no_args_is_help=True, help="管理 Issue 关系。")
 view_app = typer.Typer(no_args_is_help=True, help="查询和管理 Custom View。")
@@ -552,6 +635,7 @@ app.add_typer(team_app, name="team")
 team_app.add_typer(team_automation_app, name="automation")
 app.add_typer(issue_app, name="issue")
 app.add_typer(label_app, name="label")
+app.add_typer(workflow_state_app, name="workflow-state")
 issue_app.add_typer(issue_comment_app, name="comment")
 issue_app.add_typer(issue_relation_app, name="relation")
 app.add_typer(view_app, name="view")
@@ -897,6 +981,138 @@ def team_show(
     emit(data["team"])
 
 
+@workflow_state_app.command("list")
+def workflow_state_list(
+    team: Annotated[str | None, typer.Option("--team")] = None,
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+) -> None:
+    """列出目标 Team 的 workflow states。"""
+    client = get_client(endpoint)
+    resolved = resolve_team(client, select_team(team))
+    emit(list_workflow_states(client, resolved["id"]))
+
+
+@workflow_state_app.command("create")
+def workflow_state_create(
+    name: Annotated[str, typer.Option("--name")],
+    state_type: Annotated[
+        Literal["backlog", "unstarted", "started", "completed", "canceled"],
+        typer.Option("--type"),
+    ],
+    team: Annotated[str | None, typer.Option("--team")] = None,
+    color: Annotated[str, typer.Option("--color")] = "#95a2b3",
+    description: Annotated[str | None, typer.Option("--description")] = None,
+    position: Annotated[float | None, typer.Option("--position")] = None,
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+    yes: Annotated[bool, typer.Option("--yes")] = False,
+) -> None:
+    """预览或创建 Team workflow state，并在写入后回读。"""
+    name = name.strip()
+    if not name:
+        raise typer.BadParameter("--name 不能为空")
+    client = get_client(endpoint)
+    resolved = resolve_team(client, select_team(team))
+    existing = [
+        state
+        for state in list_workflow_states(client, resolved["id"])
+        if state["name"] == name
+    ]
+    if existing:
+        raise LinearError(f"Workflow state {name!r} 已存在于 Team {resolved['key']}")
+    fields = compact_input(
+        {
+            "name": name,
+            "type": state_type,
+            "teamId": resolved["id"],
+            "color": color,
+            "description": description,
+            "position": position,
+        }
+    )
+    if not yes:
+        emit({"action": "workflowStateCreate", "input": fields, "preview": True})
+        return
+    result = client.query(
+        """
+        mutation CreateWorkflowState($input: WorkflowStateCreateInput!) {
+          workflowStateCreate(input: $input) {
+            success
+            workflowState { id }
+          }
+        }
+        """,
+        {"input": fields},
+    )["workflowStateCreate"]
+    if not result["success"]:
+        raise LinearError("workflowStateCreate 返回 success=false")
+    emit(resolve_workflow_state(client, resolved["id"], result["workflowState"]["id"]))
+
+
+@workflow_state_app.command("update")
+def workflow_state_update(
+    state: Annotated[str, typer.Argument()],
+    team: Annotated[str | None, typer.Option("--team")] = None,
+    name: Annotated[str | None, typer.Option("--name")] = None,
+    color: Annotated[str | None, typer.Option("--color")] = None,
+    description: Annotated[str | None, typer.Option("--description")] = None,
+    clear_description: Annotated[bool, typer.Option("--clear-description")] = False,
+    position: Annotated[float | None, typer.Option("--position")] = None,
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+    yes: Annotated[bool, typer.Option("--yes")] = False,
+) -> None:
+    """预览或更新 Team workflow state，并在写入后回读。"""
+    if description is not None and clear_description:
+        raise typer.BadParameter("--description 与 --clear-description 不能同时使用")
+    if name is not None:
+        name = name.strip()
+        if not name:
+            raise typer.BadParameter("--name 不能为空")
+    client = get_client(endpoint)
+    resolved = resolve_team(client, select_team(team))
+    before = resolve_workflow_state(client, resolved["id"], state)
+    if before["type"] == "duplicate":
+        raise LinearError("Linear 保留的 Duplicate workflow state 不支持更新")
+    fields = compact_input(
+        {
+            "name": name,
+            "color": color,
+            "description": None if clear_description else description,
+            "position": position,
+        }
+    )
+    if clear_description:
+        fields["description"] = None
+    if not fields:
+        raise typer.BadParameter("至少提供一个 workflow state 更新字段")
+    if not yes:
+        emit(
+            {
+                "action": "workflowStateUpdate",
+                "before": before,
+                "input": fields,
+                "preview": True,
+            }
+        )
+        return
+    result = client.query(
+        """
+        mutation UpdateWorkflowState(
+          $id: String!
+          $input: WorkflowStateUpdateInput!
+        ) {
+          workflowStateUpdate(id: $id, input: $input) {
+            success
+            workflowState { id }
+          }
+        }
+        """,
+        {"id": before["id"], "input": fields},
+    )["workflowStateUpdate"]
+    if not result["success"]:
+        raise LinearError("workflowStateUpdate 返回 success=false")
+    emit(resolve_workflow_state(client, resolved["id"], before["id"]))
+
+
 @label_app.command("list")
 def label_list(
     team: Annotated[str | None, typer.Option("--team")] = None,
@@ -1169,8 +1385,19 @@ def issue_list(
     team: Annotated[str | None, typer.Option("--team")] = None,
     endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
     first: Annotated[int, typer.Option(min=1, max=250)] = 100,
+    fields: Annotated[
+        str | None,
+        typer.Option(
+            "--fields",
+            help=(
+                "逗号分隔的 Issue 字段；省略时返回完整默认字段。支持："
+                + ", ".join(ISSUE_FIELD_SELECTIONS)
+            ),
+        ),
+    ] = None,
 ) -> None:
     """列出目标 Team 的近期 Issue。"""
+    selected_fields = select_issue_fields(fields)
     client = get_client(endpoint)
     resolved = resolve_team(client, select_team(team))
     data = client.query(
@@ -1180,7 +1407,7 @@ def issue_list(
             filter: {{ team: {{ id: {{ eq: $id }} }} }}
             first: $first
             orderBy: updatedAt
-          ) {{ nodes {{ {ISSUE_FIELDS} }} }}
+          ) {{ nodes {{ {selected_fields} }} }}
         }}
         """,
         {"id": resolved["id"], "first": first},

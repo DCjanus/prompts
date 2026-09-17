@@ -1,6 +1,6 @@
 ---
 name: linear-cli
-description: 当需要查询或管理 Linear workspace、team 自动化、issue、评论、原生关系或 Custom View 时使用。
+description: 当需要查询或管理 Linear workspace、team 自动化、workflow status、issue、评论、原生关系或 Custom View 时使用。
 ---
 
 # Linear CLI
@@ -44,9 +44,11 @@ Linear OAuth 需要先注册 OAuth application，将 `http://127.0.0.1:45831/cal
 - 读操作直接执行；写操作默认输出 JSON 预览，明确授权后才加 `--yes`。
 - Team 优先取命令显式提供的 `--team`；省略时读取配置中的可选 `default_team`。两者都没有时直接报错，不猜测业务 Team。使用 `config set-default-team KEY` 设置，使用 `config clear-default-team` 清除；可用 `doctor --team KEY` 或 `team show --team KEY` 精确验证。
 - 需要按标题、描述或评论查找 Issue 时，使用 `issue search TERM [--team KEY]`，不要先批量导出再在本地过滤。搜索默认包含评论；需要查找归档事项时增加 `--include-archived`，根据返回的 `pageInfo.endCursor` 用 `--after` 继续翻页。
+- 批量读取只需部分字段时，使用 `issue list --fields identifier,title,state,...` 传入逗号分隔的字段白名单，让 GraphQL 只返回所需字段；省略时保持完整默认输出。先用 `issue list --help` 查看支持的字段。
 - 尚未封装的低频能力可用 `api graphql QUERY_FILE --variables-file VARIABLES_JSON` 执行单个 GraphQL operation。query 可直接运行；mutation 必须同时提供 `--allow-mutation --yes`。GraphQL 和 variables 都从文件读取，不把复杂文档、变量或敏感内容拼进命令行。
 - 万能 GraphQL 入口只用于临时探索或低频缺口。某类请求重复出现、进入日常流程，或每次都需要现场构造相同 GraphQL 时，应向用户建议扩展稳定的资源子命令及测试，不要长期依赖 `api graphql`。
 - Team 自动关闭与自动归档位于 `team automation`。周期单位为月；禁用设置使用对应的 `--disable-*`，自动关闭目标状态可传精确名称或 UUID。
+- Workflow status 使用 `workflow-state list/create/update` 管理；创建前精确查重，写入默认预览并在完成后按 ID 回读。创建时的 `--type` 使用 Linear 原生类型，如 `backlog`、`unstarted` 或 `started`；更新支持名称、颜色、描述和位置，但 Linear 保留的 `Duplicate` 状态不可更新。
 - Issue 写入后自动回读。关系写入回读两端。
 - 复杂 Issue 描述通过 `issue create/update --description-file FILE` 从 UTF-8 Markdown 文件读取；短描述可继续使用 `--description`，两者不能同时指定。
 - Issue Label 使用 `label list/get/create/update/delete` 管理；创建、更新和删除默认预览，正式写入后回读。创建默认作用于目标 Team，使用 `label create --workspace` 创建所有 Team 可用的 workspace Label；更新支持名称、颜色和描述，删除会移除已有 Issue 关联。
@@ -63,6 +65,7 @@ Linear OAuth 需要先注册 OAuth application，将 `http://127.0.0.1:45831/cal
 ./scripts/linear_cli.py team automation --help
 ./scripts/linear_cli.py issue --help
 ./scripts/linear_cli.py label --help
+./scripts/linear_cli.py workflow-state --help
 ./scripts/linear_cli.py view preferences --help
 ```
 
