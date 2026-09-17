@@ -64,6 +64,32 @@ relations { nodes { id type relatedIssue { id identifier title } } }
 inverseRelations { nodes { id type issue { id identifier title } } }
 """
 
+ISSUE_FIELD_SELECTIONS = {
+    "id": "id",
+    "identifier": "identifier",
+    "title": "title",
+    "description": "description",
+    "priority": "priority",
+    "dueDate": "dueDate",
+    "url": "url",
+    "archivedAt": "archivedAt",
+    "createdAt": "createdAt",
+    "updatedAt": "updatedAt",
+    "state": "state { id name type }",
+    "team": "team { id key name }",
+    "cycle": "cycle { id name number startsAt endsAt }",
+    "project": "project { id name }",
+    "parent": "parent { id identifier title }",
+    "assignee": "assignee { id name email }",
+    "labels": "labels { nodes { id name } }",
+    "relations": (
+        "relations { nodes { id type relatedIssue { id identifier title } } }"
+    ),
+    "inverseRelations": (
+        "inverseRelations { nodes { id type issue { id identifier title } } }"
+    ),
+}
+
 LABEL_FIELDS = """
 id name description color createdAt updatedAt
 team { id key name }
@@ -82,6 +108,21 @@ user { id name email }
 
 class LinearError(RuntimeError):
     """Linear 请求或响应错误。"""
+
+
+def select_issue_fields(fields: str | None) -> str:
+    """把公开字段名转换为安全的 Issue GraphQL selection set。"""
+    if fields is None:
+        return ISSUE_FIELDS
+    names = list(
+        dict.fromkeys(name.strip() for name in fields.split(",") if name.strip())
+    )
+    if not names:
+        raise typer.BadParameter("--fields 不能为空")
+    unknown = [name for name in names if name not in ISSUE_FIELD_SELECTIONS]
+    if unknown:
+        raise typer.BadParameter(f"不支持的 Issue 字段：{', '.join(unknown)}")
+    return "\n".join(ISSUE_FIELD_SELECTIONS[name] for name in names)
 
 
 @dataclass(frozen=True)
@@ -1324,8 +1365,19 @@ def issue_list(
     team: Annotated[str | None, typer.Option("--team")] = None,
     endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
     first: Annotated[int, typer.Option(min=1, max=250)] = 100,
+    fields: Annotated[
+        str | None,
+        typer.Option(
+            "--fields",
+            help=(
+                "逗号分隔的 Issue 字段；省略时返回完整默认字段。支持："
+                + ", ".join(ISSUE_FIELD_SELECTIONS)
+            ),
+        ),
+    ] = None,
 ) -> None:
     """列出目标 Team 的近期 Issue。"""
+    selected_fields = select_issue_fields(fields)
     client = get_client(endpoint)
     resolved = resolve_team(client, select_team(team))
     data = client.query(
@@ -1335,7 +1387,7 @@ def issue_list(
             filter: {{ team: {{ id: {{ eq: $id }} }} }}
             first: $first
             orderBy: updatedAt
-          ) {{ nodes {{ {ISSUE_FIELDS} }} }}
+          ) {{ nodes {{ {selected_fields} }} }}
         }}
         """,
         {"id": resolved["id"], "first": first},
