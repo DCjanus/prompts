@@ -1,11 +1,20 @@
 ---
-name: linear-cli
-description: 当需要查询或管理 Linear workspace、team 自动化、workflow status、issue、评论、原生关系或 Custom View 时使用。
+name: dcjanus-tasklog
+description: 当需要使用 DCjanus 的个人任务模型查询或管理 Linear Issue、Comment、Team、Workflow status、原生关系或 Custom View 时使用。
 ---
 
-# Linear CLI
+# DCjanus Tasklog
 
-使用 [linear_cli.py](scripts/linear_cli.py) 调用 Linear 官方 GraphQL API。本 Skill 只提供通用平台能力；不决定应该使用哪个 Team、状态、View、负责人或优先级，这些决策由调用它的项目 Skill 或用户请求提供。
+把 Linear 作为 DCjanus 的个人任务与注意力索引，并使用 [linear_cli.py](scripts/linear_cli.py) 调用 Linear 官方 GraphQL API。公司内部的信息边界和收尾规则由上层工作 Skill 补充；本 Skill 负责跨场景的个人 Linear 任务模型与平台操作。
+
+## 任务模型
+
+- 一个 Issue 表达一个值得再次投入注意力、能够独立判断结果的目标，不把临时步骤或纯信息机械地建成 Issue。
+- Description 保存稳定的任务背景、目标、范围、注意事项、完成条件和初始来源。只有这些稳定信息变化或需要修正事实错误时才改写 Description。
+- Comment 按时间记录进展、阶段结论、决策、等待对象、恢复条件、下一步变化、交付证据以及完成或取消原因；不把命令流水账或完整外部记录复制进 Linear。
+- 创建 Issue 时默认分配给当前 Linear 登录用户。只有用户明确指定其他负责人或要求不分配时才例外。
+- 创建 Issue 未显式指定状态时，读取目标 Team 的实际 `Todo` 状态并在写入时显式传入，不依赖服务端默认值。只有用户明确指定其它状态时才可改用。
+- 创建或写入前读取当前对象并查重，让用户审阅预览；写入后回读实际改变的字段。不把预览、HTTP 200 或 mutation 的初步返回当成最终成功。
 
 GraphQL 客户端使用 `gql[httpx2]`。当前固定到首个支持 HTTPX2 的 `4.4.0b0` 预发布版本；升级前先确认后续稳定版仍保留 `httpx2` transport 行为。
 
@@ -45,8 +54,8 @@ Linear OAuth 需要先注册 OAuth application，将 `http://127.0.0.1:45831/cal
 - Team 优先取命令显式提供的 `--team`；省略时读取配置中的可选 `default_team`。两者都没有时直接报错，不猜测业务 Team。使用 `config set-default-team KEY` 设置，使用 `config clear-default-team` 清除；可用 `doctor --team KEY` 或 `team show --team KEY` 精确验证。
 - 需要按标题、描述或评论查找 Issue 时，使用 `issue search TERM [--team KEY]`，不要先批量导出再在本地过滤。搜索默认包含评论；需要查找归档事项时增加 `--include-archived`，根据返回的 `pageInfo.endCursor` 用 `--after` 继续翻页。
 - 批量读取只需部分字段时，使用 `issue list --fields identifier,title,state,...` 传入逗号分隔的字段白名单，让 GraphQL 只返回所需字段；省略时保持完整默认输出。先用 `issue list --help` 查看支持的字段。
-- 尚未封装的低频能力可用 `api graphql QUERY_FILE --variables-file VARIABLES_JSON` 执行单个 GraphQL operation。query 可直接运行；mutation 必须同时提供 `--allow-mutation --yes`。GraphQL 和 variables 都从文件读取，不把复杂文档、变量或敏感内容拼进命令行。
-- 万能 GraphQL 入口只用于临时探索或低频缺口。某类请求重复出现、进入日常流程，或每次都需要现场构造相同 GraphQL 时，应向用户建议扩展稳定的资源子命令及测试，不要长期依赖 `api graphql`。
+- 尚未封装的低频、一次性能力，在用户确认不需要补齐 CLI 后，可用 `api graphql QUERY_FILE --variables-file VARIABLES_JSON` 执行单个 GraphQL operation。query 可直接运行；mutation 必须同时提供 `--allow-mutation --yes`。GraphQL 和 variables 都从文件读取，不把复杂文档、变量或敏感内容拼进命令行。
+- CLI 不支持的能力只要可能重复使用、已经进入日常流程，或每次都需要现场构造相同 GraphQL，先提醒用户是否要扩展稳定的资源子命令及测试；不默认用 `api graphql`、浏览器操作，或把内容写入错误字段来绕过缺口。
 - Team 自动关闭与自动归档位于 `team automation`。周期单位为月；禁用设置使用对应的 `--disable-*`，自动关闭目标状态可传精确名称或 UUID。
 - Workflow status 使用 `workflow-state list/create/update` 管理；创建前精确查重，写入默认预览并在完成后按 ID 回读。创建时的 `--type` 使用 Linear 原生类型，如 `backlog`、`unstarted` 或 `started`；更新支持名称、颜色、描述和位置，但 Linear 保留的 `Duplicate` 状态不可更新。
 - Issue 写入后自动回读。关系写入回读两端。
@@ -55,7 +64,7 @@ Linear OAuth 需要先注册 OAuth application，将 `http://127.0.0.1:45831/cal
 - Issue 生命周期操作位于 `issue archive/restore/delete`；`delete` 默认进入可恢复 30 天的 Recently deleted，只有管理员明确授权不可恢复删除时才使用 `--permanent --yes`。
 - Comment 写入必须通过 `--body-file` 传入正文，默认预览，正式写入后按 Comment ID 回读。
 - Custom View 使用官方 `customViews`、`customViewCreate` 和 `customViewUpdate` GraphQL 字段。`--filter-json` 接受官方 `IssueFilter` JSON object，不自行发明过滤语法。个人展示偏好通过 `view preferences get/update` 管理；`update` 用可重复的 `--set KEY=JSON_VALUE` 或 `--patch-file` 合并现有显式值，JSON `null` 删除对应覆盖，不为每个 preference 增加独立参数。
-- 写入前先读取现有 Issue 或 View 并查重；不把预览或 GraphQL HTTP 200 当成写入成功。
+- 具体工作 Skill 可以在本 Skill 之上补充 Team、状态流转、优先级、日期、证据和外部系统约定，但不重复或放宽本 Skill 的默认分配、`Todo`、查重、预览和回读规则。
 
 ## 入口
 
