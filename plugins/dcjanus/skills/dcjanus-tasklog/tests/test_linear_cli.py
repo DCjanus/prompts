@@ -576,6 +576,11 @@ def test_issue_create_and_update_read_description_file(
     monkeypatch.setattr(linear_cli, "select_team", lambda team: team or "DCJ")
     monkeypatch.setattr(
         linear_cli,
+        "read_identity",
+        lambda client: {"viewer": {"id": "viewer-id", "name": "DCjanus"}},
+    )
+    monkeypatch.setattr(
+        linear_cli,
         "resolve_workflow_state",
         lambda client, team_id, state: {
             "id": "todo-id",
@@ -639,6 +644,11 @@ def test_issue_create_defaults_to_todo_and_requires_due_date_choice(
     monkeypatch.setattr(linear_cli, "select_team", lambda team: team or "DCJ")
     monkeypatch.setattr(
         linear_cli,
+        "read_identity",
+        lambda client: {"viewer": {"id": "viewer-id", "name": "DCjanus"}},
+    )
+    monkeypatch.setattr(
+        linear_cli,
         "resolve_workflow_state",
         lambda client, team_id, state: {
             "id": "todo-id",
@@ -672,6 +682,7 @@ def test_issue_create_defaults_to_todo_and_requires_due_date_choice(
     )
     assert dated.exit_code == 0, dated.output
     assert json.loads(dated.output)["input"] == {
+        "assigneeId": "viewer-id",
         "dueDate": "2026-09-30",
         "stateId": "todo-id",
         "teamId": "team-id",
@@ -715,6 +726,41 @@ def test_issue_create_defaults_to_todo_and_requires_due_date_choice(
     assert invalid.exit_code != 0
     with pytest.raises(linear_cli.typer.BadParameter, match="YYYY-MM-DD"):
         linear_cli.validate_create_due_date("2026-02-30", False)
+
+    unassigned = runner.invoke(
+        linear_cli.app,
+        [
+            "issue",
+            "create",
+            "--title",
+            "新事项",
+            "--no-due-date",
+            "--no-assignee",
+        ],
+    )
+    assert unassigned.exit_code == 0, unassigned.output
+    assert "assigneeId" not in json.loads(unassigned.output)["input"]
+
+    conflicting_assignee = runner.invoke(
+        linear_cli.app,
+        [
+            "issue",
+            "create",
+            "--title",
+            "新事项",
+            "--no-due-date",
+            "--assignee-id",
+            "other-user-id",
+            "--no-assignee",
+        ],
+    )
+    assert conflicting_assignee.exit_code != 0
+    with pytest.raises(linear_cli.typer.BadParameter, match="不能同时使用"):
+        linear_cli.resolve_create_assignee(object(), "other-user-id", True)
+    assert (
+        linear_cli.resolve_create_assignee(object(), "other-user-id", False)
+        == "other-user-id"
+    )
 
 
 def test_issue_description_inputs_are_mutually_exclusive(tmp_path: Path) -> None:

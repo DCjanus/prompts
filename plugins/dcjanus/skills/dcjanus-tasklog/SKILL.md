@@ -13,7 +13,6 @@ description: 当需要使用 DCjanus 的个人任务模型查询或管理 Linear
 - Description 保存稳定的任务背景、目标、范围、注意事项、完成条件和初始来源。只有这些稳定信息变化或需要修正事实错误时才改写 Description。
 - Comment 按时间记录进展、阶段结论、决策、等待对象、恢复条件、下一步变化、交付证据以及完成或取消原因；不把命令流水账或完整外部记录复制进 Linear。
 - Linear Issue 是个人参考与注意力索引。关联公开 PR、MR、Issue 或其它交付物时，由 Linear Comment 单向记录其链接、进展和等待关系；除非用户明确要求公开关联，否则不在公开工件的标题、正文、评论、commit message 或其它 reviewer-facing 内容中写入个人 Linear 的标识或 URL。任务可以依赖公开交付物，公开交付物不反向依赖个人任务记录。
-- 创建 Issue 时默认分配给当前 Linear 登录用户。只有用户明确指定其他负责人或要求不分配时才例外。
 - 创建或写入前读取当前对象并查重，让用户审阅预览；写入后回读实际改变的字段。不把预览、HTTP 200 或 mutation 的初步返回当成最终成功。
 
 GraphQL 客户端使用 `gql[httpx2]`。当前固定到首个支持 HTTPX2 的 `4.4.0b0` 预发布版本；升级前先确认后续稳定版仍保留 `httpx2` transport 行为。

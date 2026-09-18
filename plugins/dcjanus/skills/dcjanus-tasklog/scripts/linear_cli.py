@@ -1615,6 +1615,21 @@ def validate_create_due_date(due_date: str | None, no_due_date: bool) -> str | N
     return due_date
 
 
+def resolve_create_assignee(
+    client: LinearClient,
+    assignee_id: str | None,
+    no_assignee: bool,
+) -> str | None:
+    """创建 Issue 时默认使用当前用户，并支持显式不分配。"""
+    if assignee_id is not None and no_assignee:
+        raise typer.BadParameter("--assignee-id 与 --no-assignee 不能同时使用")
+    if no_assignee:
+        return None
+    if assignee_id is not None:
+        return assignee_id
+    return read_identity(client)["viewer"]["id"]
+
+
 @issue_app.command("create")
 def issue_create(
     title: Annotated[str, typer.Option()],
@@ -1633,6 +1648,7 @@ def issue_create(
     no_due_date: Annotated[bool, typer.Option("--no-due-date")] = False,
     label_id: Annotated[list[str] | None, typer.Option()] = None,
     assignee_id: Annotated[str | None, typer.Option()] = None,
+    no_assignee: Annotated[bool, typer.Option("--no-assignee")] = False,
     endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
     yes: Annotated[bool, typer.Option("--yes")] = False,
 ) -> None:
@@ -1640,6 +1656,7 @@ def issue_create(
     description = load_description(description, description_file)
     due_date = validate_create_due_date(due_date, no_due_date)
     client = get_client(endpoint)
+    assignee_id = resolve_create_assignee(client, assignee_id, no_assignee)
     resolved = resolve_team(client, select_team(team))
     if state_id is None:
         state_id = resolve_workflow_state(client, resolved["id"], "Todo")["id"]
