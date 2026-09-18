@@ -106,6 +106,16 @@ id body createdAt updatedAt url
 user { id name email }
 """
 
+CODEX_RESUME_FOOTER_TEMPLATE = """---
+
++++ 在 Codex 中继续
+
+```sh
+codex resume {thread_id}
+```
+
++++"""
+
 
 class LinearError(RuntimeError):
     """Linear 请求或响应错误。"""
@@ -1509,9 +1519,12 @@ def comment_create(
     issue_id: Annotated[str, typer.Argument()],
     body_file: Annotated[Path, typer.Option("--body-file")],
     endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+    codex_resume: Annotated[
+        bool, typer.Option("--codex-resume/--no-codex-resume")
+    ] = True,
     yes: Annotated[bool, typer.Option("--yes")] = False,
 ) -> None:
-    """从 UTF-8 文件预览或创建 Comment，并在写入后回读。"""
+    """从 UTF-8 文件预览或创建 Comment，默认附上 Codex 恢复入口。"""
     try:
         body = body_file.read_text(encoding="utf-8").strip()
     except OSError as error:
@@ -1520,6 +1533,11 @@ def comment_create(
         ) from error
     if not body:
         raise typer.BadParameter("--body-file 内容不能为空")
+    thread_id = os.environ.get("CODEX_THREAD_ID", "").strip()
+    if codex_resume and thread_id:
+        footer = CODEX_RESUME_FOOTER_TEMPLATE.format(thread_id=thread_id)
+        if footer not in body:
+            body = f"{body}\n\n{footer}"
 
     client = get_client(endpoint)
     issue = read_issue(client, issue_id)
