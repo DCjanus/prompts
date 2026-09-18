@@ -576,6 +576,15 @@ def test_issue_create_and_update_read_description_file(
     monkeypatch.setattr(linear_cli, "select_team", lambda team: team or "DCJ")
     monkeypatch.setattr(
         linear_cli,
+        "resolve_workflow_state",
+        lambda client, team_id, state: {
+            "id": "todo-id",
+            "name": state,
+            "type": "unstarted",
+        },
+    )
+    monkeypatch.setattr(
+        linear_cli,
         "read_issue",
         lambda client, issue_id: {
             "id": "issue-id",
@@ -594,6 +603,7 @@ def test_issue_create_and_update_read_description_file(
             "新事项",
             "--description-file",
             str(description_file),
+            "--no-due-date",
         ],
     )
     assert created.exit_code == 0, created.output
@@ -615,6 +625,91 @@ def test_issue_create_and_update_read_description_file(
     assert json.loads(updated.output)["input"]["description"] == (
         "## 目标\n\n- 保留 Markdown 结构"
     )
+
+
+def test_issue_create_defaults_to_todo_and_requires_due_date_choice(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: object())
+    monkeypatch.setattr(
+        linear_cli,
+        "resolve_team",
+        lambda client, team: {"id": "team-id", "key": "DCJ", "name": "DCjanus"},
+    )
+    monkeypatch.setattr(linear_cli, "select_team", lambda team: team or "DCJ")
+    monkeypatch.setattr(
+        linear_cli,
+        "resolve_workflow_state",
+        lambda client, team_id, state: {
+            "id": "todo-id",
+            "name": state,
+            "type": "unstarted",
+        },
+    )
+    runner = CliRunner()
+
+    missing = runner.invoke(
+        linear_cli.app,
+        ["issue", "create", "--title", "新事项"],
+    )
+    assert missing.exit_code != 0
+    assert "--due-date" in missing.output
+    assert "--no-due-date" in missing.output
+
+    dated = runner.invoke(
+        linear_cli.app,
+        [
+            "issue",
+            "create",
+            "--title",
+            "新事项",
+            "--due-date",
+            "2026-09-30",
+        ],
+    )
+    assert dated.exit_code == 0, dated.output
+    assert json.loads(dated.output)["input"] == {
+        "dueDate": "2026-09-30",
+        "stateId": "todo-id",
+        "teamId": "team-id",
+        "title": "新事项",
+    }
+
+    undated = runner.invoke(
+        linear_cli.app,
+        ["issue", "create", "--title", "新事项", "--no-due-date"],
+    )
+    assert undated.exit_code == 0, undated.output
+    assert "dueDate" not in json.loads(undated.output)["input"]
+
+    conflicting = runner.invoke(
+        linear_cli.app,
+        [
+            "issue",
+            "create",
+            "--title",
+            "新事项",
+            "--due-date",
+            "2026-09-30",
+            "--no-due-date",
+        ],
+    )
+    assert conflicting.exit_code != 0
+    assert "不能同时使用" in conflicting.output
+
+    invalid = runner.invoke(
+        linear_cli.app,
+        [
+            "issue",
+            "create",
+            "--title",
+            "新事项",
+            "--due-date",
+            "2026-02-30",
+        ],
+    )
+    assert invalid.exit_code != 0
+    assert "YYYY-MM-DD" in invalid.output
 
 
 def test_issue_description_inputs_are_mutually_exclusive(tmp_path: Path) -> None:

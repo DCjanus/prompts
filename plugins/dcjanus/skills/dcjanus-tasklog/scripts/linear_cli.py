@@ -26,6 +26,7 @@ import time
 import urllib.parse
 import webbrowser
 from dataclasses import dataclass
+from datetime import date
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -1580,6 +1581,22 @@ def load_description(
         ) from error
 
 
+def validate_create_due_date(due_date: str | None, no_due_date: bool) -> str | None:
+    """校验创建 Issue 时必须显式选择截止日期或无截止日期。"""
+    if due_date is not None and no_due_date:
+        raise typer.BadParameter("--due-date 与 --no-due-date 不能同时使用")
+    if due_date is None and not no_due_date:
+        raise typer.BadParameter("必须提供 --due-date 或显式使用 --no-due-date")
+    if due_date is not None:
+        try:
+            parsed = date.fromisoformat(due_date)
+        except ValueError as error:
+            raise typer.BadParameter("--due-date 必须使用 YYYY-MM-DD 格式") from error
+        if parsed.isoformat() != due_date:
+            raise typer.BadParameter("--due-date 必须使用 YYYY-MM-DD 格式")
+    return due_date
+
+
 @issue_app.command("create")
 def issue_create(
     title: Annotated[str, typer.Option()],
@@ -1595,6 +1612,7 @@ def issue_create(
     project_id: Annotated[str | None, typer.Option()] = None,
     parent_id: Annotated[str | None, typer.Option()] = None,
     due_date: Annotated[str | None, typer.Option()] = None,
+    no_due_date: Annotated[bool, typer.Option("--no-due-date")] = False,
     label_id: Annotated[list[str] | None, typer.Option()] = None,
     assignee_id: Annotated[str | None, typer.Option()] = None,
     endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
@@ -1602,8 +1620,11 @@ def issue_create(
 ) -> None:
     """预览或创建 Issue，并在写入后回读。"""
     description = load_description(description, description_file)
+    due_date = validate_create_due_date(due_date, no_due_date)
     client = get_client(endpoint)
     resolved = resolve_team(client, select_team(team))
+    if state_id is None:
+        state_id = resolve_workflow_state(client, resolved["id"], "Todo")["id"]
     fields = compact_input(
         {
             "teamId": resolved["id"],
