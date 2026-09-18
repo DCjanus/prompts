@@ -4,10 +4,12 @@ import importlib.util
 import json
 import stat
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx2 as httpx
 import pytest
+from rich.text import Text
 from typer.testing import CliRunner
 
 SCRIPT = Path(__file__).parents[1] / "scripts" / "linear_cli.py"
@@ -65,6 +67,51 @@ def test_help_uses_progressive_resource_groups() -> None:
     api = runner.invoke(linear_cli.app, ["api", "--help"])
     assert api.exit_code == 0, api.output
     assert "graphql" in api.output
+
+
+@pytest.mark.parametrize(
+    ("arguments", "expected"),
+    [
+        (["api", "graphql", "--help"], ["QUERY_FILE", "JSON_FILE"]),
+        (
+            ["issue", "create", "--help"],
+            [
+                "MARKDOWN_FILE",
+                "%Y-%m-%d",
+                "--state-id",
+                "STATE_ID",
+                "--label-id",
+                "LABEL_ID",
+                "--no-due-date",
+                "--no-assignee",
+            ],
+        ),
+        (
+            ["issue", "update", "--help"],
+            [
+                "ISSUE_ID",
+                "MARKDOWN_FILE",
+                "%Y-%m-%d",
+                "--state-id",
+                "STATE_ID",
+            ],
+        ),
+        (
+            ["issue", "comment", "create", "--help"],
+            ["ISSUE_ID", "MARKDOWN_FILE"],
+        ),
+        (["view", "create", "--help"], ["JSON_OBJECT"]),
+    ],
+)
+def test_help_exposes_semantic_parameter_contracts(
+    arguments: list[str], expected: list[str]
+) -> None:
+    result = CliRunner().invoke(linear_cli.app, arguments)
+
+    assert result.exit_code == 0, result.output
+    output = Text.from_ansi(result.output).plain
+    for value in expected:
+        assert value in output
 
 
 def test_api_key_auth_and_graphql_errors() -> None:
@@ -576,6 +623,20 @@ def test_issue_create_and_update_read_description_file(
     monkeypatch.setattr(linear_cli, "select_team", lambda team: team or "DCJ")
     monkeypatch.setattr(
         linear_cli,
+        "read_identity",
+        lambda client: {"viewer": {"id": "viewer-id", "name": "DCjanus"}},
+    )
+    monkeypatch.setattr(
+        linear_cli,
+        "resolve_workflow_state",
+        lambda client, team_id, state: {
+            "id": "todo-id",
+            "name": state,
+            "type": "unstarted",
+        },
+    )
+    monkeypatch.setattr(
+        linear_cli,
         "read_issue",
         lambda client, issue_id: {
             "id": "issue-id",
@@ -594,6 +655,7 @@ def test_issue_create_and_update_read_description_file(
             "新事项",
             "--description-file",
             str(description_file),
+            "--no-due-date",
         ],
     )
     assert created.exit_code == 0, created.output
@@ -614,6 +676,156 @@ def test_issue_create_and_update_read_description_file(
     assert updated.exit_code == 0, updated.output
     assert json.loads(updated.output)["input"]["description"] == (
         "## 目标\n\n- 保留 Markdown 结构"
+    )
+
+    dated_update = runner.invoke(
+        linear_cli.app,
+        ["issue", "update", "DCJ-101", "--due-date", "2026-10-01"],
+    )
+    assert dated_update.exit_code == 0, dated_update.output
+    assert json.loads(dated_update.output)["input"]["dueDate"] == "2026-10-01"
+
+    invalid_update = runner.invoke(
+        linear_cli.app,
+        ["issue", "update", "DCJ-101", "--due-date", "2026-02-30"],
+    )
+    assert invalid_update.exit_code != 0
+
+
+def test_issue_create_defaults_to_todo_and_requires_due_date_choice(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: object())
+    monkeypatch.setattr(
+        linear_cli,
+        "resolve_team",
+        lambda client, team: {"id": "team-id", "key": "DCJ", "name": "DCjanus"},
+    )
+    monkeypatch.setattr(linear_cli, "select_team", lambda team: team or "DCJ")
+    monkeypatch.setattr(
+        linear_cli,
+        "read_identity",
+        lambda client: {"viewer": {"id": "viewer-id", "name": "DCjanus"}},
+    )
+    monkeypatch.setattr(
+        linear_cli,
+        "resolve_workflow_state",
+        lambda client, team_id, state: {
+            "id": "todo-id",
+            "name": state,
+            "type": "unstarted",
+        },
+    )
+    runner = CliRunner()
+
+    missing = runner.invoke(
+        linear_cli.app,
+        ["issue", "create", "--title", "新事项"],
+    )
+    assert missing.exit_code != 0
+    with pytest.raises(
+        linear_cli.typer.BadParameter,
+        match="--due-date.*--no-due-date",
+    ):
+        linear_cli.validate_create_due_date(None, False)
+
+    dated = runner.invoke(
+        linear_cli.app,
+        [
+            "issue",
+            "create",
+            "--title",
+            "新事项",
+            "--due-date",
+            "2026-09-30",
+        ],
+    )
+    assert dated.exit_code == 0, dated.output
+    assert json.loads(dated.output)["input"] == {
+        "assigneeId": "viewer-id",
+        "dueDate": "2026-09-30",
+        "stateId": "todo-id",
+        "teamId": "team-id",
+        "title": "新事项",
+    }
+
+    undated = runner.invoke(
+        linear_cli.app,
+        ["issue", "create", "--title", "新事项", "--no-due-date"],
+    )
+    assert undated.exit_code == 0, undated.output
+    assert "dueDate" not in json.loads(undated.output)["input"]
+
+    conflicting = runner.invoke(
+        linear_cli.app,
+        [
+            "issue",
+            "create",
+            "--title",
+            "新事项",
+            "--due-date",
+            "2026-09-30",
+            "--no-due-date",
+        ],
+    )
+    assert conflicting.exit_code != 0
+    with pytest.raises(linear_cli.typer.BadParameter, match="不能同时使用"):
+        linear_cli.validate_create_due_date(
+            datetime(2026, 9, 30, tzinfo=timezone.utc), True
+        )
+
+    invalid = runner.invoke(
+        linear_cli.app,
+        [
+            "issue",
+            "create",
+            "--title",
+            "新事项",
+            "--due-date",
+            "2026-02-30",
+        ],
+    )
+    assert invalid.exit_code != 0
+
+    help_result = runner.invoke(linear_cli.app, ["issue", "create", "--help"])
+    assert help_result.exit_code == 0, help_result.output
+    help_output = Text.from_ansi(help_result.output).plain
+    assert "--due-date" in help_output
+    assert "%Y-%m-%d" in help_output
+
+    unassigned = runner.invoke(
+        linear_cli.app,
+        [
+            "issue",
+            "create",
+            "--title",
+            "新事项",
+            "--no-due-date",
+            "--no-assignee",
+        ],
+    )
+    assert unassigned.exit_code == 0, unassigned.output
+    assert "assigneeId" not in json.loads(unassigned.output)["input"]
+
+    conflicting_assignee = runner.invoke(
+        linear_cli.app,
+        [
+            "issue",
+            "create",
+            "--title",
+            "新事项",
+            "--no-due-date",
+            "--assignee-id",
+            "other-user-id",
+            "--no-assignee",
+        ],
+    )
+    assert conflicting_assignee.exit_code != 0
+    with pytest.raises(linear_cli.typer.BadParameter, match="不能同时使用"):
+        linear_cli.resolve_create_assignee(object(), "other-user-id", True)
+    assert (
+        linear_cli.resolve_create_assignee(object(), "other-user-id", False)
+        == "other-user-id"
     )
 
 
