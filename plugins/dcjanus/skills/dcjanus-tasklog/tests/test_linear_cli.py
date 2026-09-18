@@ -4,6 +4,7 @@ import importlib.util
 import json
 import stat
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx2 as httpx
@@ -710,7 +711,9 @@ def test_issue_create_defaults_to_todo_and_requires_due_date_choice(
     )
     assert conflicting.exit_code != 0
     with pytest.raises(linear_cli.typer.BadParameter, match="不能同时使用"):
-        linear_cli.validate_create_due_date("2026-09-30", True)
+        linear_cli.validate_create_due_date(
+            datetime(2026, 9, 30, tzinfo=timezone.utc), True
+        )
 
     invalid = runner.invoke(
         linear_cli.app,
@@ -724,8 +727,11 @@ def test_issue_create_defaults_to_todo_and_requires_due_date_choice(
         ],
     )
     assert invalid.exit_code != 0
-    with pytest.raises(linear_cli.typer.BadParameter, match="YYYY-MM-DD"):
-        linear_cli.validate_create_due_date("2026-02-30", False)
+
+    help_result = runner.invoke(linear_cli.app, ["issue", "create", "--help"])
+    assert help_result.exit_code == 0, help_result.output
+    assert "--due-date" in help_result.output
+    assert "%Y-%m-%d" in help_result.output
 
     unassigned = runner.invoke(
         linear_cli.app,

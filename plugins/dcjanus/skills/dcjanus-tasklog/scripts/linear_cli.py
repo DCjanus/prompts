@@ -26,7 +26,7 @@ import time
 import urllib.parse
 import webbrowser
 from dataclasses import dataclass
-from datetime import date
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -1599,20 +1599,15 @@ def load_description(
         ) from error
 
 
-def validate_create_due_date(due_date: str | None, no_due_date: bool) -> str | None:
+def validate_create_due_date(
+    due_date: datetime | None, no_due_date: bool
+) -> str | None:
     """校验创建 Issue 时必须显式选择截止日期或无截止日期。"""
     if due_date is not None and no_due_date:
         raise typer.BadParameter("--due-date 与 --no-due-date 不能同时使用")
     if due_date is None and not no_due_date:
         raise typer.BadParameter("必须提供 --due-date 或显式使用 --no-due-date")
-    if due_date is not None:
-        try:
-            parsed = date.fromisoformat(due_date)
-        except ValueError as error:
-            raise typer.BadParameter("--due-date 必须使用 YYYY-MM-DD 格式") from error
-        if parsed.isoformat() != due_date:
-            raise typer.BadParameter("--due-date 必须使用 YYYY-MM-DD 格式")
-    return due_date
+    return due_date.date().isoformat() if due_date is not None else None
 
 
 def resolve_create_assignee(
@@ -1644,11 +1639,26 @@ def issue_create(
     cycle_id: Annotated[str | None, typer.Option()] = None,
     project_id: Annotated[str | None, typer.Option()] = None,
     parent_id: Annotated[str | None, typer.Option()] = None,
-    due_date: Annotated[str | None, typer.Option()] = None,
-    no_due_date: Annotated[bool, typer.Option("--no-due-date")] = False,
+    due_date: Annotated[
+        datetime | None,
+        typer.Option(
+            formats=["%Y-%m-%d"],
+            help="截止日期；与 --no-due-date 二选一。",
+        ),
+    ] = None,
+    no_due_date: Annotated[
+        bool,
+        typer.Option("--no-due-date", help="显式创建无截止日期 Issue。"),
+    ] = False,
     label_id: Annotated[list[str] | None, typer.Option()] = None,
-    assignee_id: Annotated[str | None, typer.Option()] = None,
-    no_assignee: Annotated[bool, typer.Option("--no-assignee")] = False,
+    assignee_id: Annotated[
+        str | None,
+        typer.Option(help="负责人 ID；省略时使用当前 Linear 用户。"),
+    ] = None,
+    no_assignee: Annotated[
+        bool,
+        typer.Option("--no-assignee", help="显式创建未分配 Issue。"),
+    ] = False,
     endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
     yes: Annotated[bool, typer.Option("--yes")] = False,
 ) -> None:
