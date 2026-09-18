@@ -9,6 +9,7 @@ from pathlib import Path
 
 import httpx2 as httpx
 import pytest
+from rich.text import Text
 from typer.testing import CliRunner
 
 SCRIPT = Path(__file__).parents[1] / "scripts" / "linear_cli.py"
@@ -108,8 +109,9 @@ def test_help_exposes_semantic_parameter_contracts(
     result = CliRunner().invoke(linear_cli.app, arguments)
 
     assert result.exit_code == 0, result.output
+    output = Text.from_ansi(result.output).plain
     for value in expected:
-        assert value in result.output
+        assert value in output
 
 
 def test_api_key_auth_and_graphql_errors() -> None:
@@ -787,8 +789,9 @@ def test_issue_create_defaults_to_todo_and_requires_due_date_choice(
 
     help_result = runner.invoke(linear_cli.app, ["issue", "create", "--help"])
     assert help_result.exit_code == 0, help_result.output
-    assert "--due-date" in help_result.output
-    assert "%Y-%m-%d" in help_result.output
+    help_output = Text.from_ansi(help_result.output).plain
+    assert "--due-date" in help_output
+    assert "%Y-%m-%d" in help_output
 
     unassigned = runner.invoke(
         linear_cli.app,
