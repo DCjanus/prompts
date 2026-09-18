@@ -653,8 +653,11 @@ def test_issue_create_defaults_to_todo_and_requires_due_date_choice(
         ["issue", "create", "--title", "新事项"],
     )
     assert missing.exit_code != 0
-    assert "--due-date" in missing.output
-    assert "--no-due-date" in missing.output
+    with pytest.raises(
+        linear_cli.typer.BadParameter,
+        match="--due-date.*--no-due-date",
+    ):
+        linear_cli.validate_create_due_date(None, False)
 
     dated = runner.invoke(
         linear_cli.app,
@@ -695,7 +698,8 @@ def test_issue_create_defaults_to_todo_and_requires_due_date_choice(
         ],
     )
     assert conflicting.exit_code != 0
-    assert "不能同时使用" in conflicting.output
+    with pytest.raises(linear_cli.typer.BadParameter, match="不能同时使用"):
+        linear_cli.validate_create_due_date("2026-09-30", True)
 
     invalid = runner.invoke(
         linear_cli.app,
@@ -709,7 +713,8 @@ def test_issue_create_defaults_to_todo_and_requires_due_date_choice(
         ],
     )
     assert invalid.exit_code != 0
-    assert "YYYY-MM-DD" in invalid.output
+    with pytest.raises(linear_cli.typer.BadParameter, match="YYYY-MM-DD"):
+        linear_cli.validate_create_due_date("2026-02-30", False)
 
 
 def test_issue_description_inputs_are_mutually_exclusive(tmp_path: Path) -> None:
