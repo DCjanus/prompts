@@ -656,9 +656,26 @@ app.add_typer(api_app, name="api")
 
 @api_app.command("graphql")
 def api_graphql(
-    query_file: Annotated[Path, typer.Argument(exists=True, dir_okay=False)],
+    query_file: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            dir_okay=False,
+            readable=True,
+            metavar="QUERY_FILE",
+            help="包含单个 GraphQL operation 的 UTF-8 文件。",
+        ),
+    ],
     variables_file: Annotated[
-        Path | None, typer.Option("--variables-file", exists=True, dir_okay=False)
+        Path | None,
+        typer.Option(
+            "--variables-file",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+            metavar="JSON_FILE",
+            help="GraphQL variables JSON object 文件。",
+        ),
     ] = None,
     endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
     allow_mutation: Annotated[bool, typer.Option("--allow-mutation")] = False,
@@ -1516,8 +1533,21 @@ def comment_list(
 
 @issue_comment_app.command("create")
 def comment_create(
-    issue_id: Annotated[str, typer.Argument()],
-    body_file: Annotated[Path, typer.Option("--body-file")],
+    issue_id: Annotated[
+        str,
+        typer.Argument(metavar="ISSUE_ID", help="Issue UUID 或 identifier。"),
+    ],
+    body_file: Annotated[
+        Path,
+        typer.Option(
+            "--body-file",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+            metavar="MARKDOWN_FILE",
+            help="Comment 的 UTF-8 Markdown 正文文件。",
+        ),
+    ],
     endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
     codex_resume: Annotated[
         bool, typer.Option("--codex-resume/--no-codex-resume")
@@ -1627,18 +1657,45 @@ def resolve_create_assignee(
 
 @issue_app.command("create")
 def issue_create(
-    title: Annotated[str, typer.Option()],
-    team: Annotated[str | None, typer.Option("--team")] = None,
-    description: Annotated[str | None, typer.Option()] = None,
+    title: Annotated[str, typer.Option(help="Issue 标题。")],
+    team: Annotated[
+        str | None,
+        typer.Option(
+            "--team", metavar="TEAM_KEY", help="目标 Team key；默认读取配置。"
+        ),
+    ] = None,
+    description: Annotated[str | None, typer.Option(help="短 Issue 描述。")] = None,
     description_file: Annotated[
         Path | None,
-        typer.Option("--description-file", exists=True, dir_okay=False),
+        typer.Option(
+            "--description-file",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+            metavar="MARKDOWN_FILE",
+            help="Issue 的 UTF-8 Markdown 描述文件。",
+        ),
     ] = None,
-    state_id: Annotated[str | None, typer.Option()] = None,
-    priority: Annotated[int | None, typer.Option(min=0, max=4)] = None,
-    cycle_id: Annotated[str | None, typer.Option()] = None,
-    project_id: Annotated[str | None, typer.Option()] = None,
-    parent_id: Annotated[str | None, typer.Option()] = None,
+    state_id: Annotated[
+        str | None,
+        typer.Option(
+            "--state-id", metavar="STATE_ID", help="Workflow state ID；默认 Todo。"
+        ),
+    ] = None,
+    priority: Annotated[
+        int | None,
+        typer.Option(min=0, max=4, help="Linear 优先级：0-4。"),
+    ] = None,
+    cycle_id: Annotated[
+        str | None, typer.Option("--cycle-id", metavar="CYCLE_ID", help="Cycle ID。")
+    ] = None,
+    project_id: Annotated[
+        str | None,
+        typer.Option("--project-id", metavar="PROJECT_ID", help="Project ID。"),
+    ] = None,
+    parent_id: Annotated[
+        str | None, typer.Option(metavar="ISSUE_ID", help="父 Issue ID。")
+    ] = None,
     due_date: Annotated[
         datetime | None,
         typer.Option(
@@ -1650,7 +1707,10 @@ def issue_create(
         bool,
         typer.Option("--no-due-date", help="显式创建无截止日期 Issue。"),
     ] = False,
-    label_id: Annotated[list[str] | None, typer.Option()] = None,
+    label_id: Annotated[
+        list[str] | None,
+        typer.Option("--label-id", metavar="LABEL_ID", help="Label ID；可重复指定。"),
+    ] = None,
     assignee_id: Annotated[
         str | None,
         typer.Option(help="负责人 ID；省略时使用当前 Linear 用户。"),
@@ -1659,8 +1719,12 @@ def issue_create(
         bool,
         typer.Option("--no-assignee", help="显式创建未分配 Issue。"),
     ] = False,
-    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
-    yes: Annotated[bool, typer.Option("--yes")] = False,
+    endpoint: Annotated[
+        str, typer.Option(metavar="URL", help="Linear GraphQL endpoint。")
+    ] = DEFAULT_ENDPOINT,
+    yes: Annotated[
+        bool, typer.Option("--yes", help="执行写入；省略时只预览。")
+    ] = False,
 ) -> None:
     """预览或创建 Issue，并在写入后回读。"""
     description = load_description(description, description_file)
@@ -1703,23 +1767,63 @@ def issue_create(
 
 @issue_app.command("update")
 def issue_update(
-    issue_id: Annotated[str, typer.Argument()],
-    title: Annotated[str | None, typer.Option()] = None,
-    description: Annotated[str | None, typer.Option()] = None,
+    issue_id: Annotated[
+        str,
+        typer.Argument(metavar="ISSUE_ID", help="Issue UUID 或 identifier。"),
+    ],
+    title: Annotated[str | None, typer.Option(help="新 Issue 标题。")] = None,
+    description: Annotated[str | None, typer.Option(help="新的短 Issue 描述。")] = None,
     description_file: Annotated[
         Path | None,
-        typer.Option("--description-file", exists=True, dir_okay=False),
+        typer.Option(
+            "--description-file",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+            metavar="MARKDOWN_FILE",
+            help="Issue 的 UTF-8 Markdown 描述文件。",
+        ),
     ] = None,
-    state_id: Annotated[str | None, typer.Option()] = None,
-    priority: Annotated[int | None, typer.Option(min=0, max=4)] = None,
-    cycle_id: Annotated[str | None, typer.Option()] = None,
-    project_id: Annotated[str | None, typer.Option()] = None,
-    parent_id: Annotated[str | None, typer.Option()] = None,
-    due_date: Annotated[str | None, typer.Option()] = None,
-    label_id: Annotated[list[str] | None, typer.Option()] = None,
-    assignee_id: Annotated[str | None, typer.Option()] = None,
-    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
-    yes: Annotated[bool, typer.Option("--yes")] = False,
+    state_id: Annotated[
+        str | None,
+        typer.Option("--state-id", metavar="STATE_ID", help="新 Workflow state ID。"),
+    ] = None,
+    priority: Annotated[
+        int | None,
+        typer.Option(min=0, max=4, help="新 Linear 优先级：0-4。"),
+    ] = None,
+    cycle_id: Annotated[
+        str | None,
+        typer.Option("--cycle-id", metavar="CYCLE_ID", help="新 Cycle ID。"),
+    ] = None,
+    project_id: Annotated[
+        str | None,
+        typer.Option("--project-id", metavar="PROJECT_ID", help="新 Project ID。"),
+    ] = None,
+    parent_id: Annotated[
+        str | None, typer.Option(metavar="ISSUE_ID", help="新父 Issue ID。")
+    ] = None,
+    due_date: Annotated[
+        datetime | None,
+        typer.Option(formats=["%Y-%m-%d"], help="新的截止日期。"),
+    ] = None,
+    label_id: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--label-id",
+            metavar="LABEL_ID",
+            help="完整 Label ID 列表；可重复指定。",
+        ),
+    ] = None,
+    assignee_id: Annotated[
+        str | None, typer.Option(metavar="USER_ID", help="新负责人 ID。")
+    ] = None,
+    endpoint: Annotated[
+        str, typer.Option(metavar="URL", help="Linear GraphQL endpoint。")
+    ] = DEFAULT_ENDPOINT,
+    yes: Annotated[
+        bool, typer.Option("--yes", help="执行写入；省略时只预览。")
+    ] = False,
 ) -> None:
     """预览或更新 Issue，并在写入后回读。"""
     description = load_description(description, description_file)
@@ -1734,7 +1838,7 @@ def issue_update(
             "cycleId": cycle_id,
             "projectId": project_id,
             "parentId": parent_id,
-            "dueDate": due_date,
+            "dueDate": due_date.date().isoformat() if due_date else None,
             "labelIds": label_id,
             "assigneeId": assignee_id,
         }
@@ -1895,15 +1999,19 @@ def relation_create(
     )
 
 
-def parse_json_object(raw: str, option_name: str) -> dict[str, Any]:
-    """解析 CLI JSON object 参数。"""
+class JSONObject(dict[str, Any]):
+    """CLI 中已校验的 JSON object。"""
+
+
+def parse_json_object(raw: str) -> JSONObject:
+    """在 CLI 参数层解析 JSON object。"""
     try:
         value = json.loads(raw)
     except json.JSONDecodeError as error:
-        raise typer.BadParameter(f"{option_name} 不是有效 JSON：{error}") from error
+        raise typer.BadParameter(f"不是有效 JSON：{error}") from error
     if not isinstance(value, dict):
-        raise typer.BadParameter(f"{option_name} 必须是 JSON object")
-    return value
+        raise typer.BadParameter("必须是 JSON object")
+    return JSONObject(value)
 
 
 @view_app.command("list")
@@ -2072,7 +2180,15 @@ def view_issues(
 @view_app.command("create")
 def view_create(
     name: Annotated[str, typer.Option()],
-    filter_json: Annotated[str, typer.Option("--filter-json")],
+    filter_json: Annotated[
+        JSONObject,
+        typer.Option(
+            "--filter-json",
+            parser=parse_json_object,
+            metavar="JSON_OBJECT",
+            help="Linear IssueFilter JSON object。",
+        ),
+    ],
     description: Annotated[str | None, typer.Option()] = None,
     team_id: Annotated[str | None, typer.Option()] = None,
     owner_id: Annotated[str | None, typer.Option()] = None,
@@ -2088,7 +2204,7 @@ def view_create(
         {
             "name": name,
             "description": description,
-            "filterData": parse_json_object(filter_json, "--filter-json"),
+            "filterData": filter_json,
             "teamId": team_id,
             "ownerId": owner_id,
             "shared": shared,
@@ -2114,7 +2230,15 @@ def view_create(
 def view_update(
     view_id: Annotated[str, typer.Argument()],
     name: Annotated[str | None, typer.Option()] = None,
-    filter_json: Annotated[str | None, typer.Option("--filter-json")] = None,
+    filter_json: Annotated[
+        JSONObject | None,
+        typer.Option(
+            "--filter-json",
+            parser=parse_json_object,
+            metavar="JSON_OBJECT",
+            help="Linear IssueFilter JSON object。",
+        ),
+    ] = None,
     description: Annotated[str | None, typer.Option()] = None,
     shared: Annotated[bool | None, typer.Option("--shared/--personal")] = None,
     endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
@@ -2127,9 +2251,7 @@ def view_update(
         {
             "name": name,
             "description": description,
-            "filterData": parse_json_object(filter_json, "--filter-json")
-            if filter_json
-            else None,
+            "filterData": filter_json,
             "shared": shared,
         }
     )

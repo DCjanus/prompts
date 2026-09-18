@@ -68,6 +68,50 @@ def test_help_uses_progressive_resource_groups() -> None:
     assert "graphql" in api.output
 
 
+@pytest.mark.parametrize(
+    ("arguments", "expected"),
+    [
+        (["api", "graphql", "--help"], ["QUERY_FILE", "JSON_FILE"]),
+        (
+            ["issue", "create", "--help"],
+            [
+                "MARKDOWN_FILE",
+                "%Y-%m-%d",
+                "--state-id",
+                "STATE_ID",
+                "--label-id",
+                "LABEL_ID",
+                "--no-due-date",
+                "--no-assignee",
+            ],
+        ),
+        (
+            ["issue", "update", "--help"],
+            [
+                "ISSUE_ID",
+                "MARKDOWN_FILE",
+                "%Y-%m-%d",
+                "--state-id",
+                "STATE_ID",
+            ],
+        ),
+        (
+            ["issue", "comment", "create", "--help"],
+            ["ISSUE_ID", "MARKDOWN_FILE"],
+        ),
+        (["view", "create", "--help"], ["JSON_OBJECT"]),
+    ],
+)
+def test_help_exposes_semantic_parameter_contracts(
+    arguments: list[str], expected: list[str]
+) -> None:
+    result = CliRunner().invoke(linear_cli.app, arguments)
+
+    assert result.exit_code == 0, result.output
+    for value in expected:
+        assert value in result.output
+
+
 def test_api_key_auth_and_graphql_errors() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.headers["Authorization"] == "lin_api_key"
@@ -631,6 +675,19 @@ def test_issue_create_and_update_read_description_file(
     assert json.loads(updated.output)["input"]["description"] == (
         "## 目标\n\n- 保留 Markdown 结构"
     )
+
+    dated_update = runner.invoke(
+        linear_cli.app,
+        ["issue", "update", "DCJ-101", "--due-date", "2026-10-01"],
+    )
+    assert dated_update.exit_code == 0, dated_update.output
+    assert json.loads(dated_update.output)["input"]["dueDate"] == "2026-10-01"
+
+    invalid_update = runner.invoke(
+        linear_cli.app,
+        ["issue", "update", "DCJ-101", "--due-date", "2026-02-30"],
+    )
+    assert invalid_update.exit_code != 0
 
 
 def test_issue_create_defaults_to_todo_and_requires_due_date_choice(
