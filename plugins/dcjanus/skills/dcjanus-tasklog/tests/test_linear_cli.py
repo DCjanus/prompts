@@ -1464,6 +1464,7 @@ def test_comment_list_returns_comments_in_chronological_order(
 def test_comment_create_previews_file_body_without_mutation(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    monkeypatch.setenv("CODEX_THREAD_ID", "thread-id")
     body_file = tmp_path / "comment.md"
     body_file.write_text("阶段结论\n", encoding="utf-8")
 
@@ -1498,21 +1499,148 @@ def test_comment_create_previews_file_body_without_mutation(
     payload = json.loads(result.output)
     assert payload == {
         "action": "commentCreate",
-        "input": {"body": "阶段结论", "issueId": "issue-id"},
+        "input": {
+            "body": (
+                "阶段结论\n\n---\n\n+++ 在 Codex 中继续\n\n"
+                "```sh\ncodex resume thread-id\n```\n\n+++"
+            ),
+            "issueId": "issue-id",
+        },
         "issue": {"id": "issue-id", "identifier": "DCJ-77", "title": "AIDE"},
         "preview": True,
     }
 
 
-def test_comment_create_writes_and_reads_back_comment(
+def test_comment_create_can_disable_codex_resume_footer(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    monkeypatch.setenv("CODEX_THREAD_ID", "thread-id")
     body_file = tmp_path / "comment.md"
-    body_file.write_text("最终结论", encoding="utf-8")
+    body_file.write_text("阶段结论\n", encoding="utf-8")
 
     class StubClient:
         def query(self, query: str, variables: dict | None = None) -> dict:
-            assert variables == {"input": {"issueId": "issue-id", "body": "最终结论"}}
+            raise AssertionError("preview must not call commentCreate")
+
+    monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: StubClient())
+    monkeypatch.setattr(
+        linear_cli,
+        "read_issue",
+        lambda client, issue_id: {
+            "id": "issue-id",
+            "identifier": "DCJ-77",
+            "title": "AIDE",
+        },
+    )
+
+    result = CliRunner().invoke(
+        linear_cli.app,
+        [
+            "issue",
+            "comment",
+            "create",
+            "DCJ-77",
+            "--body-file",
+            str(body_file),
+            "--no-codex-resume",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["input"]["body"] == "阶段结论"
+
+
+def test_comment_create_without_codex_thread_id_keeps_body_unchanged(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.delenv("CODEX_THREAD_ID", raising=False)
+    body_file = tmp_path / "comment.md"
+    body_file.write_text("阶段结论\n", encoding="utf-8")
+
+    monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: object())
+    monkeypatch.setattr(
+        linear_cli,
+        "read_issue",
+        lambda client, issue_id: {
+            "id": "issue-id",
+            "identifier": "DCJ-77",
+            "title": "AIDE",
+        },
+    )
+
+    result = CliRunner().invoke(
+        linear_cli.app,
+        [
+            "issue",
+            "comment",
+            "create",
+            "DCJ-77",
+            "--body-file",
+            str(body_file),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["input"]["body"] == "阶段结论"
+
+
+def test_comment_create_does_not_duplicate_existing_codex_resume_footer(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("CODEX_THREAD_ID", "thread-id")
+    body = (
+        "阶段结论\n\n---\n\n+++ 在 Codex 中继续\n\n"
+        "```sh\ncodex resume thread-id\n```\n\n+++"
+    )
+    body_file = tmp_path / "comment.md"
+    body_file.write_text(body, encoding="utf-8")
+
+    monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: object())
+    monkeypatch.setattr(
+        linear_cli,
+        "read_issue",
+        lambda client, issue_id: {
+            "id": "issue-id",
+            "identifier": "DCJ-77",
+            "title": "AIDE",
+        },
+    )
+
+    result = CliRunner().invoke(
+        linear_cli.app,
+        [
+            "issue",
+            "comment",
+            "create",
+            "DCJ-77",
+            "--body-file",
+            str(body_file),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["input"]["body"] == body
+
+
+def test_comment_create_writes_and_reads_back_comment(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("CODEX_THREAD_ID", "thread-id")
+    body_file = tmp_path / "comment.md"
+    body_file.write_text("最终结论", encoding="utf-8")
+    expected_body = (
+        "最终结论\n\n---\n\n+++ 在 Codex 中继续\n\n"
+        "```sh\ncodex resume thread-id\n```\n\n+++"
+    )
+
+    class StubClient:
+        def query(self, query: str, variables: dict | None = None) -> dict:
+            assert variables == {
+                "input": {"issueId": "issue-id", "body": expected_body}
+            }
             return {
                 "commentCreate": {
                     "success": True,
