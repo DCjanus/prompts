@@ -633,7 +633,7 @@ label_app = typer.Typer(no_args_is_help=True, help="查询和管理 Issue Label�
 workflow_state_app = typer.Typer(
     no_args_is_help=True, help="查询和管理 workflow state。"
 )
-issue_comment_app = typer.Typer(no_args_is_help=True, help="查询和创建 Issue 评论。")
+issue_comment_app = typer.Typer(no_args_is_help=True, help="查询和管理 Issue 评论。")
 issue_relation_app = typer.Typer(no_args_is_help=True, help="管理 Issue 关系。")
 view_app = typer.Typer(no_args_is_help=True, help="查询和管理 Custom View。")
 view_preferences_app = typer.Typer(
@@ -1606,6 +1606,51 @@ def comment_create(
             "comment": read_comment(client, data["comment"]["id"]),
         }
     )
+
+
+@issue_comment_app.command("delete")
+def comment_delete(
+    comment_id: Annotated[
+        str,
+        typer.Argument(metavar="COMMENT_ID", help="Comment UUID。"),
+    ],
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+    yes: Annotated[bool, typer.Option("--yes")] = False,
+) -> None:
+    """预览或删除 Comment，并在删除后确认其不可回读。"""
+    client = get_client(endpoint)
+    before = read_comment(client, comment_id)
+    if not yes:
+        emit(
+            {
+                "action": "commentDelete",
+                "before": before,
+                "preview": True,
+            }
+        )
+        return
+    result = client.query(
+        """
+        mutation DeleteComment($id: String!) {
+          commentDelete(id: $id) { success }
+        }
+        """,
+        {"id": before["id"]},
+    )["commentDelete"]
+    if not result["success"]:
+        raise LinearError("commentDelete 返回 success=false")
+    try:
+        data = client.query(
+            f"query Comment($id: String!) {{ comment(id: $id) {{ {COMMENT_FIELDS} }} }}",
+            {"id": before["id"]},
+        )
+    except LinearError as error:
+        if "Entity not found: Comment" not in str(error):
+            raise
+        data = {"comment": None}
+    if data.get("comment"):
+        raise LinearError("Comment 删除后仍可回读")
+    emit({"deleted": True, "comment": before})
 
 
 def compact_input(values: dict[str, Any]) -> dict[str, Any]:

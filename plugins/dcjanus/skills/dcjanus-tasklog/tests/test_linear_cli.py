@@ -1922,6 +1922,107 @@ def test_comment_create_rejects_empty_body_file(
     assert "内容不能为空" in result.output
 
 
+def test_comment_delete_previews_without_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class StubClient:
+        def query(self, query: str, variables: dict | None = None) -> dict:
+            raise AssertionError("preview must not call commentDelete")
+
+    monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: StubClient())
+    monkeypatch.setattr(
+        linear_cli,
+        "read_comment",
+        lambda client, comment_id: {
+            "id": comment_id,
+            "body": "稳定约定",
+            "createdAt": "2026-09-21T10:20:15Z",
+        },
+    )
+
+    result = CliRunner().invoke(
+        linear_cli.app,
+        ["issue", "comment", "delete", "comment-id"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output) == {
+        "action": "commentDelete",
+        "before": {
+            "id": "comment-id",
+            "body": "稳定约定",
+            "createdAt": "2026-09-21T10:20:15Z",
+        },
+        "preview": True,
+    }
+
+
+def test_comment_delete_writes_and_confirms_comment_is_gone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, dict | None]] = []
+
+    class StubClient:
+        def query(self, query: str, variables: dict | None = None) -> dict:
+            calls.append((query, variables))
+            if "mutation DeleteComment" in query:
+                return {"commentDelete": {"success": True}}
+            if "query Comment" in query:
+                return {"comment": None}
+            raise AssertionError(query)
+
+    monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: StubClient())
+    monkeypatch.setattr(
+        linear_cli,
+        "read_comment",
+        lambda client, comment_id: {"id": comment_id, "body": "稳定约定"},
+    )
+
+    result = CliRunner().invoke(
+        linear_cli.app,
+        ["issue", "comment", "delete", "comment-id", "--yes"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output) == {
+        "deleted": True,
+        "comment": {"id": "comment-id", "body": "稳定约定"},
+    }
+    assert [variables for _, variables in calls] == [
+        {"id": "comment-id"},
+        {"id": "comment-id"},
+    ]
+
+
+def test_comment_delete_accepts_linear_not_found_readback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class StubClient:
+        def query(self, query: str, variables: dict | None = None) -> dict:
+            if "mutation DeleteComment" in query:
+                return {"commentDelete": {"success": True}}
+            if "query Comment" in query:
+                raise linear_cli.LinearError(
+                    "Linear GraphQL 请求失败：Entity not found: Comment"
+                )
+            raise AssertionError(query)
+
+    monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: StubClient())
+    monkeypatch.setattr(
+        linear_cli,
+        "read_comment",
+        lambda client, comment_id: {"id": comment_id, "body": "稳定约定"},
+    )
+
+    result = CliRunner().invoke(
+        linear_cli.app,
+        ["issue", "comment", "delete", "comment-id", "--yes"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output)["deleted"] is True
+
+
 @pytest.mark.parametrize(
     ("command", "operation"),
     [("archive", "issueArchive"), ("restore", "issueUnarchive")],
