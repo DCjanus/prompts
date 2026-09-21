@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 import tomllib
+from rich.text import Text
 from typer.testing import CliRunner
 
 SCRIPT = Path(__file__).parents[1] / "init_cli.py"
@@ -27,6 +28,22 @@ def offline_uv(monkeypatch):
     """只使用测试进程已有解释器，不依赖网络。"""
     monkeypatch.setenv("UV_OFFLINE", "1")
     monkeypatch.setenv("UV_PYTHON_DOWNLOADS", "never")
+
+
+def test_initializer_is_directly_executable():
+    """初始化器自身可依靠 uv shebang 直接作为命令运行。"""
+    assert os.access(SCRIPT, os.X_OK)
+    completed = subprocess.run(
+        [str(SCRIPT), "--help"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, "FORCE_COLOR": "1"},
+    )
+    assert completed.returncode == 0, completed.stderr
+    help_text = Text.from_ansi(completed.stdout).plain
+    assert "{path}" in help_text
+    assert "--dependency" in help_text
 
 
 def test_creates_executable_script_in_requested_directory(tmp_path, monkeypatch):
