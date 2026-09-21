@@ -29,6 +29,17 @@ def offline_uv(monkeypatch):
     monkeypatch.setenv("UV_PYTHON_DOWNLOADS", "never")
 
 
+def test_initializer_is_directly_executable():
+    """初始化器自身可依靠 uv shebang 直接作为命令运行。"""
+    assert os.access(SCRIPT, os.X_OK)
+    completed = subprocess.run(
+        [str(SCRIPT), "--help"], capture_output=True, text=True, check=False
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert "{path}" in completed.stdout
+    assert "--dependency" in completed.stdout
+
+
 def test_creates_executable_script_in_requested_directory(tmp_path, monkeypatch):
     """调用目录决定相对目标，产物可在任意目录独立执行。"""
     monkeypatch.chdir(tmp_path)
