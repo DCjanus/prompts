@@ -23,7 +23,7 @@ GraphQL 客户端使用 `gql[httpx2]`。当前固定到首个支持 HTTPX2 的 `
 
 ```bash
 ./scripts/linear_cli.py auth login-api-key
-./scripts/linear_cli.py config set-default-team DCJ
+./scripts/linear_cli.py config set-default-team SD
 ./scripts/linear_cli.py config show
 ./scripts/linear_cli.py doctor
 ```
