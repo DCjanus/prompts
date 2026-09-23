@@ -136,8 +136,13 @@ class DailyTokenUsage:
         return self.cached_input_tokens / self.input_tokens * 100
 
     @property
-    def estimated_cost_usd(self) -> float:
-        """返回已知模型价格对应的 API 等价成本。"""
+    def estimated_cost_usd(self) -> float | None:
+        """仅在所有 Token 均能估价时返回完整的 API 等价成本。"""
+        return None if self.unpriced_tokens else self.priced_cost_usd
+
+    @property
+    def priced_cost_usd(self) -> float:
+        """返回已知模型价格对应的成本小计。"""
         return sum(model.estimated_cost_usd or 0.0 for model in self.models)
 
     @property
@@ -149,6 +154,19 @@ class DailyTokenUsage:
             model.total_tokens
             for model in self.models
             if model.estimated_cost_usd is None
+        )
+
+    @property
+    def unpriced_models(self) -> tuple[str, ...]:
+        """列出价格未知且产生 Token 的模型。"""
+        return tuple(
+            sorted(
+                {
+                    model.model
+                    for model in self.models
+                    if model.total_tokens > 0 and model.estimated_cost_usd is None
+                }
+            )
         )
 
 
@@ -251,14 +269,26 @@ class UsageHistory:
         return sum(day.total_tokens for day in self.days)
 
     @property
-    def estimated_cost_usd(self) -> float:
-        """返回当前时间范围内已知模型的 API 等价成本。"""
-        return sum(day.estimated_cost_usd for day in self.days)
+    def estimated_cost_usd(self) -> float | None:
+        """仅在当前时间范围内所有 Token 均能估价时返回完整成本。"""
+        return None if self.unpriced_tokens else self.priced_cost_usd
+
+    @property
+    def priced_cost_usd(self) -> float:
+        """返回当前时间范围内已知模型价格对应的成本小计。"""
+        return sum(day.priced_cost_usd for day in self.days)
 
     @property
     def unpriced_tokens(self) -> int:
         """返回当前时间范围内未能估价的 Token 数。"""
         return sum(day.unpriced_tokens for day in self.days)
+
+    @property
+    def unpriced_models(self) -> tuple[str, ...]:
+        """列出当前时间范围内价格未知且产生 Token 的模型。"""
+        return tuple(
+            sorted({model for day in self.days for model in day.unpriced_models})
+        )
 
 
 @dataclass(frozen=True)
@@ -2217,7 +2247,7 @@ def _render_usage_history(history: UsageHistory, *, verbose: bool) -> None:
             day.day.strftime("%m-%d"),
             _format_token_count(day.total_tokens),
             _cache_hit_text(day),
-            _format_cost(day.estimated_cost_usd, day.unpriced_tokens),
+            _format_cost(day.priced_cost_usd, day.unpriced_tokens),
         )
     scan = history.scan
     subtitle_parts = []
@@ -2225,7 +2255,8 @@ def _render_usage_history(history: UsageHistory, *, verbose: bool) -> None:
         subtitle_parts.append(f"[dim]{breakdown}[/]")
     if history.unpriced_tokens:
         subtitle_parts.append(
-            f"[yellow]未估价 {_format_token_count(history.unpriced_tokens)} Token[/]"
+            f"[yellow]未估价 {_format_token_count(history.unpriced_tokens)} Token"
+            f"（{', '.join(history.unpriced_models) or '模型未知'}）[/]"
         )
     if verbose:
         subtitle_parts.append(
@@ -2248,7 +2279,7 @@ def _render_usage_history(history: UsageHistory, *, verbose: bool) -> None:
             title=(
                 f"[bold]最近 {len(history.days)} 天 Token · "
                 f"{_format_token_count(history.total_tokens)} · "
-                f"API 等价 {_format_cost(history.estimated_cost_usd, history.unpriced_tokens)}"
+                f"API 等价 {_format_cost(history.priced_cost_usd, history.unpriced_tokens)}"
                 f" · {_provider_label(history.provider)}[/]"
             ),
             subtitle=" · ".join(subtitle_parts) or None,
@@ -2453,9 +2484,13 @@ def _svg_usage_history(
     content_width = width - 36
     card_width = (content_width - card_gap * max(0, grid_columns - 1)) / grid_columns
     card_height = 140.0
+    with_unpriced = any(day.unpriced_tokens for day in days)
+    date_y, tokens_y, cache_y, cost_y = (
+        (23, 55, 80, 104) if with_unpriced else (27, 63, 91, 116)
+    )
     parts = [
         f'<g data-role="daily-usage" data-grid-columns="{grid_columns}" filter="url(#shadow)"><rect x="{x}" y="{y}" width="{width}" height="{height}" rx="24" fill="#151b2d" stroke="#283149"/></g>',
-        f'<text x="{x + 26}" y="{y + 40}" fill="#f8f8f2" font-size="22" font-weight="700">最近 {len(days)} 天 Token · {_svg_text(_format_token_count(history.total_tokens))} · API 等价 {_svg_text(_format_cost(history.estimated_cost_usd, history.unpriced_tokens))} · {_svg_text(_provider_label(history.provider))}</text>',
+        f'<text x="{x + 26}" y="{y + 40}" fill="#f8f8f2" font-size="22" font-weight="700">最近 {len(days)} 天 Token · {_svg_text(_format_token_count(history.total_tokens))} · API 等价 {_svg_text(_format_cost(history.priced_cost_usd, history.unpriced_tokens))} · {_svg_text(_provider_label(history.provider))}</text>',
     ]
     if verbose:
         scan = history.scan
@@ -2480,12 +2515,28 @@ def _svg_usage_history(
         parts.extend(
             [
                 f'<g data-role="day-card"><rect x="{card_x}" y="{card_y}" width="{card_width}" height="{card_height}" rx="14" fill="#101626" stroke="#202941"/></g>',
-                f'<text x="{center_x}" y="{card_y + 27}" text-anchor="middle" class="muted" font-size="13">{day.day.strftime("%m-%d")}</text>',
-                f'<text x="{center_x}" y="{card_y + 63}" text-anchor="middle" fill="#f8f8f2" font-size="24" font-weight="750">{_svg_text(_format_token_count(day.total_tokens))}</text>',
-                f'<text x="{center_x}" y="{card_y + 91}" text-anchor="middle" fill="#bd93f9" font-size="13" font-weight="650">缓存 {_svg_text(cache_text)}</text>',
-                f'<text x="{center_x}" y="{card_y + 116}" text-anchor="middle" fill="#50fa7b" font-size="14" font-weight="700">{_svg_text(_format_cost(day.estimated_cost_usd, day.unpriced_tokens))}</text>',
+                f'<text x="{center_x}" y="{card_y + date_y}" text-anchor="middle" class="muted" font-size="13">{day.day.strftime("%m-%d")}</text>',
+                f'<text x="{center_x}" y="{card_y + tokens_y}" text-anchor="middle" fill="#f8f8f2" font-size="24" font-weight="750">{_svg_text(_format_token_count(day.total_tokens))}</text>',
+                f'<text x="{center_x}" y="{card_y + cache_y}" text-anchor="middle" fill="#bd93f9" font-size="13" font-weight="650">缓存 {_svg_text(cache_text)}</text>',
+                f'<text x="{center_x}" y="{card_y + cost_y}" text-anchor="middle" fill="#50fa7b" font-size="14" font-weight="700">{_svg_text(_format_cost(day.priced_cost_usd, day.unpriced_tokens))}</text>',
             ]
         )
+        if day.unpriced_tokens:
+            names = day.unpriced_models
+            if not names:
+                label = "模型未知"
+            elif len(names) == 1:
+                label = names[0]
+            else:
+                label = f"{len(names)} 个模型"
+            if len(label) > 10:
+                label = f"{label[:9]}…"
+            short_label = f" · {_svg_text(label)}" if card_width >= 160 else ""
+            parts.append(
+                f'<g data-role="unpriced-day"><title>{_svg_text(", ".join(names) or "模型未知")}</title>'
+                f'<text x="{center_x}" y="{card_y + 122}" text-anchor="middle" fill="#d6b26b" font-size="11">'
+                f"未估价 {_svg_text(_format_token_count(day.unpriced_tokens))}{short_label}</text></g>"
+            )
         if intensity_width > 0:
             parts.append(
                 f'<rect x="{card_x + 14}" y="{card_y + card_height - 10}" width="{intensity_width}" height="4" rx="2" fill="#8be9fd" fill-opacity="0.86"/>'
@@ -2913,13 +2964,17 @@ def _json_report(
                     **asdict(day),
                     "day": day.day.isoformat(),
                     "estimated_cost_usd": day.estimated_cost_usd,
+                    "priced_cost_usd": day.priced_cost_usd,
                     "unpriced_tokens": day.unpriced_tokens,
+                    "unpriced_models": list(day.unpriced_models),
                 }
                 for day in history.days
             ],
             "total_tokens": history.total_tokens,
             "estimated_cost_usd": history.estimated_cost_usd,
+            "priced_cost_usd": history.priced_cost_usd,
             "unpriced_tokens": history.unpriced_tokens,
+            "unpriced_models": list(history.unpriced_models),
             "provider": history.provider,
             "providers": [asdict(item) for item in history.providers],
             "pricing_basis": "current_standard_api_equivalent",

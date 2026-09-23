@@ -23,6 +23,77 @@ sys.modules[SPEC.name] = chatgpt_usage
 SPEC.loader.exec_module(chatgpt_usage)
 
 
+class UnknownModelPricingTests(unittest.TestCase):
+    def test_unknown_model_does_not_turn_into_zero_cost(self) -> None:
+        day = chatgpt_usage.DailyTokenUsage(
+            date(2030, 1, 8),
+            100,
+            0,
+            0,
+            50,
+            0,
+            150,
+            models=(
+                chatgpt_usage.ModelTokenUsage(
+                    "gpt-future", 100, 0, 0, 50, 0, 150, None
+                ),
+            ),
+        )
+        history = chatgpt_usage.UsageHistory(
+            (day,), chatgpt_usage.ScanStats(0, 0, 0, 0)
+        )
+
+        self.assertIsNone(day.estimated_cost_usd)
+        self.assertIsNone(history.estimated_cost_usd)
+        self.assertEqual(history.unpriced_models, ("gpt-future",))
+        report = chatgpt_usage._json_report(
+            [], datetime(2030, 1, 8, tzinfo=UTC), history
+        )
+        local_usage = report["local_usage"]
+        self.assertIsNone(local_usage["estimated_cost_usd"])
+        self.assertIsNone(local_usage["days"][0]["estimated_cost_usd"])
+        self.assertEqual(local_usage["unpriced_models"], ["gpt-future"])
+        for verbose in (False, True):
+            svg = chatgpt_usage.render_usage_svg(
+                [], datetime(2030, 1, 8, tzinfo=UTC), history=history, verbose=verbose
+            )
+            self.assertIn("未估价 150 · gpt-future", svg)
+            self.assertGreater(
+                svg.index("未估价 150"), svg.index('data-role="day-card"')
+            )
+            self.assertIn("<title>gpt-future</title>", svg)
+            self.assertIn("API 等价 —", svg)
+
+    def test_mixed_models_keep_priced_subtotal_separate(self) -> None:
+        day = chatgpt_usage.DailyTokenUsage(
+            date(2030, 1, 8),
+            200,
+            0,
+            0,
+            100,
+            0,
+            300,
+            models=(
+                chatgpt_usage.ModelTokenUsage("gpt-5", 100, 0, 0, 50, 0, 150, 1.5),
+                chatgpt_usage.ModelTokenUsage(
+                    "gpt-future", 100, 0, 0, 50, 0, 150, None
+                ),
+            ),
+        )
+        history = chatgpt_usage.UsageHistory(
+            (day,), chatgpt_usage.ScanStats(0, 0, 0, 0)
+        )
+
+        self.assertIsNone(history.estimated_cost_usd)
+        self.assertEqual(history.priced_cost_usd, 1.5)
+        self.assertEqual(
+            chatgpt_usage._format_cost(
+                history.priced_cost_usd, history.unpriced_tokens
+            ),
+            "≥$1.50",
+        )
+
+
 class ParseRateLimitsTests(unittest.TestCase):
     def test_parses_available_reset_credits_and_keeps_nearest_three_expirations(
         self,
