@@ -50,7 +50,8 @@ Linear OAuth 需要先注册 OAuth application，将 `http://127.0.0.1:45831/cal
 
 - CLI 按资源分组；从 `./scripts/linear_cli.py --help` 开始，再对 `team`、`issue`、`view` 等逐级使用 `--help`，不要依赖本文件穷举命令。
 - 读操作直接执行；写操作默认输出 JSON 预览，明确授权后才加 `--yes`。
-- Team 优先取命令显式提供的 `--team`；省略时读取配置中的可选 `default_team`。两者都没有时直接报错，不猜测业务 Team。使用 `config set-default-team KEY` 设置，使用 `config clear-default-team` 清除；可用 `doctor --team KEY` 或 `team show --team KEY` 精确验证。
+- 不知道 Team key 时先用 `team list` 查询 workspace 的 Team；若 `pageInfo.hasNextPage` 为 true，用 `--after` 传入 `pageInfo.endCursor` 继续翻页。`team list` 不受默认 Team 限制。
+- Team 优先取命令显式提供的 `--team`；省略时读取配置中的可选 `default_team`。两者都没有时直接报错，不猜测业务 Team。使用 `config set-default-team KEY` 设置，使用 `config clear-default-team` 清除；可用 `doctor --team KEY` 或 `team get --team KEY` 精确验证。
 - 需要按标题、描述或评论查找 Issue 时，使用 `issue search TERM [--team KEY]`，不要先批量导出再在本地过滤。搜索默认包含评论；需要查找归档事项时增加 `--include-archived`，根据返回的 `pageInfo.endCursor` 用 `--after` 继续翻页。
 - 批量读取只需部分字段时，使用 `issue list --fields identifier,title,state,...` 传入逗号分隔的字段白名单，让 GraphQL 只返回所需字段；省略时保持完整默认输出。先用 `issue list --help` 查看支持的字段。
 - 尚未封装的低频、一次性能力，在用户确认不需要补齐 CLI 后，可用 `api graphql QUERY_FILE --variables-file VARIABLES_JSON` 执行单个 GraphQL operation。query 可直接运行；mutation 必须同时提供 `--allow-mutation --yes`。GraphQL 和 variables 都从文件读取，不把复杂文档、变量或敏感内容拼进命令行。
@@ -69,6 +70,8 @@ Linear OAuth 需要先注册 OAuth application，将 `http://127.0.0.1:45831/cal
 ```bash
 ./scripts/linear_cli.py --help
 ./scripts/linear_cli.py team --help
+./scripts/linear_cli.py team list
+./scripts/linear_cli.py team get --team KEY
 ./scripts/linear_cli.py team automation --help
 ./scripts/linear_cli.py issue --help
 ./scripts/linear_cli.py label --help

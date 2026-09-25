@@ -38,6 +38,9 @@ def test_help_uses_progressive_resource_groups() -> None:
 
     team = runner.invoke(linear_cli.app, ["team", "--help"])
     assert team.exit_code == 0, team.output
+    assert "list" in team.output
+    assert "get" in team.output
+    assert "show" not in team.output
     assert "automation" in team.output
 
     automation = runner.invoke(linear_cli.app, ["team", "automation", "--help"])
@@ -356,6 +359,54 @@ def test_auth_repair_reuses_saved_key_and_persists_working_mode(
         "auth_type": "api-key-bearer",
         "token": "lin_api_saved-key",
     }
+
+
+def test_team_list_paginates_without_default_team(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class StubClient:
+        def query(self, query: str, variables: dict | None = None) -> dict:
+            assert "teams(first: $first, after: $after)" in query
+            assert variables == {"first": 2, "after": "cursor-1"}
+            return {
+                "teams": {
+                    "nodes": [{"id": "work-id", "key": "WK", "name": "Work"}],
+                    "pageInfo": {"hasNextPage": False, "endCursor": "cursor-2"},
+                }
+            }
+
+    monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: StubClient())
+    monkeypatch.setattr(linear_cli, "default_team_from_config", lambda: None)
+
+    result = CliRunner().invoke(
+        linear_cli.app, ["team", "list", "--first", "2", "--after", "cursor-1"]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output) == {
+        "nodes": [{"id": "work-id", "key": "WK", "name": "Work"}],
+        "pageInfo": {"hasNextPage": False, "endCursor": "cursor-2"},
+    }
+
+
+def test_team_get_resolves_team_details(monkeypatch: pytest.MonkeyPatch) -> None:
+    class StubClient:
+        def query(self, query: str, variables: dict | None = None) -> dict:
+            if "query Team(" in query:
+                assert variables == {"key": "WK"}
+                return {
+                    "teams": {"nodes": [{"id": "work-id", "key": "WK", "name": "Work"}]}
+                }
+            assert "query TeamConfig" in query
+            assert variables == {"id": "work-id"}
+            return {"team": {"id": "work-id", "key": "WK", "name": "Work"}}
+
+    monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: StubClient())
+
+    result = CliRunner().invoke(linear_cli.app, ["team", "get", "--team", "WK"])
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output) == {"id": "work-id", "key": "WK", "name": "Work"}
 
 
 def test_team_automation_show_resolves_auto_close_state(
