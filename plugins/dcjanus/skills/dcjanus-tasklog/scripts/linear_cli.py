@@ -984,8 +984,30 @@ def doctor(
     emit(data)
 
 
-@team_app.command("show")
-def team_show(
+@team_app.command("list")
+def team_list(
+    first: Annotated[int, typer.Option(min=1, max=250)] = 50,
+    after: Annotated[str | None, typer.Option()] = None,
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+) -> None:
+    """列出 workspace 的 Team；通过 pageInfo.endCursor 继续翻页。"""
+    client = get_client(endpoint)
+    data = client.query(
+        """
+        query Teams($first: Int!, $after: String) {
+          teams(first: $first, after: $after) {
+            nodes { id key name }
+            pageInfo { hasNextPage endCursor }
+          }
+        }
+        """,
+        {"first": first, "after": after},
+    )
+    emit(data["teams"])
+
+
+@team_app.command("get")
+def team_get(
     team: Annotated[str | None, typer.Option("--team")] = None,
     endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
 ) -> None:
