@@ -70,6 +70,38 @@ class UpgradeActionTests(unittest.TestCase):
             script_deps.collect_upgrade_actions(Path("."), [report]), ([], [])
         )
 
+    def test_prerelease_lower_bound_upgrades_when_final_is_published(self) -> None:
+        report = script_deps.PackageReport(
+            name="gql",
+            latest="4.0.0",
+            occurrences=[
+                script_deps.DependencyOccurrence(
+                    Path("script.py"),
+                    "gql[httpx2]>=4.4.0b0",
+                    script_deps.Requirement("gql[httpx2]>=4.4.0b0"),
+                )
+            ],
+        )
+
+        self.assertEqual(script_deps.package_status(report), "ok")
+        self.assertEqual(
+            script_deps.collect_upgrade_actions(Path("."), [report]), ([], [])
+        )
+
+        report.latest = "4.4.0"
+        self.assertEqual(script_deps.package_status(report), "minimum behind latest")
+        self.assertEqual(
+            script_deps.collect_upgrade_actions(Path("."), [report]),
+            (
+                [
+                    script_deps.UpgradeAction(
+                        Path("script.py"), "gql", "gql[httpx2]>=4.4.0"
+                    )
+                ],
+                [],
+            ),
+        )
+
     def test_upgrade_only_changes_outdated_lower_bounds(self) -> None:
         report = script_deps.PackageReport(
             name="example",

@@ -3,7 +3,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#     "gql[httpx2]==4.4.0b0",
+#     "gql[httpx2]>=4.4.0b0",
 #     "tomli-w>=1.2.0",
 #     "typer>=0.27.2",
 # ]
