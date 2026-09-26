@@ -183,14 +183,14 @@ def fetch_latest_version(
 
 
 def declared_versions(report: PackageReport) -> list[Version]:
-    """提取声明中的可比较版本下限或精确版本。"""
+    """提取声明中的可比较版本下限。"""
     versions: list[Version] = []
     for occurrence in report.occurrences:
         requirement = occurrence.requirement
         if requirement is None:
             continue
         for specifier in requirement.specifier:
-            if specifier.operator not in {"==", "===", ">=", ">", "~="}:
+            if specifier.operator not in {">=", ">", "~="}:
                 continue
             try:
                 versions.append(Version(specifier.version))
@@ -203,6 +203,13 @@ def package_status(report: PackageReport) -> str:
     """判断依赖声明是否值得关注。"""
     if any(occurrence.error for occurrence in report.occurrences):
         return "invalid requirement"
+    if any(
+        specifier.operator in {"==", "==="}
+        for occurrence in report.occurrences
+        if occurrence.requirement is not None
+        for specifier in occurrence.requirement.specifier
+    ):
+        return "exact pin"
     if report.latest_error:
         return "lookup failed"
     if not report.latest:
@@ -245,7 +252,7 @@ def build_reports(root: Path, timeout: float) -> tuple[list[PackageReport], list
 def upgrade_requirement(
     report: PackageReport, occurrence: DependencyOccurrence
 ) -> str | None:
-    """仅提高过期的简单下限，保留 extras 和 marker。"""
+    """提高简单下限或解除精确锁定，保留 extras 和 marker。"""
     requirement = occurrence.requirement
     if (
         not report.latest
@@ -256,17 +263,21 @@ def upgrade_requirement(
         return None
 
     specifiers = list(requirement.specifier)
-    if len(specifiers) != 1 or specifiers[0].operator != ">=":
+    if len(specifiers) != 1 or specifiers[0].operator not in {"==", ">="}:
         return None
     try:
-        if Version(specifiers[0].version) >= Version(report.latest):
+        declared = Version(specifiers[0].version)
+        latest = Version(report.latest)
+        if declared.local is not None:
+            return None
+        if specifiers[0].operator == ">=" and declared >= latest:
             return occurrence.raw
     except InvalidVersion:
         return None
 
     extras = f"[{','.join(sorted(requirement.extras))}]" if requirement.extras else ""
     marker = f"; {requirement.marker}" if requirement.marker else ""
-    return f"{requirement.name}{extras}>={report.latest}{marker}"
+    return f"{requirement.name}{extras}>={max(declared, latest)}{marker}"
 
 
 def collect_upgrade_actions(
@@ -320,7 +331,10 @@ def run_upgrade_actions(actions: list[UpgradeAction], *, dry_run: bool) -> None:
             str(action.path),
             action.requirement,
         ]
-        console.print(f"{'Would run' if dry_run else 'Running'}: {' '.join(command)}")
+        console.print(
+            f"{'Would run' if dry_run else 'Running'}: {' '.join(command)}",
+            markup=False,
+        )
         if not dry_run:
             subprocess.run(command, check=True)
 
