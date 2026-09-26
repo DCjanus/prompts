@@ -16,28 +16,15 @@ mbx --version
 env -u MISE_SHELL -u MISE_CONFIG_FILE mbx setup
 ```
 
-清除 mise 的激活环境变量，可让 `mbx setup` 只安装 mbx 自带的稳定 Cargo shim，不改动其它 mise 配置。setup 同时会为 rust-analyzer 配置使用该 shim 的后台检查。记下 setup 输出的 shim 目录；macOS 默认是 `$HOME/Library/Application Support/mbx/bin`，Linux 默认是 `$HOME/.local/share/mbx/bin`。把它放在 `~/.cargo/bin`、mise shims 和其它 Cargo 入口之前。
+清除 mise 的激活环境变量，可让 `mbx setup` 安装自带的稳定 Cargo shim，而不改动 mise 配置。setup 还会为 rust-analyzer 配置使用该 shim 的后台检查。setup 会提示 shim 路径和当前 shell 的 PATH 写法；之后也可用 `mbx setup --status` 查看 shim 路径。以下配置一律使用它报告的目录，不推测系统默认路径。
 
 ### zsh
 
-在 `~/.zshenv` 中加入以下 macOS 配置，让 Codex 等非交互 zsh 进程也能使用 shim：
-
-```sh
-export PATH="$HOME/Library/Application Support/mbx/bin:$HOME/.cargo/bin:$PATH"
-```
-
-若 `~/.zshrc` 会运行 `mise activate zsh`，在它之后再次加入同一行，确保交互 shell 中的优先级。Linux 改用 setup 输出的 shim 目录。
+把 setup 报告的 shim 目录放到 `~/.zshenv` 的 PATH 前端，让 Codex 等非交互 zsh 进程也能使用。若 `~/.zshrc` 会运行 `mise activate zsh`，在它之后再次把同一目录置于 PATH 前端，确保交互 shell 中的优先级。
 
 ### fish
 
-在 `~/.config/fish/config.fish` 的 `mise activate fish | source` 之后加入以下 macOS 配置：
-
-```fish
-fish_add_path --path --move --prepend "$HOME/.cargo/bin"
-fish_add_path --path --move --prepend "$HOME/Library/Application Support/mbx/bin"
-```
-
-`--path` 只调整当前进程的 PATH，避免把路径永久写进 fish 的通用变量；最后一行让 Cargo shim 排在最前。Linux 改用 setup 输出的 shim 目录。
+在 `~/.config/fish/config.fish` 中用 `fish_add_path --path --move --prepend` 将 setup 报告的 shim 目录置于 PATH 前端；若启用了 `mise activate fish | source`，把这一行放在它之后。`--path` 只调整当前进程的 PATH，避免把路径永久写进 fish 的通用变量。
 
 安装 fish 补全：
 
