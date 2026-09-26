@@ -1,6 +1,6 @@
 ---
 name: dcjanus-preferences
-description: 适用于创建、修改或评审 Skill，或在项目开发工具及版本管理、跨语言的数据存储、分析、压缩、归档、哈希、API/Protobuf 契约、Telegram Bot 消息呈现及 Python/Rust/Go 第三方库之间做技术选择的场景。
+description: 适用于创建、修改或评审 Skill，或在项目开发工具（含 mbx/Cargo）及版本管理、跨语言的数据存储、分析、压缩、归档、哈希、API/Protobuf 契约、Telegram Bot 消息呈现及 Python/Rust/Go 第三方库之间做技术选择的场景。
 ---
 
 ## Usage
@@ -14,6 +14,7 @@ description: 适用于创建、修改或评审 Skill，或在项目开发工具�
 ## General Preferences
 
 - 项目开发工具及运行时版本优先使用 mise 管理，在 `mise.toml` 中共享配置；Rust 工具链默认使用 rustup 和项目级 `rust-toolchain.toml` 管理，不在 mise 中重复声明。已有工具链和语言包管理器沿用项目约定。
+- Rust 本地构建默认优先用 mbx 包装 Cargo，以复用不同项目和 worktree 的编译结果；Cargo 仍负责依赖解析、构建调度和测试。已有 cargo-binstall 时优先用 `cargo binstall mbx` 安装，否则用 `cargo install mbx --locked`；用 mbx 自带的 `mbx setup` 接入普通 `cargo` 命令，并在 fish 和 zsh 中验证入口。安装和排查时读取 `references/mbx.md`，已有项目明确的构建方式优先。
 - 哈希与密码派生按用途选择：普通数据校验、内容寻址、去重和缓存键等通用哈希场景默认优先 BLAKE3；用户密码存储与校验、基于密码派生加密密钥等需要抵抗离线暴力破解的场景默认优先 Argon2id。两者不可互换，不使用 BLAKE3、SHA-2 等快速哈希直接存储密码，也不使用 Argon2id 处理普通数据哈希。
 - ECMH: 顺序无关、保留重复次数且支持增量增删/分片合并的多重集合 hash；一次性集合摘要仍优先规范编码、排序后使用 BLAKE3。ECMH 不适用于认证或成员证明，组合时保留累加器而不是最终 digest。
 - 使用 Argon2id 存储密码时优先采用成熟库的高层密码哈希接口，生成独立随机 salt，并保存包含算法版本、参数、salt 和摘要的 PHC 格式字符串；参数根据部署环境 benchmark，并支持在登录校验成功后检测和升级旧参数。用于密钥派生时保留重新派生所需的 salt 和参数，不直接持久化派生密钥。除非协议或合规要求，不默认选择 Argon2i、Argon2d、bcrypt 或 PBKDF2。
@@ -22,6 +23,7 @@ description: 适用于创建、修改或评审 Skill，或在项目开发工具�
 ## References
 
 - Skill 编写与修改：`references/skill-writing.md`
+- mbx 安装、fish/zsh 接入与验证：`references/mbx.md`
 - 跨语言数据存储、分析、压缩与归档：`references/data-storage.md`
 - Protobuf 字段 presence 与兼容性：`references/protobuf.md`
 - Telegram Bot API 消息能力选择：`references/telegram-bot-api.md`
