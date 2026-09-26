@@ -4,10 +4,14 @@ mbx 为 Rust 构建提供跨项目、跨 worktree 的共享缓存，并管理构
 
 ## 安装与接入
 
-先通过 rustup 安装项目要求的 Rust 工具链，并安装 `cargo-binstall`。优先安装 mbx 的预编译版本，避免每台机器重复编译：
+先通过 rustup 安装项目要求的 Rust 工具链。已有 `cargo-binstall` 时优先安装 mbx 的预编译版本；否则直接用 Cargo 安装，不为 mbx 单独安装 `cargo-binstall`：
 
 ```sh
-cargo binstall mbx --no-confirm
+if command -v cargo-binstall >/dev/null 2>&1; then
+  cargo binstall mbx --no-confirm
+else
+  cargo install mbx --locked
+fi
 mbx --version
 env -u MISE_SHELL -u MISE_CONFIG_FILE mbx setup
 ```
@@ -52,6 +56,6 @@ mbx doctor
 cargo build
 ```
 
-`setup --status` 应报告 shim 已安装且为当前版本，`doctor` 的 setup 检查应通过。日常仍用 `cargo`；需要查看缓存节省量时用 `mbx stats`，预览清理时用 `mbx gc --dry-run`。升级用 `cargo binstall mbx --no-confirm`，稳定 shim 会跟随新的 mbx 可执行文件。
+`setup --status` 应报告 shim 已安装且为当前版本，`doctor` 的 setup 检查应通过。日常仍用 `cargo`；需要查看缓存节省量时用 `mbx stats`，预览清理时用 `mbx gc --dry-run`。升级时按是否已有 `cargo-binstall` 选择上述安装命令；稳定 shim 会跟随新的 mbx 可执行文件。
 
 更多设置见 [mbx 安装文档](https://mr-boxington.jdx.dev/installation) 和 [setup 文档](https://mr-boxington.jdx.dev/setup)。
