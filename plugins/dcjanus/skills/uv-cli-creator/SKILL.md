@@ -1,6 +1,6 @@
 ---
 name: uv-cli-creator
-description: 创建或修改基于 PEP 723、由 uv run --script 管理的可复用单文件 Python CLI。一次性分析脚本和一般执行环境问题使用 python-execution。
+description: 创建或修改基于 PEP 723、由 uv 管理且可直接执行的单文件 Python CLI。一次性分析脚本和一般执行环境问题使用 python-execution。
 ---
 
 ## 设计目标
@@ -10,7 +10,7 @@ description: 创建或修改基于 PEP 723、由 uv run --script 管理的可复
 - 不手动安装依赖，也不依赖宿主机已经准备好的 Python 环境
 - 默认只依赖 `uv`；直接执行还要求 Unix 环境支持 `env -S`
 - 方便修改和版本控制
-- 始终可以通过 `uv run --script` 执行；环境支持时也可以像可执行文件一样直接执行
+- 环境支持时优先直接执行脚本；`uv run --script` 作为通用执行方式
 
 ## 初始化与维护
 
@@ -24,7 +24,7 @@ skills/uv-cli-creator/scripts/init_cli.py <目标路径> [--dependency <依赖>]
 
 为 skill 创建的入口放在该 skill 的 `scripts/` 目录下；初始化后直接编写业务逻辑。后续依赖通过 `uv add --script` / `uv remove --script` 管理，不手工编辑依赖块。
 
-不支持 `env -S` 的 Unix 环境以及 Windows 使用 `uv run --script` 执行。
+在支持 `/usr/bin/env -S`、脚本有执行权限且文件系统允许执行的 Unix 环境中，优先用脚本路径直接运行（当前目录下如 `./xxxx.py`）。Windows、缺少 `env -S`、执行权限或文件系统禁止执行时，使用 `uv run --script <脚本路径>`。
 
 ## 细节偏好
 
@@ -52,6 +52,6 @@ skills/uv-cli-creator/scripts/init_cli.py <目标路径> [--dependency <依赖>]
 
 ## 验证
 
-- 验证脚本模式；提供可执行入口时，同时验证该入口。
+- 优先验证直接执行入口，同时验证 `uv run --script`；无法直接执行的环境只验证脚本模式。
 - `uvx ruff check <path>`
 - `uvx ruff format --check <path>`
