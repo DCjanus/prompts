@@ -46,3 +46,74 @@ class FetchLatestVersionTests(unittest.TestCase):
         self.assertIsNone(version)
         self.assertIn("still offline", error or "")
         self.assertEqual(urlopen_mock.call_count, 3)
+
+
+class UpgradeActionTests(unittest.TestCase):
+    def test_prerelease_pin_ahead_of_latest_stable_is_unchanged(self) -> None:
+        report = script_deps.PackageReport(
+            name="gql",
+            latest="4.0.0",
+            occurrences=[
+                script_deps.DependencyOccurrence(
+                    Path("script.py"),
+                    "gql[httpx2]==4.4.0b0",
+                    script_deps.Requirement("gql[httpx2]==4.4.0b0"),
+                )
+            ],
+        )
+
+        self.assertEqual(script_deps.package_status(report), "ok")
+        self.assertEqual(
+            script_deps.report_to_payload([report], [])["attention_count"], 0
+        )
+        self.assertEqual(
+            script_deps.collect_upgrade_actions(Path("."), [report]), ([], [])
+        )
+
+    def test_upgrade_only_changes_outdated_lower_bounds(self) -> None:
+        report = script_deps.PackageReport(
+            name="example",
+            latest="1.2.0",
+            occurrences=[
+                script_deps.DependencyOccurrence(
+                    Path("old.py"),
+                    "example>=1.1.0",
+                    script_deps.Requirement("example>=1.1.0"),
+                ),
+                script_deps.DependencyOccurrence(
+                    Path("current.py"),
+                    "example>=1.2.0",
+                    script_deps.Requirement("example>=1.2.0"),
+                ),
+            ],
+        )
+
+        self.assertEqual(
+            script_deps.report_to_payload([report], [])["attention_count"], 1
+        )
+        actions, skipped = script_deps.collect_upgrade_actions(Path("."), [report])
+        self.assertEqual(
+            actions,
+            [script_deps.UpgradeAction(Path("old.py"), "example", "example>=1.2.0")],
+        )
+        self.assertEqual(skipped, [])
+
+    def test_older_exact_pin_is_not_widened(self) -> None:
+        report = script_deps.PackageReport(
+            name="example",
+            latest="1.2.0",
+            occurrences=[
+                script_deps.DependencyOccurrence(
+                    Path("script.py"),
+                    "example==1.1.0",
+                    script_deps.Requirement("example==1.1.0"),
+                )
+            ],
+        )
+
+        self.assertEqual(
+            script_deps.report_to_payload([report], [])["attention_count"], 1
+        )
+        actions, skipped = script_deps.collect_upgrade_actions(Path("."), [report])
+        self.assertEqual(actions, [])
+        self.assertEqual(len(skipped), 1)

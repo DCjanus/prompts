@@ -242,9 +242,26 @@ def build_reports(root: Path, timeout: float) -> tuple[list[PackageReport], list
     return sorted(reports.values(), key=lambda item: item.name), errors
 
 
-def upgrade_requirement(report: PackageReport, requirement: Requirement) -> str | None:
-    """构造保留 extras 和 marker 的最新下限声明。"""
-    if not report.latest or report.latest_error or requirement.url:
+def upgrade_requirement(
+    report: PackageReport, occurrence: DependencyOccurrence
+) -> str | None:
+    """仅提高过期的简单下限，保留 extras 和 marker。"""
+    requirement = occurrence.requirement
+    if (
+        not report.latest
+        or report.latest_error
+        or requirement is None
+        or requirement.url
+    ):
+        return None
+
+    specifiers = list(requirement.specifier)
+    if len(specifiers) != 1 or specifiers[0].operator != ">=":
+        return None
+    try:
+        if Version(specifiers[0].version) >= Version(report.latest):
+            return occurrence.raw
+    except InvalidVersion:
         return None
 
     extras = f"[{','.join(sorted(requirement.extras))}]" if requirement.extras else ""
@@ -260,6 +277,8 @@ def collect_upgrade_actions(
     skipped: list[str] = []
 
     for report in reports:
+        if not needs_attention(package_status(report)):
+            continue
         for occurrence in report.occurrences:
             if occurrence.requirement is None:
                 skipped.append(
@@ -267,7 +286,7 @@ def collect_upgrade_actions(
                 )
                 continue
 
-            requirement = upgrade_requirement(report, occurrence.requirement)
+            requirement = upgrade_requirement(report, occurrence)
             if requirement is None:
                 skipped.append(
                     f"{occurrence.path}: cannot upgrade {occurrence.raw!r} automatically"
