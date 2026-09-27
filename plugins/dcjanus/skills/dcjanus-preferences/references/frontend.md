@@ -1,7 +1,7 @@
 # 前端技术偏好
 
 - 前端语言默认 TypeScript。新建 React Web 项目优先采用 React + Vite；已有项目沿用其既定技术栈。语言、框架和依赖优先选满足项目约束的较新稳定版本，不为了追新而破坏兼容性或顺带升级无关依赖。
-- 路由、服务端状态、复杂表格和长列表按实际需要分别优先考虑 TanStack Router、Query、Table 和 Virtual；不要为了统一而安装没有用到的包。TanStack Table、Form 等提供状态和逻辑，不代替组件的语义、键盘交互或焦点管理。
+- 前端路由、数据获取、表单、表格、虚拟化、状态管理等能力，优先评估 TanStack 生态中的对应产品；这些只是常见场景，其他产品也按需求考虑，不安装未用到的包。使用 TanStack 的无头组件时，仍需确保语义、键盘交互和焦点管理。
 - 日期与时间处理优先使用 dayjs。
 - URL query、表单输入、API 响应等不可信数据边界优先考虑 Zod：定义运行时 schema 并推导 TypeScript 类型；TanStack Router 的搜索参数可直接使用 Zod v4 schema。不要为已经由类型系统约束的内部数据重复添加解析。
 - 服务端 API 由 Protobuf 定义时，优先采用 Connect 生态：从 `.proto` 直接生成 TypeScript 消息和服务描述，再用 Connect 客户端调用；避免先转 OpenAPI 而丢失 `int64` 等契约信息。确认服务端所用 Connect 实现支持需要的协议及普通 gRPC 客户端接入。浏览器原生图片标签、Prometheus 抓取等要求原始媒体类型的端点，可保留薄的 HTTP 适配层。字段语义、Buf 依赖和入参校验另见 `protobuf.md`。
