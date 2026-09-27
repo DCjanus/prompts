@@ -2,6 +2,7 @@
 
 - 类型化 RPC 默认优先考虑 Connect 生态，用同一份 `.proto` 生成服务端接口与各语言客户端；选服务端实现时确认所需的 Connect、gRPC 和 gRPC-Web 协议支持情况。Connect 运行时与代码生成插件不负责解析第三方 proto：用 `buf.yaml` 声明模块依赖、`buf.lock` 锁定版本，由 `buf generate` 解析本地及依赖的描述，再交给各语言插件生成代码。部分语言插件若需要依赖消息的生成代码，对该插件启用 `include_imports`，并检查生成包的导入路径。
 - 当调用方要求特定 HTTP 方法、路径和 JSON 请求/响应时，可参考 [AIP-127](https://google.aip.dev/127)，用 `google.api.http` 在 proto 中声明 RPC 的 HTTP 映射，并由支持该注解的服务端或网关提供转码；普通 Connect RPC 不必添加映射。
+- 表达时间点、固定时长、字段选择或部分更新等通用语义时，优先复用对应的 Protobuf [well-known types](https://protobuf.dev/reference/protobuf/google.protobuf/)（如 `google.protobuf.Timestamp`、`Duration`、`FieldMask`）；空请求或响应可使用 `Empty`，避免用裸字符串、数字或重复定义的消息替代。结构已知时仍定义具体消息；`Any`、`Struct` 仅用于确需动态内容。新 proto3 字段确需标量 presence 时使用 `optional`，不默认使用已过时的 `*Value` 包装类型。
 - 服务端入参条件适合表达为 Protovalidate 规则时，优先直接写在 proto 的字段或消息注解中，让调用方从契约看到约束；在服务端边界用成熟拦截器或简短适配层实际执行规则，并把失败映射为 `INVALID_ARGUMENT`。先验证所选语言运行时和消息生成器是否兼容；业务状态、数据库引用和授权等仍由服务方法检查。避免仅写规则却不执行，或为接入校验而改写生成代码。
 - Proto3 的 scalar、enum、string 和 bytes 字段，如果业务上不需要区分“未提供”和对应零值，默认省略显式 `optional`，让零值同时表示未指定。枚举应提供语义清楚的零值（例如 `*_UNSPECIFIED`）；查询条件可用空字符串或零值表示不参与筛选。
 - 只有当 API 语义确实依赖 presence 时才使用 `optional`，例如必须区分“未提供”和 `0`、`false`、空字符串或零值枚举，或部分更新需要在没有 `FieldMask` 的情况下显式写入零值。
