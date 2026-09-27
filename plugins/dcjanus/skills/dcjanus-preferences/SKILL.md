@@ -7,7 +7,7 @@ description: 适用于创建、修改或评审 Skill，或在前端技术栈与�
 
 - 创建、修改或评审 Skill 时读取 `references/skill-writing.md`。
 - 选择 React 前端框架、组件库、无障碍基础设施，或从 Protobuf 生成前端 Connect 客户端时读取 `references/frontend.md`。
-- 选择 Connect 服务端、Rust Protobuf 生成链、Buf 第三方 proto 依赖或 Protovalidate 校验时读取 `references/protobuf.md`；Rust 库偏好另见 `references/rust.md`。
+- 选择 Connect RPC、Buf 第三方 proto 依赖或 Protovalidate 校验时读取 `references/protobuf.md`；选择 Rust RPC 服务栈或 Protobuf 消息生成链时读取 `references/rust.md`。
 - 先确认选型问题是否跨语言：数据库、分析、压缩或归档场景读取 `references/data-storage.md`；Protobuf 字段 presence 与兼容性判断读取 `references/protobuf.md`；Telegram Bot 消息能力选择读取 `references/telegram-bot-api.md`；语言生态库选择则读取对应语言参考文件。
 - 引入或替换第三方库时优先使用偏好清单。
 - 当工作负载同时具有多种特征、偏好清单未覆盖或与明确需求冲突时，先说明主要工作负载、取舍与建议；结论仍不明确时再向用户确认。
@@ -28,8 +28,8 @@ description: 适用于创建、修改或评审 Skill，或在前端技术栈与�
 - React 前端与无障碍组件：`references/frontend.md`
 - mbx 安装、fish/zsh 接入与验证：`references/mbx.md`
 - 跨语言数据存储、分析、压缩与归档：`references/data-storage.md`
-- Protobuf 字段 presence 与兼容性：`references/protobuf.md`
+- Protobuf API、校验与兼容性：`references/protobuf.md`
 - Telegram Bot API 消息能力选择：`references/telegram-bot-api.md`
 - Python: `references/python.md`
-- Rust: `references/rust.md`
+- Rust 库与 RPC：`references/rust.md`
 - Go: `references/go.md`
