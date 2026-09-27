@@ -4,7 +4,7 @@
 - 前端路由、数据获取、表单、表格、虚拟化、状态管理等能力，优先评估 TanStack 生态中的对应产品；这些只是常见场景，其他产品也按需求考虑，不安装未用到的包。使用 TanStack 的无头组件时，仍需确保语义、键盘交互和焦点管理。
 - 日期与时间处理优先使用 dayjs。
 - URL query、表单输入、API 响应等不可信数据边界优先考虑 Zod：定义运行时 schema 并推导 TypeScript 类型；TanStack Router 的搜索参数可直接使用 Zod v4 schema。不要为已经由类型系统约束的内部数据重复添加解析。
-- 服务端 API 由 Protobuf 定义时，优先采用 Connect 生态：从 `.proto` 直接生成 TypeScript 消息和服务描述，再用 Connect 客户端调用；避免先转 OpenAPI 而丢失 `int64` 等契约信息。确认服务端所用 Connect 实现支持需要的协议及普通 gRPC 客户端接入。浏览器原生图片标签、Prometheus 抓取等要求原始媒体类型的端点，可保留薄的 HTTP 适配层。字段语义、Buf 依赖和入参校验另见 `protobuf.md`。
+- 服务端 API 由 Protobuf 定义时，优先采用 Connect 生态：从 `.proto` 直接生成 TypeScript 消息和服务描述，再用 Connect 客户端调用；避免先转 OpenAPI 而丢失 `int64` 等契约信息。希望在浏览器 F12 中直接查看请求和响应时，优先让浏览器 Connect 客户端使用 JSON 编码；服务间可继续使用 Protobuf 二进制编码。确认服务端所用 Connect 实现支持需要的协议及普通 gRPC 客户端接入。浏览器原生图片标签、Prometheus 抓取等要求原始媒体类型的端点，可保留薄的 HTTP 适配层。字段语义、Buf 依赖和入参校验另见 `protobuf.md`。
 - 优先采用现成 UI 组件，减少自行实现交互。新建 React 界面优先使用 shadcn/ui，并默认选择 Mira 风格；已有项目沿用其设计系统，用户明确指定的风格优先。
 - shadcn/ui 优先选择基于 Radix Primitives 的版本，复用其键盘交互和焦点管理等无障碍基础能力。
 - 如果混用组件来源，同一类控件只选择一个来源，并统一颜色、字重、圆角、间距和焦点样式等设计 token。即使用了组件库，也要检查页面自身的语义、标签、键盘操作、焦点顺序和可见焦点。
