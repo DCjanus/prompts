@@ -84,6 +84,12 @@ def test_git_marketplace_installs_complete_plugin_and_updates_same_version(tmp_p
         source / plugin_relative,
         ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache", ".venv"),
     )
+    retired_skill = source / plugin_relative / "skills/retired-test-skill"
+    retired_skill.mkdir()
+    (retired_skill / "SKILL.md").write_text(
+        "---\nname: retired-test-skill\n"
+        "description: Verify removal during marketplace upgrades.\n---\n"
+    )
     config_home = tmp_path / "codex-home"
     config_home.mkdir()
     # 用本地 Git 仓库模拟远端，不访问 GitHub 或使用用户的 Codex 配置。
@@ -194,6 +200,7 @@ def test_git_marketplace_installs_complete_plugin_and_updates_same_version(tmp_p
     changed = Path("uv-cli-creator/SKILL.md")
     with (packaged_skills / changed).open("a") as stream:
         stream.write("\nPlugin update integration marker.\n")
+    shutil.rmtree(retired_skill)
     commit()
     upgraded = json.loads(
         run("codex", "plugin", "marketplace", "upgrade", catalog["name"], "--json")
@@ -203,6 +210,13 @@ def test_git_marketplace_installs_complete_plugin_and_updates_same_version(tmp_p
     assert (cache / "skills" / changed).read_bytes() == (
         packaged_skills / changed
     ).read_bytes()
+    assert not (cache / "skills/retired-test-skill").exists()
+    updated_listing = asyncio.run(list_skills_from_app_server(tmp_path, environment))
+    assert all(
+        skill["name"] != f"{entry['name']}:retired-test-skill"
+        for item in updated_listing["data"]
+        for skill in item["skills"]
+    )
     # 再产生一个同版本提交，仅启动 app-server，验证日常自动刷新路径。
     with (packaged_skills / changed).open("a") as stream:
         stream.write("\nApp-server startup update marker.\n")
