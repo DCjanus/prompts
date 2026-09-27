@@ -1,6 +1,7 @@
 # Protobuf
 
 - 类型化 RPC 默认优先考虑 Connect 生态，用同一份 `.proto` 生成服务端接口与各语言客户端；选服务端实现时确认所需的 Connect、gRPC 和 gRPC-Web 协议支持情况。Connect 运行时与代码生成插件不负责解析第三方 proto：用 `buf.yaml` 声明模块依赖、`buf.lock` 锁定版本，由 `buf generate` 解析本地及依赖的描述，再交给各语言插件生成代码。部分语言插件若需要依赖消息的生成代码，对该插件启用 `include_imports`，并检查生成包的导入路径。
+- Rust 只有 Protobuf 消息编解码、没有 RPC 时优先用 `buffa`。需要 RPC 时让生成链与服务框架配套：`connect-rust` 使用 `buffa` 消息代码，`tonic` 使用 `prost` / `tonic-prost`。这里的选择取决于 Rust 框架及代码生成兼容性，不只取决于 wire 协议；`connect-rust` 也能提供标准 gRPC 接口，此时仍使用 `buffa`。
 - 服务端入参条件适合表达为 Protovalidate 规则时，优先直接写在 proto 的字段或消息注解中，让调用方从契约看到约束；在服务端边界用成熟拦截器或简短适配层实际执行规则，并把失败映射为 `INVALID_ARGUMENT`。先验证所选语言运行时和消息生成器是否兼容；业务状态、数据库引用和授权等仍由服务方法检查。避免仅写规则却不执行，或为接入校验而改写生成代码。
 - Proto3 的 scalar、enum、string 和 bytes 字段，如果业务上不需要区分“未提供”和对应零值，默认省略显式 `optional`，让零值同时表示未指定。枚举应提供语义清楚的零值（例如 `*_UNSPECIFIED`）；查询条件可用空字符串或零值表示不参与筛选。
 - 只有当 API 语义确实依赖 presence 时才使用 `optional`，例如必须区分“未提供”和 `0`、`false`、空字符串或零值枚举，或部分更新需要在没有 `FieldMask` 的情况下显式写入零值。
