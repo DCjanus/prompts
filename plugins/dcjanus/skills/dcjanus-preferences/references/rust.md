@@ -16,5 +16,7 @@
 - reqwest: 常用 HTTP 客户端，API 现代且与 `serde`/`tokio` 组合顺畅。
 - tokio: 事实上的异步运行时标准，与 `tracing`/`serde` 生态匹配。
 - prometheus: Rust 的 Prometheus 客户端默认使用 TiKV 维护的 `prometheus` crate。
-- buffa / prost: Rust 新项目使用 Protobuf 做单纯序列化与反序列化时优先使用 `buffa`，不需要 RPC 背景；需要 Connect 服务时让 `buffa` 消息代码与 `connect-rust` 服务代码及运行时配套。若项目选用 `tonic` 服务栈，则继续使用其成熟的 `prost` / `tonic-prost` 组合，不为替换消息实现而强行混用。已有项目遵循当前生成代码和服务栈，迁移时核对生成类型与调用方兼容性。
+- connect-rust: Rust 的 Connect RPC 客户端与服务端优先使用 `connect-rust`，配套 `buffa` 消息代码；需要同时提供标准 gRPC 接口时也可以沿用该服务栈。
+- tonic: Rust 的 gRPC 客户端与服务端优先使用 `tonic`，配套 `prost` / `tonic-prost` 生成链。
+- buffa / prost: Rust 新项目仅需 Protobuf 编解码、没有 RPC 时优先使用 `buffa`；RPC 场景按所选服务栈使用配套生成链，不强行混用。已有项目遵循当前生成代码和服务栈，迁移时核对生成类型与调用方兼容性。
 - teloxide: Telegram Bot 开发框架，适合快速构建基于 Telegram Bot API 的 Rust 机器人服务；自定义 Bot Command 时优先使用 `#[derive(BotCommands)]` 的 `enum` 形式，维护强类型命令列表（统一解析、帮助描述与命令注册）。
