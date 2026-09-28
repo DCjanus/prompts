@@ -1,6 +1,6 @@
 ---
 name: dcjanus-preferences
-description: 适用于创建、修改或评审 Skill，或在前端技术栈与无障碍组件、Connect/Protobuf API、well-known types、FieldMask/PATCH、AIP-127 HTTP 映射与 Protovalidate 校验、项目开发工具（含 mbx/Cargo）及版本管理、跨语言的数据存储、分析、压缩、归档、哈希、Telegram Bot 消息呈现及 Python/Rust/Go 第三方库之间做技术选择的场景。
+description: 适用于创建、修改或评审 Skill，或在前端技术栈与无障碍组件、Connect/Protobuf API、well-known types、FieldMask/PATCH、AIP-127 HTTP 映射与 Protovalidate 校验、项目开发工具（含 mbx/Cargo）及版本管理、用户级程序的 XDG 数据目录、跨语言的数据存储、分析、压缩、归档、哈希、Telegram Bot 消息呈现及 Python/Rust/Go 第三方库之间做技术选择的场景。
 ---
 
 ## Usage
@@ -15,6 +15,7 @@ description: 适用于创建、修改或评审 Skill，或在前端技术栈与�
 
 ## General Preferences
 
+- 自己编写且可决定文件布局的用户级程序，尽量遵循上游的 [XDG Base Directory Specification](https://specifications.freedesktop.org/basedir/latest/)；包括在 macOS 上运行的个人 CLI 和脚本。macOS/Windows 原生应用、项目内文件及已有路径契约按相应平台或项目约定处理，不机械迁移。
 - 项目开发工具及运行时版本优先使用 mise 管理，在 `mise.toml` 中共享配置；Rust 工具链默认使用 rustup 和项目级 `rust-toolchain.toml` 管理，不在 mise 中重复声明。已有工具链和语言包管理器沿用项目约定。
 - Rust 本地构建默认优先用 mbx 包装 Cargo，以复用不同项目和 worktree 的编译结果；Cargo 仍负责依赖解析、构建调度和测试。已有 cargo-binstall 时优先用 `cargo binstall mbx` 安装，否则用 `cargo install mbx --locked`；用 mbx 自带的 `mbx setup` 接入普通 `cargo` 命令，并在 fish 和 zsh 中验证入口。安装和排查时读取 `references/mbx.md`，已有项目明确的构建方式优先。
 - 哈希与密码派生按用途选择：普通数据校验、内容寻址、去重和缓存键等通用哈希场景默认优先 BLAKE3；用户密码存储与校验、基于密码派生加密密钥等需要抵抗离线暴力破解的场景默认优先 Argon2id。两者不可互换，不使用 BLAKE3、SHA-2 等快速哈希直接存储密码，也不使用 Argon2id 处理普通数据哈希。
