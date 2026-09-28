@@ -15,8 +15,6 @@ description: 当需要使用 DCjanus 的个人任务模型查询或管理 Linear
 - Linear Issue 是个人参考与注意力索引。关联公开 PR、MR、Issue 或其它交付物时，由 Linear Comment 单向记录其链接、进展和等待关系；除非用户明确要求公开关联，否则不在公开工件的标题、正文、评论、commit message 或其它 reviewer-facing 内容中写入个人 Linear 的标识或 URL。任务可以依赖公开交付物，公开交付物不反向依赖个人任务记录。
 - 创建或写入前读取当前对象并查重，让用户审阅预览；写入后回读实际改变的字段。不把预览、HTTP 200 或 mutation 的初步返回当成最终成功。
 
-GraphQL 客户端使用 `gql[httpx2]`。当前固定到首个支持 HTTPX2 的 `4.4.0b0` 预发布版本；升级前先确认后续稳定版仍保留 `httpx2` transport 行为。
-
 ## 认证
 
 默认配置位于 `~/.config/linear-cli/config.toml`，文件权限固定为 `0600`。个人 API key 由用户本人在 Linear 创建，再通过隐藏的交互输入验证并保存；CLI 会先检查公开的 `lin_api_` 前缀与空白字符，再请求 Linear，验证失败不会覆盖已有配置。不要让 agent 接触 key，也不要把 key 放入命令行、剪贴板管道或日志：
