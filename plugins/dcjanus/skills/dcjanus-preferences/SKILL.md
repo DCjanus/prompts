@@ -1,6 +1,6 @@
 ---
 name: dcjanus-preferences
-description: 适用于创建、修改或评审 Skill，或在前端技术栈与无障碍组件、Connect/Protobuf API、well-known types、FieldMask/PATCH、AIP-127 HTTP 映射与 Protovalidate 校验、项目开发工具（含 mbx/Cargo）及版本管理、跨语言的数据存储、分析、压缩、归档、哈希、Telegram Bot 消息呈现及 Python/Rust/Go 第三方库之间做技术选择的场景。
+description: 适用于创建、修改或评审 Skill，或在前端技术栈与无障碍组件、Connect/Protobuf API、well-known types、FieldMask/PATCH、AIP-127 HTTP 映射与 Protovalidate 校验、项目开发工具（含 mbx/Cargo）及版本管理、用户级程序的 XDG 数据目录、跨语言的数据存储、分析、压缩、归档、哈希、Telegram Bot 消息呈现及 Python/Rust/Go 第三方库之间做技术选择的场景。
 ---
 
 ## Usage
@@ -8,6 +8,7 @@ description: 适用于创建、修改或评审 Skill，或在前端技术栈与�
 - 创建、修改或评审 Skill 时读取 `references/skill-writing.md`。
 - 选择 React 前端框架、组件库、无障碍基础设施，或从 Protobuf 生成前端 Connect 客户端时读取 `references/frontend.md`。
 - 选择 Protobuf well-known types、FieldMask 部分更新、Connect RPC、AIP-127 HTTP 映射、Buf 第三方 proto 依赖或 Protovalidate 校验时读取 `references/protobuf.md`；选择 Rust RPC 服务栈或 Protobuf 消息生成链时读取 `references/rust.md`。
+- 为用户级程序选择配置、数据、状态、缓存、运行时文件的存放位置，或讨论 XDG Base Directory 适用范围时读取 `references/xdg.md`。
 - 先确认选型问题是否跨语言：数据库、分析、压缩或归档场景读取 `references/data-storage.md`；Protobuf 字段 presence 与兼容性判断读取 `references/protobuf.md`；Telegram Bot 消息能力选择读取 `references/telegram-bot-api.md`；语言生态库选择则读取对应语言参考文件。
 - 引入或替换第三方库时优先使用偏好清单。
 - 当工作负载同时具有多种特征、偏好清单未覆盖或与明确需求冲突时，先说明主要工作负载、取舍与建议；结论仍不明确时再向用户确认。
@@ -15,6 +16,7 @@ description: 适用于创建、修改或评审 Skill，或在前端技术栈与�
 
 ## General Preferences
 
+- 自己编写的用户级程序尽量遵循 XDG Base Directory 规范；涉及原生应用、项目内文件或既有路径契约时按 `references/xdg.md` 判断适用边界，不机械迁移。
 - 项目开发工具及运行时版本优先使用 mise 管理，在 `mise.toml` 中共享配置；Rust 工具链默认使用 rustup 和项目级 `rust-toolchain.toml` 管理，不在 mise 中重复声明。已有工具链和语言包管理器沿用项目约定。
 - Rust 本地构建默认优先用 mbx 包装 Cargo，以复用不同项目和 worktree 的编译结果；Cargo 仍负责依赖解析、构建调度和测试。已有 cargo-binstall 时优先用 `cargo binstall mbx` 安装，否则用 `cargo install mbx --locked`；用 mbx 自带的 `mbx setup` 接入普通 `cargo` 命令，并在 fish 和 zsh 中验证入口。安装和排查时读取 `references/mbx.md`，已有项目明确的构建方式优先。
 - 哈希与密码派生按用途选择：普通数据校验、内容寻址、去重和缓存键等通用哈希场景默认优先 BLAKE3；用户密码存储与校验、基于密码派生加密密钥等需要抵抗离线暴力破解的场景默认优先 Argon2id。两者不可互换，不使用 BLAKE3、SHA-2 等快速哈希直接存储密码，也不使用 Argon2id 处理普通数据哈希。
@@ -25,6 +27,7 @@ description: 适用于创建、修改或评审 Skill，或在前端技术栈与�
 ## References
 
 - Skill 编写与修改：`references/skill-writing.md`
+- 用户级程序目录与 XDG 适用边界：`references/xdg.md`
 - React 前端与无障碍组件：`references/frontend.md`
 - mbx 安装、fish/zsh 接入与验证：`references/mbx.md`
 - 跨语言数据存储、分析、压缩与归档：`references/data-storage.md`
