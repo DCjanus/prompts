@@ -693,6 +693,81 @@ class RenderUsageTests(unittest.TestCase):
 
 
 class PricingCatalogTests(unittest.TestCase):
+    def test_unknown_model_refreshes_hour_old_cache_and_then_reuses_it(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            cache_path = Path(directory) / "pricing.json"
+            now = datetime(2030, 1, 1, tzinfo=UTC)
+            chatgpt_usage._pricing_cache_save(
+                cache_path, fetched_at=now, prices=dict(chatgpt_usage.MODEL_PRICING)
+            )
+            fetcher = Mock(return_value=self._models_dev_payload())
+            recent_unknown = chatgpt_usage.load_pricing_catalog(
+                cache_path,
+                now=now + timedelta(minutes=59),
+                required_models={"gpt-future"},
+                fetcher=fetcher,
+            )
+            self.assertEqual(recent_unknown.metadata.source, "models.dev_cache")
+            fetcher.assert_not_called()
+            catalog = chatgpt_usage.load_pricing_catalog(
+                cache_path,
+                now=now + timedelta(hours=1),
+                required_models={"gpt-future"},
+                fetcher=fetcher,
+            )
+            self.assertIn("gpt-future", catalog.prices)
+            self.assertEqual(catalog.metadata.source, "models.dev")
+            fetcher.assert_called_once()
+
+            cached = chatgpt_usage.load_pricing_catalog(
+                cache_path,
+                now=now + timedelta(hours=2),
+                required_models={"gpt-still-unknown"},
+                fetcher=fetcher,
+            )
+            self.assertEqual(cached.metadata.source, "models.dev")
+            recent = chatgpt_usage.load_pricing_catalog(
+                cache_path,
+                now=now + timedelta(hours=2, minutes=59),
+                required_models={"gpt-still-unknown"},
+                fetcher=fetcher,
+            )
+            self.assertEqual(recent.metadata.source, "models.dev_cache")
+            self.assertEqual(fetcher.call_count, 2)
+
+    def test_known_model_aliases_keep_normal_cache_lifetime(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            cache_path = Path(directory) / "pricing.json"
+            now = datetime(2030, 1, 1, tzinfo=UTC)
+            chatgpt_usage._pricing_cache_save(
+                cache_path, fetched_at=now, prices=dict(chatgpt_usage.MODEL_PRICING)
+            )
+            catalog = chatgpt_usage.load_pricing_catalog(
+                cache_path,
+                now=now + timedelta(hours=23),
+                required_models={"openai/gpt-5.5", "gpt-5.5-2030-01-01"},
+                fetcher=Mock(side_effect=AssertionError("已知模型不应提前刷新")),
+            )
+            self.assertEqual(catalog.metadata.source, "models.dev_cache")
+
+    def test_unknown_model_refresh_failure_preserves_cached_prices(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            cache_path = Path(directory) / "pricing.json"
+            now = datetime(2030, 1, 1, tzinfo=UTC)
+            chatgpt_usage._pricing_cache_save(
+                cache_path, fetched_at=now, prices=dict(chatgpt_usage.MODEL_PRICING)
+            )
+            catalog = chatgpt_usage.load_pricing_catalog(
+                cache_path,
+                now=now + timedelta(hours=2),
+                required_models={"gpt-future"},
+                fetcher=Mock(side_effect=OSError("offline")),
+            )
+            self.assertTrue(catalog.metadata.stale)
+            self.assertIn("offline", catalog.metadata.error or "")
+            self.assertIn("gpt-5.5", catalog.prices)
+            self.assertNotIn("gpt-future", catalog.prices)
+
     @staticmethod
     def _models_dev_payload() -> bytes:
         return json.dumps(
@@ -1295,6 +1370,41 @@ class LocalUsageHistoryTests(unittest.TestCase):
             self.assertEqual(repriced.estimated_cost_usd, 7)
             self.assertEqual(repriced.scan, chatgpt_usage.ScanStats(1, 1, 0, 0))
 
+            pricing_cache = root / "cache" / "pricing.json"
+            chatgpt_usage._pricing_cache_save(
+                pricing_cache,
+                fetched_at=now - timedelta(hours=2),
+                prices=dict(chatgpt_usage.MODEL_PRICING),
+            )
+            fetcher = Mock(return_value=PricingCatalogTests._models_dev_payload())
+            requested_models = []
+
+            def load_prices(models: set[str]) -> chatgpt_usage.PricingCatalog:
+                requested_models.append(models)
+                return chatgpt_usage.load_pricing_catalog(
+                    pricing_cache, now=now, required_models=models, fetcher=fetcher
+                )
+
+            refreshed = chatgpt_usage.collect_usage_history(
+                codex_home, cache_path, now=now, pricing_loader=load_prices
+            )
+            self.assertEqual(requested_models, [{"gpt-future"}])
+            self.assertEqual(refreshed.estimated_cost_usd, 20)
+            self.assertEqual(refreshed.scan, chatgpt_usage.ScanStats(1, 1, 0, 0))
+            fetcher.assert_called_once()
+
+            requested_models.clear()
+            excluded = chatgpt_usage.collect_usage_history(
+                codex_home,
+                cache_path,
+                now=now,
+                provider="other-provider",
+                pricing_loader=load_prices,
+            )
+            self.assertEqual(requested_models, [set()])
+            self.assertEqual(excluded.total_tokens, 0)
+            fetcher.assert_called_once()
+
     def test_prices_fast_and_long_context_per_request(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -1607,6 +1717,12 @@ class CliTests(unittest.TestCase):
 
         self.assertEqual(result.exit_code, 0, result.output)
         self.assertEqual(self.collect_history_mock.call_args.kwargs["days"], 30)
+        pricing_loader = self.collect_history_mock.call_args.kwargs["pricing_loader"]
+        pricing_loader({"gpt-future"})
+        self.assertEqual(
+            chatgpt_usage.load_pricing_catalog.call_args.kwargs["required_models"],
+            {"gpt-future"},
+        )
 
     @patch.object(
         chatgpt_usage,

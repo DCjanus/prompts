@@ -3,7 +3,7 @@
 # /// script
 # requires-python = ">=3.14"
 # dependencies = [
-#     "duckdb>=1.5.5",
+#     "duckdb>=1.5.6",
 #     "kittytgp>=0.0.2",
 #     "resvg-py>=0.5.0",
 #     "rich>=15.0.0",
@@ -63,6 +63,7 @@ PRICING_UPDATED_AT = "2026-08-26"
 MODELS_DEV_URL = "https://models.dev/api.json"
 PRICING_CACHE_VERSION = 1
 PRICING_CACHE_TTL = timedelta(hours=24)
+UNKNOWN_MODEL_PRICING_CACHE_TTL = timedelta(hours=1)
 PRICING_FETCH_TIMEOUT = 5.0
 THREAD_ID_PATTERN = re.compile(
     r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$",
@@ -839,15 +840,24 @@ def load_pricing_catalog(
     cache_path: Path,
     *,
     now: datetime,
+    required_models: set[str] | None = None,
     timeout: float = PRICING_FETCH_TIMEOUT,
     fetcher: Callable[[str, float], bytes] = _fetch_models_dev,
 ) -> PricingCatalog:
-    """加载价格目录：新鲜缓存优先，过期时刷新，失败则安全回退。"""
+    """加载价格目录；缺少所需模型时缩短缓存有效期，刷新失败则回退。"""
     aware_now = now if now.tzinfo is not None else now.replace(tzinfo=UTC)
     cached = _pricing_cache_load(cache_path)
     if cached is not None:
         fetched_at, cached_prices = cached
-        if aware_now - fetched_at <= PRICING_CACHE_TTL:
+        available_prices = {**MODEL_PRICING, **cached_prices}
+        has_unknown_models = any(
+            _resolve_model_pricing(model, available_prices) is None
+            for model in required_models or ()
+        )
+        ttl = (
+            UNKNOWN_MODEL_PRICING_CACHE_TTL if has_unknown_models else PRICING_CACHE_TTL
+        )
+        if aware_now - fetched_at < ttl:
             return _pricing_catalog(
                 cached_prices,
                 PricingMetadata("models.dev_cache", fetched_at, False),
@@ -940,6 +950,20 @@ def _rollout_provider(path: Path) -> str:
     return _parse_session_provider(first_line) or OFFICIAL_PROVIDER
 
 
+def _resolve_model_pricing(
+    model: str, prices: dict[str, ModelPricing]
+) -> ModelPricing | None:
+    """按计价规则匹配模型名称、provider 前缀与日期后缀。"""
+    normalized = _normalize_model(model)
+    candidates = [normalized]
+    if normalized.startswith("openai/"):
+        candidates.append(normalized.removeprefix("openai/"))
+    dated_base = re.sub(r"-\d{4}-\d{2}-\d{2}$", "", normalized)
+    if dated_base not in candidates:
+        candidates.append(dated_base)
+    return next((prices[key] for key in candidates if key in prices), None)
+
+
 def estimate_api_cost(
     model: str,
     *,
@@ -952,14 +976,7 @@ def estimate_api_cost(
 ) -> float | None:
     """按当前 API 单价估算单次请求的美元成本。"""
     catalog = MODEL_PRICING if prices is None else prices
-    normalized = _normalize_model(model)
-    candidates = [normalized]
-    if normalized.startswith("openai/"):
-        candidates.append(normalized.removeprefix("openai/"))
-    dated_base = re.sub(r"-\d{4}-\d{2}-\d{2}$", "", normalized)
-    if dated_base not in candidates:
-        candidates.append(dated_base)
-    pricing = next((catalog[key] for key in candidates if key in catalog), None)
+    pricing = _resolve_model_pricing(model, catalog)
     if pricing is None:
         return None
     total_input = max(0, input_tokens)
@@ -1020,7 +1037,7 @@ def estimate_api_cost(
         + max(0, output_tokens) * output_rate
     ) / 1_000_000
     if _normalize_service_tier(service_tier) == "fast":
-        cost *= FAST_PRICE_MULTIPLIERS.get(normalized, 1.0)
+        cost *= FAST_PRICE_MULTIPLIERS.get(_normalize_model(model), 1.0)
     return cost
 
 
@@ -1787,6 +1804,7 @@ def collect_usage_history(
     days: int = DEFAULT_HISTORY_DAYS,
     provider: str = OFFICIAL_PROVIDER,
     pricing_catalog: PricingCatalog | None = None,
+    pricing_loader: Callable[[set[str]], PricingCatalog] | None = None,
 ) -> UsageHistory:
     """增量索引本地 Thread，并返回指定 provider 的按天 Token 用量。"""
     if days < 1:
@@ -1948,6 +1966,15 @@ def collect_usage_history(
     finally:
         connection.close()
 
+    if pricing_catalog is None and pricing_loader is not None:
+        pricing_catalog = pricing_loader(
+            {
+                str(row[2])
+                for row in rows
+                if selected_provider == ALL_PROVIDERS
+                or str(row[1]) == selected_provider
+            }
+        )
     resolved_pricing = pricing_catalog or PricingCatalog(
         dict(MODEL_PRICING),
         PricingMetadata(
@@ -3117,11 +3144,6 @@ def main(
     pricing_cache = resolved_usage_cache.with_name(
         f"models-dev-v{PRICING_CACHE_VERSION}.json"
     )
-    pricing_catalog = load_pricing_catalog(
-        pricing_cache,
-        now=now,
-        timeout=min(PRICING_FETCH_TIMEOUT, timeout),
-    )
     try:
         history = collect_usage_history(
             resolved_home,
@@ -3129,7 +3151,12 @@ def main(
             now=datetime.now().astimezone(),
             days=history_days,
             provider=provider,
-            pricing_catalog=pricing_catalog,
+            pricing_loader=lambda models: load_pricing_catalog(
+                pricing_cache,
+                now=now,
+                required_models=models,
+                timeout=min(PRICING_FETCH_TIMEOUT, timeout),
+            ),
         )
     except (OSError, RuntimeError, ValueError, UsageError) as error:
         error_console.print(f"[yellow]本地 Token 统计不可用：[/]{error}")
