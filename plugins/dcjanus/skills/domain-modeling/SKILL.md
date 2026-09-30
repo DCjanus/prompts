@@ -1,11 +1,11 @@
 ---
 name: domain-modeling
-description: 构建并持续校准项目的领域模型。适用于讨论代码库术语、编写或编辑 CONTEXT.md，或记录或编辑 ADR 的场景。
+description: 构建并持续校准项目的领域模型。适用于讨论代码库术语、编写或编辑 GLOSSARY.md，或记录或编辑 ADR 的场景。
 ---
 
 # 领域建模
 
-在设计过程中主动构建并校准项目的领域模型：质疑术语、构造边界场景，并在词汇和决策明确时立即记录下来。仅仅读取 `CONTEXT.md` 以沿用词汇不属于此 skill；只有需要改变模型时才使用它。
+在设计过程中主动构建并校准项目的领域模型：质疑术语、构造边界场景，并在词汇和决策明确时立即记录下来。仅仅读取 `GLOSSARY.md` 以沿用词汇不属于此 skill；只有需要改变模型时才使用它。
 
 ## 文件结构
 
@@ -13,7 +13,7 @@ description: 构建并持续校准项目的领域模型。适用于讨论代码�
 
 ```text
 /
-├── CONTEXT.md
+├── GLOSSARY.md
 ├── docs/
 │   └── adr/
 │       ├── 0001-event-sourced-orders.md
@@ -21,29 +21,29 @@ description: 构建并持续校准项目的领域模型。适用于讨论代码�
 └── src/
 ```
 
-如果根目录存在 `CONTEXT-MAP.md`，说明仓库包含多个上下文。该文件应指向每个上下文的位置：
+如果根目录存在 `GLOSSARY-MAP.md`，说明仓库包含多个上下文。该文件应指向每个上下文的位置：
 
 ```text
 /
-├── CONTEXT-MAP.md
+├── GLOSSARY-MAP.md
 ├── docs/
 │   └── adr/                          ← 系统级决策
 ├── src/
 │   ├── ordering/
-│   │   ├── CONTEXT.md
+│   │   ├── GLOSSARY.md
 │   │   └── docs/adr/                 ← 上下文级决策
 │   └── billing/
-│       ├── CONTEXT.md
+│       ├── GLOSSARY.md
 │       └── docs/adr/
 ```
 
-按需创建文件：确认第一个术语时才创建 `CONTEXT.md`，需要记录第一条 ADR 时才创建 `docs/adr/`。
+按需创建文件：确认第一个术语时才创建 `GLOSSARY.md`，需要记录第一条 ADR 时才创建 `docs/adr/`。
 
 ## 会话期间
 
 ### 对照词汇表检查
 
-用户使用的术语与 `CONTEXT.md` 冲突时，立即指出。例如：“词汇表将‘取消’定义为 X，但你现在似乎是指 Y——以哪个为准？”
+用户使用的术语与 `GLOSSARY.md` 冲突时，立即指出。例如：“词汇表将‘取消’定义为 X，但你现在似乎是指 Y——以哪个为准？”
 
 ### 收紧模糊语言
 
@@ -57,11 +57,11 @@ description: 构建并持续校准项目的领域模型。适用于讨论代码�
 
 用户描述系统行为时，检查代码是否一致。发现矛盾便直接指出，例如：“代码会取消整个 Order，但你刚才说可以部分取消——以哪个为准？”
 
-### 即时更新 CONTEXT.md
+### 即时更新 GLOSSARY.md
 
-术语一旦确认，立即更新 `CONTEXT.md`，不要集中到最后处理。格式遵循 [CONTEXT-FORMAT.md](CONTEXT-FORMAT.md)。
+术语一旦确认，立即更新 `GLOSSARY.md`，不要集中到最后处理。格式遵循 [GLOSSARY-FORMAT.md](GLOSSARY-FORMAT.md)。
 
-`CONTEXT.md` 只能包含词汇定义，不能包含实现细节；不要把它当作规格、草稿或实现决策仓库。
+`GLOSSARY.md` 只能包含词汇定义，不能包含实现细节；不要把它当作规格、草稿或实现决策仓库。
 
 ### 谨慎提出 ADR
 
