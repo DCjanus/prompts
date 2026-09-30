@@ -1,6 +1,7 @@
 ---
 name: dcjanus-merge-policy
 description: 将 GitHub 或 GitLab 仓库配置为 DCjanus 偏好的合并策略，包括 squash、合并方式、提交消息模板和源分支删除设置。适用于明确要求采用 DCjanus 个人合并策略的场景，不用于一般 PR/MR 合并操作。
+disable-model-invocation: true
 ---
 
 # DCjanus Merge Policy
