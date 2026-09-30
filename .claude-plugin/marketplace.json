@@ -1,0 +1,18 @@
+{
+  "name": "dcjanus-plugins",
+  "owner": {
+    "name": "DCjanus",
+    "email": "DCjanus@dcjanus.com"
+  },
+  "metadata": {
+    "description": "DCjanus 的个人 skills marketplace。"
+  },
+  "plugins": [
+    {
+      "name": "dcjanus",
+      "source": "./plugins/dcjanus",
+      "description": "DCjanus 的个人工作流、偏好和 CLI skills。",
+      "category": "productivity"
+    }
+  ]
+}

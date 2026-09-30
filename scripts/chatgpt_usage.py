@@ -4,7 +4,7 @@
 # requires-python = ">=3.14"
 # dependencies = [
 #     "duckdb>=1.5.6",
-#     "kittytgp>=0.0.2",
+#     "kittytgp>=0.0.3",
 #     "resvg-py>=0.5.0",
 #     "rich>=15.0.0",
 #     "typer>=0.27.2",

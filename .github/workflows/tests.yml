@@ -40,6 +40,8 @@ jobs:
         uses: actions/checkout@v6.0.3
       - name: Install Codex CLI for plugin integration tests
         run: npm install --global @openai/codex
+      - name: Install Claude Code CLI for plugin integration tests
+        run: npm install --global @anthropic-ai/claude-code
       - name: Setup uv
         uses: astral-sh/setup-uv@v8.2.0
         with:

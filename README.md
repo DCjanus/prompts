@@ -1,9 +1,9 @@
 # prompts
 
-DCjanus 的个人 skills，既包装为 Codex plugin，也通过同一份 `plugins/dcjanus/skills` 作为原生 Pi package，均借助 Git 在多台电脑上安装和更新。
+DCjanus 的个人 skills，同一份 `plugins/dcjanus/skills` 同时包装为 Codex plugin、Claude Code plugin 和原生 Pi package，均借助 Git 在多台电脑上安装和更新。
 
 - [dcjanus](plugins/dcjanus)：plugin 及其 skills、脚本和第三方许可。
-- [marketplace.json](.agents/plugins/marketplace.json)：`dcjanus-plugins` marketplace。
+- [marketplace.json](.agents/plugins/marketplace.json)：Codex 的 `dcjanus-plugins` marketplace；[Claude Code 版](.claude-plugin/marketplace.json)同名，指向同一个 plugin。
 - [package.json](package.json)：复用同一套 skills 的 Pi package manifest。
 - [AGENTS.md](AGENTS.md)：独立维护的全局个人约定，不由 plugin 自动加载，新电脑按需单独配置。
 
@@ -25,6 +25,17 @@ codex plugin marketplace upgrade dcjanus-plugins --json
 检查输出中的 `errors`，更新后用新任务验证。内容更新不要求每次修改 plugin 版本号；不要直接编辑安装缓存。外部服务凭据和所需工具仍由各台电脑独立配置。
 
 支持自动触发的 skill 可由 Codex 按需求选择；显式调用使用 `$dcjanus:github-cli` 等完整名称，也可在技能选择器中搜索短名称后选中。
+
+## Claude Code
+
+同一个 plugin 目录另有 [plugin.json](plugins/dcjanus/.claude-plugin/plugin.json)，skills 由 Claude Code 默认从 `skills/` 发现。每台电脑首次安装：
+
+```bash
+claude plugin marketplace add DCjanus/prompts
+claude plugin install dcjanus@dcjanus-plugins
+```
+
+合并 PR 后希望立即更新时运行 `claude plugin marketplace update dcjanus-plugins`，再在会话中执行 `/reload-plugins` 或新开会话。显式调用使用 `/dcjanus:github-cli` 这样的名称。Codex 中 `allow_implicit_invocation: false` 的 skill 在 `SKILL.md` frontmatter 中同步声明 `disable-model-invocation: true`，测试会检查两者一致。Codex 专有的 skill（如 `codex-session-reader`、`codex-thread-namer`）同样会被加载，可在 `/plugin` 中查看或按需忽略。`AGENTS.md` 不由 plugin 加载，需要按需软链到 `~/.claude/CLAUDE.md`。
 
 ## Pi
 

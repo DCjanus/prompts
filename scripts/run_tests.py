@@ -10,7 +10,7 @@
 #     "gql[httpx2]>=4.4.0",
 #     "httpx2>=2.13.1",
 #     "httpxyz>=0.42.1",
-#     "kittytgp>=0.0.2",
+#     "kittytgp>=0.0.3",
 #     "markdown-it-py>=4.2.0",
 #     "openai-codex>=0.159.2",
 #     "pydantic>=2.13.5",

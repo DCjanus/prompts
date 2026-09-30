@@ -1,0 +1,11 @@
+{
+  "name": "dcjanus",
+  "version": "0.1.0",
+  "description": "DCjanus 的个人工作流、偏好和 CLI skills。",
+  "author": {
+    "name": "DCjanus",
+    "email": "DCjanus@dcjanus.com"
+  },
+  "homepage": "https://github.com/DCjanus/prompts",
+  "repository": "https://github.com/DCjanus/prompts"
+}

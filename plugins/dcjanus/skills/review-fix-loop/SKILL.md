@@ -1,6 +1,7 @@
 ---
 name: review-fix-loop
 description: 用三个相互隔离的干净 subagent 并行做代码审查、由主 agent 判断审查意见价值、修复有效问题并提交推送，直到同一批三个 reviewer 都没有有价值审查意见。适用于用户要求 review/fix loop、clean review cycle、创建新 subagent 审查当前修改、反复 review 到没有问题、或“三个独立 reviewer 都没有有效建议”这类任务。
+disable-model-invocation: true
 ---
 
 # Review Fix Loop
