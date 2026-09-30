@@ -84,3 +84,50 @@ def test_claude_marketplace_installs_all_skills(tmp_path):
     assert f"Skills ({len(expected)})" in details
     for name in expected:
         assert name in details
+
+
+@pytest.mark.skipif(shutil.which("claude") is None, reason="需要 Claude Code CLI")
+def test_claude_marketplace_update_picks_up_new_commit(tmp_path):
+    checkout = tmp_path / "prompts"
+    subprocess.run(
+        ["git", "clone", "--quiet", str(REPOSITORY_ROOT), str(checkout)], check=True
+    )
+    environment = {**os.environ, "CLAUDE_CONFIG_DIR": str(tmp_path / "config")}
+
+    def run(*arguments, cwd=None):
+        return subprocess.run(
+            list(arguments),
+            cwd=cwd,
+            env=environment,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        ).stdout
+
+    run("claude", "plugin", "marketplace", "add", str(checkout))
+    run("claude", "plugin", "install", "dcjanus@dcjanus-plugins")
+
+    # 不修改版本号的普通内容提交也应被视为新版本。
+    marker = "<!-- update-marker -->\n"
+    skill = checkout / "plugins/dcjanus/skills/grill-me/SKILL.md"
+    skill.write_text(skill.read_text() + marker)
+    run(
+        "git",
+        "-c",
+        "user.name=test",
+        "-c",
+        "user.email=test@example.com",
+        "commit",
+        "--quiet",
+        "--all",
+        "--message",
+        "test: update skill",
+        cwd=checkout,
+    )
+    run("claude", "plugin", "marketplace", "update", "dcjanus-plugins")
+    run("claude", "plugin", "update", "dcjanus@dcjanus-plugins")
+
+    cache = tmp_path / "config/plugins/cache/dcjanus-plugins/dcjanus"
+    installed = [path.read_text() for path in cache.glob("*/skills/grill-me/SKILL.md")]
+    assert any(content.endswith(marker) for content in installed)

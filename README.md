@@ -35,7 +35,7 @@ claude plugin marketplace add DCjanus/prompts
 claude plugin install dcjanus@dcjanus-plugins
 ```
 
-合并 PR 后希望立即更新时运行 `claude plugin marketplace update dcjanus-plugins`，再在会话中执行 `/reload-plugins` 或新开会话。显式调用使用 `/dcjanus:github-cli` 这样的名称。Codex 中 `allow_implicit_invocation: false` 的 skill 在 `SKILL.md` frontmatter 中同步声明 `disable-model-invocation: true`，测试会检查两者一致。Codex 专有的 skill（如 `codex-session-reader`、`codex-thread-namer`）同样会被加载，可在 `/plugin` 中查看或按需忽略。`AGENTS.md` 不由 plugin 加载，需要按需软链到 `~/.claude/CLAUDE.md`。
+Claude Code 的 plugin.json 不声明 `version`，以 Git commit 作为版本，内容更新无需修改版本号。合并 PR 后希望立即更新时运行 `claude plugin marketplace update dcjanus-plugins` 和 `claude plugin update dcjanus@dcjanus-plugins`，再新开会话。显式调用使用 `/dcjanus:github-cli` 这样的名称。Codex 中 `allow_implicit_invocation: false` 的 skill 在 `SKILL.md` frontmatter 中同步声明 `disable-model-invocation: true`，测试会检查两者一致。Codex 专有的 skill（如 `codex-session-reader`、`codex-thread-namer`）同样会被加载，可在 `/plugin` 中查看或按需忽略。`AGENTS.md` 不由 plugin 加载，需要按需软链到 `~/.claude/CLAUDE.md`。
 
 ## Pi
 
