@@ -74,8 +74,13 @@ def test_claude_marketplace_installs_all_skills(tmp_path):
             timeout=120,
         ).stdout
 
-    run("validate", "--strict", str(REPOSITORY_ROOT))
-    run("validate", "--strict", str(PLUGIN_ROOT))
+    for target in (REPOSITORY_ROOT, PLUGIN_ROOT):
+        report = json.loads(run("validate", "--json", str(target)))["manifest"]
+        assert report["errors"] == []
+        # 刻意不声明 version，让 Claude Code 以 Git commit 判断更新。
+        assert [warning["path"].split()[-1] for warning in report["warnings"]] == [
+            "version"
+        ]
     run("marketplace", "add", str(REPOSITORY_ROOT))
     run("install", "dcjanus@dcjanus-plugins")
     details = run("details", "dcjanus@dcjanus-plugins")
