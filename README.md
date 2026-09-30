@@ -42,7 +42,7 @@ Pi 会加载 `pi.skills` 声明的全部 skill，显式调用使用 `/skill:gith
 
 ## 工具入口
 
-- [chatgpt_usage.py](scripts/chatgpt_usage.py)：查看 Codex 额度与本地用量，本地统计按 provider 拆分（默认 `openai`，可用 `--provider` 切换，`providers` 子命令列出本机可用 provider）。模型价格未知时，终端和 SVG 会标出未估价 Token 与模型；JSON 的 `estimated_cost_usd` 为 `null`，`priced_cost_usd` 仅表示已知价格的小计，`unpriced_models` 列出未估价模型。
+- [chatgpt_usage.py](scripts/chatgpt_usage.py)：查看 Codex 额度与本地用量，本地统计按 provider 拆分（默认 `openai`，可用 `--provider` 切换，`providers` 子命令列出本机可用 provider）。价格表通常缓存 24 小时；本次统计中有模型无法匹配价格时，缓存有效期缩短为 1 小时，到期后在运行时刷新并计价。刷新后仍未知的模型，终端和 SVG 会标出未估价 Token 与模型；JSON 的 `estimated_cost_usd` 为 `null`，`priced_cost_usd` 仅表示已知价格的小计，`unpriced_models` 列出未估价模型。
 - [run_tests.py](scripts/run_tests.py)：运行仓库测试。
 - [script_deps.py](scripts/script_deps.py)：检查或升级脚本依赖。
 - [upstream_skills.py](scripts/upstream_skills.py)：按 [upstream-skills.toml](upstream-skills.toml) 检查上游 skill 更新。
@@ -54,4 +54,4 @@ Pi 会加载 `pi.skills` 声明的全部 skill，显式调用使用 `/skill:gith
 ## 第三方来源与许可
 
 - [grill-me](plugins/dcjanus/skills/grill-me/SKILL.md)：改编自 Matt Pocock 的 [grilling](https://github.com/mattpocock/skills/blob/85f83d3fde1d3a90d5c9a657f6998c79a6c37308/skills/productivity/grilling/SKILL.md)，按 [MIT License](plugins/dcjanus/licenses/grill-me/LICENSE) 使用。
-- [domain-modeling](plugins/dcjanus/skills/domain-modeling/SKILL.md)：翻译自 Matt Pocock 的 [domain-modeling](https://github.com/mattpocock/skills/blob/321658273cb1d20b76026717d027d505790106d4/skills/engineering/domain-modeling/SKILL.md)，按 [MIT License](plugins/dcjanus/licenses/domain-modeling/LICENSE) 使用。
+- [domain-modeling](plugins/dcjanus/skills/domain-modeling/SKILL.md)：翻译自 Matt Pocock 的 [domain-modeling](https://github.com/mattpocock/skills/blob/d80fa0f4ebe0c5714af0adf8670336065233ecc6/skills/engineering/domain-modeling/SKILL.md)，按 [MIT License](plugins/dcjanus/licenses/domain-modeling/LICENSE) 使用。领域词汇表使用 `GLOSSARY.md`，多上下文索引使用 `GLOSSARY-MAP.md`；沿用旧约定的项目需将 `CONTEXT.md`、`CONTEXT-MAP.md` 分别重命名，并更新索引和其它文档中的链接。
