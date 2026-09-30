@@ -20,6 +20,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Annotated, Any, Literal, Self
 
@@ -30,7 +31,11 @@ from openai_codex.client import CodexClient
 from openai_codex.errors import CodexError
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-DEFAULT_AGENT_NAME = "codex"
+CODEX_AGENT_NAME = "codex"
+CLAUDE_CODE_AGENT_NAME = "claude-code"
+DEFAULT_AGENT_NAME = CODEX_AGENT_NAME
+type Host = Literal["codex", "claude-code"]
+SESSION_ID = re.compile(r"^[A-Za-z0-9-]+$")
 CONVENTIONAL_SUBJECT = re.compile(r"^[a-z][a-z0-9-]*(?:\([^\r\n)]+\))?!?: [^\r\n]+$")
 BREAKING_SUBJECT = re.compile(r"^[a-z][a-z0-9-]*(?:\([^\r\n)]+\))?!: .+$")
 BREAKING_PREFIX = "BREAKING CHANGE:"
@@ -149,7 +154,7 @@ class Trailer(StrictModel):
 class AssistedBy(StrictModel):
     """Assisted-by trailer 的覆盖项。"""
 
-    agent: str = DEFAULT_AGENT_NAME
+    agent: str | None = None
     model: str | None = None
 
 
@@ -242,6 +247,24 @@ def render_message(spec: CommitSpec, assisted_by: str | None) -> str:
     return "\n\n".join(blocks) + "\n"
 
 
+def detect_host() -> Host | None:
+    """根据宿主注入的会话环境变量判断当前 Agent。"""
+
+    codex = bool(os.environ.get("CODEX_THREAD_ID", "").strip())
+    claude_code = bool(os.environ.get("CLAUDE_CODE_SESSION_ID", "").strip())
+    if codex and claude_code:
+        raise CommitError(
+            "both CODEX_THREAD_ID and CLAUDE_CODE_SESSION_ID are set; set "
+            "assisted_by.agent and assisted_by.model in the commit YAML "
+            "or use assisted_by: false"
+        )
+    if codex:
+        return CODEX_AGENT_NAME
+    if claude_code:
+        return CLAUDE_CODE_AGENT_NAME
+    return None
+
+
 def require_thread_id() -> str:
     """读取自动探测模型所需的 Codex thread ID。"""
 
@@ -269,13 +292,12 @@ def resolve_codex_bin() -> str:
     )
 
 
-def read_latest_model_name(rollout_path: Path) -> str:
-    """从 rollout 中读取最后一条完整 turn_context 的模型名。"""
+def iter_jsonl(path: Path, label: str) -> Iterator[dict[str, Any]]:
+    """逐行读取会话 JSONL，忽略宿主仍在写入的末尾残行。"""
 
-    model_name = ""
     try:
-        with rollout_path.open(encoding="utf-8") as rollout:
-            for line_number, line in enumerate(rollout, start=1):
+        with path.open(encoding="utf-8") as lines:
+            for line_number, line in enumerate(lines, start=1):
                 if not line.strip():
                     continue
                 try:
@@ -284,27 +306,34 @@ def read_latest_model_name(rollout_path: Path) -> str:
                     if not line.endswith("\n"):
                         break
                     raise CommitError(
-                        f"invalid rollout JSON at line {line_number}: {rollout_path}"
+                        f"invalid {label} JSON at line {line_number}: {path}"
                     ) from exc
-                if item.get("type") != "turn_context":
-                    continue
-                payload = item.get("payload")
-                if not isinstance(payload, dict):
-                    continue
-                candidate = payload.get("model")
-                if isinstance(candidate, str) and candidate.strip():
-                    model_name = candidate.strip()
+                if isinstance(item, dict):
+                    yield item
     except OSError as exc:
-        raise CommitError(
-            f"failed to read Codex rollout {rollout_path}: {exc}"
-        ) from exc
+        raise CommitError(f"failed to read {label} {path}: {exc}") from exc
+
+
+def read_latest_model_name(rollout_path: Path) -> str:
+    """从 rollout 中读取最后一条完整 turn_context 的模型名。"""
+
+    model_name = ""
+    for item in iter_jsonl(rollout_path, "Codex rollout"):
+        if item.get("type") != "turn_context":
+            continue
+        payload = item.get("payload")
+        if not isinstance(payload, dict):
+            continue
+        candidate = payload.get("model")
+        if isinstance(candidate, str) and candidate.strip():
+            model_name = candidate.strip()
 
     if not model_name:
         raise CommitError(f"failed to resolve model from rollout: {rollout_path}")
     return model_name
 
 
-def resolve_model_name() -> str:
+def resolve_codex_model_name() -> str:
     """通过只读 Codex thread 信息解析当前模型名。"""
 
     thread_id = require_thread_id()
@@ -333,17 +362,79 @@ def resolve_model_name() -> str:
     return read_latest_model_name(Path(rollout_path))
 
 
+def find_claude_code_transcript() -> Path:
+    """按 CLAUDE_CODE_SESSION_ID 定位当前 Claude Code 会话记录。"""
+
+    session_id = os.environ.get("CLAUDE_CODE_SESSION_ID", "").strip()
+    if not SESSION_ID.fullmatch(session_id):
+        raise CommitError(
+            "missing or invalid CLAUDE_CODE_SESSION_ID; set assisted_by.model "
+            "in the commit YAML or use assisted_by: false"
+        )
+    config_dir = os.environ.get("CLAUDE_CONFIG_DIR", "").strip()
+    root = Path(config_dir).expanduser() if config_dir else Path.home() / ".claude"
+    matches = list((root / "projects").glob(f"*/{session_id}.jsonl"))
+    if not matches:
+        raise CommitError(
+            f"Claude Code transcript for session {session_id} not found under "
+            f"{root / 'projects'}"
+        )
+    return max(matches, key=lambda path: path.stat().st_mtime)
+
+
+def read_latest_claude_code_model_name(transcript_path: Path) -> str:
+    """从 Claude Code 会话记录读取主会话最后一条 assistant 消息的模型名。"""
+
+    model_name = ""
+    for item in iter_jsonl(transcript_path, "Claude Code transcript"):
+        if item.get("type") != "assistant" or item.get("isSidechain"):
+            continue
+        message = item.get("message")
+        if not isinstance(message, dict):
+            continue
+        candidate = message.get("model")
+        # 本地合成的消息使用 "<synthetic>" 等占位模型名。
+        if isinstance(candidate, str) and candidate.strip()[:1] not in {"", "<"}:
+            model_name = candidate.strip()
+
+    if not model_name:
+        raise CommitError(
+            f"failed to resolve model from Claude Code transcript: {transcript_path}"
+        )
+    return model_name
+
+
+def resolve_model_name(host: Host | None) -> str:
+    """从当前宿主 Agent 的会话信息解析模型名，不做猜测。"""
+
+    if host == CODEX_AGENT_NAME:
+        return resolve_codex_model_name()
+    if host == CLAUDE_CODE_AGENT_NAME:
+        return read_latest_claude_code_model_name(find_claude_code_transcript())
+    raise CommitError(
+        "cannot detect the current agent: neither CODEX_THREAD_ID nor "
+        "CLAUDE_CODE_SESSION_ID is set; set assisted_by.model in the commit YAML "
+        "or use assisted_by: false"
+    )
+
+
 def assisted_by_value(config: AssistedBy | Literal[False] | None) -> str | None:
     """根据 YAML 的 assisted_by 覆盖项返回 Assisted-by 值。"""
 
     if config is False:
         return None
-    agent = config.agent if config is not None else DEFAULT_AGENT_NAME
-    model = config.model if config is not None else None
+    config = config or AssistedBy()
+    if config.agent is not None and config.model is not None:
+        host = None
+    else:
+        host = detect_host()
+    agent = config.agent if config.agent is not None else host or DEFAULT_AGENT_NAME
     agent_name = agent.strip()
     if not agent_name:
         raise CommitError("assisted_by.agent must not be empty")
-    model_name = model.strip() if model is not None else resolve_model_name()
+    model_name = (
+        config.model.strip() if config.model is not None else resolve_model_name(host)
+    )
     if not model_name:
         raise CommitError("assisted_by.model must not be empty")
     return f"{agent_name}:{model_name}"
