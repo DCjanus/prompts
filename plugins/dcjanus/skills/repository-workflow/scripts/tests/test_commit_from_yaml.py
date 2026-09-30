@@ -19,6 +19,26 @@ sys.modules[SPEC.name] = commit_from_yaml
 SPEC.loader.exec_module(commit_from_yaml)
 
 
+CODEX_ENV = {"CODEX_THREAD_ID": "thread-id"}
+CLAUDE_CODE_ENV = {"CLAUDE_CODE_SESSION_ID": "0c9f7f2e-session"}
+
+
+def host_env(values: dict[str, str]) -> mock._patch:
+    """以给定变量替换进程环境，避免测试受运行测试的宿主 Agent 影响。"""
+
+    return mock.patch.dict(commit_from_yaml.os.environ, values, clear=True)
+
+
+def write_claude_code_transcript(root: Path, lines: list[str]) -> Path:
+    """在 Claude Code 配置目录下写入当前会话记录。"""
+
+    project = root / "projects" / "-tmp-project"
+    project.mkdir(parents=True)
+    path = project / f"{CLAUDE_CODE_ENV['CLAUDE_CODE_SESSION_ID']}.jsonl"
+    path.write_text("".join(lines), encoding="utf-8")
+    return path
+
+
 class CommitFromYamlTest(unittest.TestCase):
     def test_preserves_freeform_multiline_body(self) -> None:
         spec = commit_from_yaml.load_spec(
@@ -107,16 +127,84 @@ breaking_change:
             message,
         )
 
-    def test_auto_detects_model_with_the_default_agent(self) -> None:
-        with mock.patch.object(commit_from_yaml, "resolve_model_name") as resolve:
-            resolve.return_value = "gpt-current"
+    def test_auto_detects_codex_agent_and_model(self) -> None:
+        with (
+            host_env(CODEX_ENV),
+            mock.patch.object(
+                commit_from_yaml,
+                "resolve_codex_model_name",
+                return_value="gpt-current",
+            ) as resolve,
+        ):
             got = commit_from_yaml.assisted_by_value(None)
 
         self.assertEqual(got, "codex:gpt-current")
         resolve.assert_called_once()
 
+    def test_auto_detects_claude_code_agent_and_model(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            write_claude_code_transcript(
+                Path(directory),
+                ['{"type":"assistant","message":{"model":"claude-current"}}\n'],
+            )
+            with (
+                host_env({**CLAUDE_CODE_ENV, "CLAUDE_CONFIG_DIR": directory}),
+                mock.patch.object(commit_from_yaml, "CodexClient") as codex,
+            ):
+                got = commit_from_yaml.assisted_by_value(None)
+
+        self.assertEqual(got, "claude-code:claude-current")
+        codex.assert_not_called()
+
+    def test_explicit_agent_keeps_auto_detected_model(self) -> None:
+        with (
+            host_env(CLAUDE_CODE_ENV),
+            mock.patch.object(
+                commit_from_yaml,
+                "read_latest_claude_code_model_name",
+                return_value="claude-current",
+            ),
+            mock.patch.object(
+                commit_from_yaml, "find_claude_code_transcript", return_value=Path()
+            ),
+        ):
+            got = commit_from_yaml.assisted_by_value(
+                commit_from_yaml.AssistedBy(agent="claude")
+            )
+
+        self.assertEqual(got, "claude:claude-current")
+
+    def test_rejects_auto_detection_without_host_session(self) -> None:
+        with (
+            host_env({}),
+            self.assertRaisesRegex(commit_from_yaml.CommitError, "assisted_by.model"),
+        ):
+            commit_from_yaml.assisted_by_value(None)
+
+    def test_rejects_ambiguous_host_sessions(self) -> None:
+        with (
+            host_env({**CODEX_ENV, **CLAUDE_CODE_ENV}),
+            self.assertRaisesRegex(commit_from_yaml.CommitError, "both"),
+        ):
+            commit_from_yaml.assisted_by_value(None)
+
+    def test_explicit_model_uses_detected_agent(self) -> None:
+        with (
+            host_env(CLAUDE_CODE_ENV),
+            mock.patch.object(commit_from_yaml, "resolve_model_name") as resolve,
+        ):
+            got = commit_from_yaml.assisted_by_value(
+                commit_from_yaml.AssistedBy(model="claude-explicit")
+            )
+
+        self.assertEqual(got, "claude-code:claude-explicit")
+        resolve.assert_not_called()
+
     def test_uses_explicit_model_without_auto_detection(self) -> None:
-        with mock.patch.object(commit_from_yaml, "resolve_model_name") as resolve:
+        with (
+            host_env({}),
+            mock.patch.object(commit_from_yaml, "resolve_model_name") as resolve,
+        ):
             got = commit_from_yaml.assisted_by_value(
                 commit_from_yaml.AssistedBy(model="gpt-explicit")
             )
@@ -125,7 +213,10 @@ breaking_change:
         resolve.assert_not_called()
 
     def test_uses_explicit_agent_and_model(self) -> None:
-        with mock.patch.object(commit_from_yaml, "resolve_model_name") as resolve:
+        with (
+            host_env({**CODEX_ENV, **CLAUDE_CODE_ENV}),
+            mock.patch.object(commit_from_yaml, "resolve_model_name") as resolve,
+        ):
             got = commit_from_yaml.assisted_by_value(
                 commit_from_yaml.AssistedBy(
                     agent="opencode", model="deepseek-v4.1-flash"
@@ -217,7 +308,7 @@ assisted_by:
                     clear=True,
                 ),
             ):
-                got = commit_from_yaml.resolve_model_name()
+                got = commit_from_yaml.resolve_codex_model_name()
 
         self.assertEqual(got, "gpt-current")
         client.request.assert_called_once()
@@ -228,6 +319,53 @@ assisted_by:
                 {"threadId": "thread-id", "includeTurns": False},
             ),
         )
+
+    def test_reads_latest_main_session_model_from_claude_code_transcript(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = write_claude_code_transcript(
+                Path(directory),
+                [
+                    '{"type":"assistant","message":{"model":"claude-old"}}\n',
+                    '{"type":"user","message":{"role":"user"}}\n',
+                    '{"type":"assistant","message":{"model":"claude-new"}}\n',
+                    (
+                        '{"type":"assistant","isSidechain":true,'
+                        '"message":{"model":"claude-subagent"}}\n'
+                    ),
+                    '{"type":"assistant","message":{"model":"<synthetic>"}}\n',
+                    '{"type":"assistant","message":{"model":"unfinished"}',
+                ],
+            )
+
+            got = commit_from_yaml.read_latest_claude_code_model_name(path)
+
+        self.assertEqual(got, "claude-new")
+
+    def test_rejects_claude_code_transcript_without_model(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = write_claude_code_transcript(
+                Path(directory), ['{"type":"user","message":{"role":"user"}}\n']
+            )
+
+            with self.assertRaisesRegex(commit_from_yaml.CommitError, "transcript"):
+                commit_from_yaml.read_latest_claude_code_model_name(path)
+
+    def test_rejects_missing_claude_code_transcript(self) -> None:
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            host_env({**CLAUDE_CODE_ENV, "CLAUDE_CONFIG_DIR": directory}),
+            self.assertRaisesRegex(commit_from_yaml.CommitError, "not found"),
+        ):
+            commit_from_yaml.find_claude_code_transcript()
+
+    def test_rejects_session_id_with_path_characters(self) -> None:
+        with (
+            host_env({"CLAUDE_CODE_SESSION_ID": "../other"}),
+            self.assertRaisesRegex(commit_from_yaml.CommitError, "invalid"),
+        ):
+            commit_from_yaml.find_claude_code_transcript()
 
     def test_creates_a_real_commit_from_structured_message(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
