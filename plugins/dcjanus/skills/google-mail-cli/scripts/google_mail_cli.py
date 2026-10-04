@@ -3,8 +3,8 @@
 # /// script
 # requires-python = ">=3.14"
 # dependencies = [
-#     "google-api-python-client>=2.200.0",
-#     "google-auth-httplib2>=0.4.3",
+#     "google-api-python-client>=2.201.0",
+#     "google-auth-httplib2>=0.4.4",
 #     "google-auth-oauthlib>=1.5.0",
 #     "rich>=15.0.0",
 #     "typer>=0.27.2",
