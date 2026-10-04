@@ -5,7 +5,7 @@
 ```markdown
 目标与范围：
 禁止范围：
-原始人类授权来源：请求原文/所在会话及可读取证据；分别列出创建会话、发送消息、回复消息、commit/push/PR、合并的授权与未授权项
+原始人类授权来源：请求原文/所在会话及可读取证据；分别列出创建会话、发送消息、回复消息、commit/push/PR、合并的授权与未授权项；注明可复用授权覆盖的会话、方向与范围，缺项在派工前尽早一起澄清
 主会话：threadId / host
 工作会话：ready threadId / host；queued 时仅记录 clientThreadId 与待准备状态
 仓库：权威源码绝对路径 / 已分配 worktree / branch
