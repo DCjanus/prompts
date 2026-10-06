@@ -1,0 +1,20 @@
+{
+  "name": "codex-thread-bridge",
+  "version": "0.0.0",
+  "scripts": {
+    "dev": "cf dev",
+    "build": "cf build",
+    "deploy": "cf deploy",
+    "test": "node --test test/index.test.mjs"
+  },
+  "type": "module",
+  "devDependencies": {
+    "cf": "1.0.0-beta.12",
+    "wrangler": "^4.147.0"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@12.9.1"
+}

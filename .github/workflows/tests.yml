@@ -7,6 +7,27 @@ on:
   pull_request:
 
 jobs:
+  notification-worker:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: plugins/dcjanus/skills/notify-via-telegram/worker
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.3
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+      - name: Install pnpm
+        run: npm install --global pnpm@12.9.1
+      - name: Install Worker dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Test deep links
+        run: pnpm test
+      - name: Validate Worker deployment
+        run: pnpm exec cf deploy --dry-run
+
   lint:
     runs-on: ubuntu-latest
     steps:
