@@ -40,6 +40,14 @@ git diff --name-status <base-or-target>...HEAD
 - 最终净变化确实会导致既有用法、接口或行为失效时，在语义化标题中添加 `!`，并增加独立的 `## BREAKING CHANGE` 章节，分别说明影响范围与迁移方式；普通变化不要添加这些标记。
 - 仅在确有额外信息时添加 `## Risks`、`## Notes` 或其它简短英文标题的章节，如 `## Compatibility`、`## Rollout`。
 
+## 维护者直接修改
+
+- 向外部项目创建 PR 时，默认欢迎维护者直接调整实现，以符合项目惯例和设计；这表示允许对方修改，不把完善实现或修复问题的责任交给维护者。
+- 在正文末尾添加一句简短声明，遵循目标项目语言，不新增独立章节；已有等价表述时不重复，更新正文时保留。项目模板或贡献规范明确限制正文内容时遵循项目要求。
+- 英文默认表述：`Maintainer edits are welcome—feel free to adjust the implementation to fit the project.`
+- 用户 fork 内的预审 PR 不添加声明；创建或重放为正式上游 PR 时添加。自己的项目内 PR 默认省略；用户明确要求时优先。
+- 修改权限由对应平台 skill 设置和核验；正文声明不能代替实际权限。
+
 ## Validation Gate
 
 `Validation` 不是测试清单。起草 PR/MR 时默认从没有 `## Validation` 的正文开始；不确定是否需要时也省略。只有同时满足以下条件的证据才能加入：

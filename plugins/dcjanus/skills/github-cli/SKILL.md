@@ -112,7 +112,10 @@ gh pr create \
   && rm -- /tmp/pr-body.md
 ```
 6. 修改 PR 时也复用本地文件，避免手工编辑，例如：`gh pr edit <id> --title "..." --body-file /tmp/pr-body.md`。
-7. 创建成功后，输出完整 PR URL。
+7. 对支持维护者修改的个人 fork PR，默认开启该权限。`gh pr create` 默认允许维护者修改，不传 `--no-maintainer-edit`；使用其它创建入口时显式设置 `maintainer_can_modify: true` 或对应字段。用户明确要求关闭时遵循用户要求。
+8. 创建后回读 PR 的 base/head、正文与 `maintainer_can_modify`（REST）或 `maintainerCanModify`（CLI/GraphQL）。适用但未开启时修正并再次核验；不适用的同仓库或组织 fork PR 按实际分支权限处理，不把该字段为 false 单独视为创建失败，也不声称已授予权限。只读查询不顺带修改已有 PR 权限。
+9. 标题、正文与欢迎维护者修改的声明遵循 `repository-workflow` 的 [change-requests.md](../repository-workflow/references/change-requests.md)；权限核验与文案声明分别落实。
+10. 创建成功并核验后，输出完整 PR URL。
 
 ## 更新 Issue/PR 标题或描述（前置要求）
 

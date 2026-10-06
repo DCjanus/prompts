@@ -74,6 +74,7 @@ git status -sb
 - 新分支优先使用符合仓库约定的 Conventional Branch 名称。
 - 涉及真实 index 或引用的 Git 写操作保持串行；遇到 `.git/index.lock` 时先检查活跃 Git 进程。
 - 推送前再次确认分支、远端、上游关系和工作区状态。
+- 更新已有 PR/MR 分支前，先 fetch 并检查远端 head/source 与本地提交关系；维护者或其他协作者已追加的提交应纳入后续工作的基准，保留其修改，不用过期的本地分支覆盖远端。存在分叉时核对双方改动并按历史规则整合。
 - 更新已有 PR/MR 分支时，默认 merge target/base 到 source/head，并追加修正 commit。
 - 默认不 amend、rebase、squash 或 force push。只有用户明确要求，或仓库明确要求线性历史时才改写历史；执行前先确认本地与远端目标。
 

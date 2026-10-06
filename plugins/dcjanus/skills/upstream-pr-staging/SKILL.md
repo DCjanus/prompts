@@ -75,6 +75,7 @@ PR 正文先解释验证方法，再给简洁证据，不用阶段名代替结�
 3. 使用目标仓库自身的叙述视角和 repo-native 链接；不要迁移内部记录 comment。若需采用其中的结论，按正式 reviewer 的信息需求重新表述，不复制依赖预审上下文的记录。
 4. 优先使用正式 PR 自己的 CI 证据。若需要该 PR 自己的 red/green URL，在 GitHub Draft PR 中依次重放 red、green、cleanup，最后更新正文并标记 ready for review。
 5. 只有无法取得正式 PR 的证据且用户接受时，才引用 fork CI，并在正文说明来源。
+6. 正式 PR 创建或重放时，按 `repository-workflow` 的 [change-requests.md](../repository-workflow/references/change-requests.md) 添加欢迎维护者直接修改的声明，并按 `github-cli` 设置和回读核验适用的修改权限；不要因预审 PR 已创建或复用其正文而跳过。
 
 ## 停下来确认
 
