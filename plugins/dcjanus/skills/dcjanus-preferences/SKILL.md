@@ -1,12 +1,13 @@
 ---
 name: dcjanus-preferences
-description: 适用于创建、修改或评审 Skill，或在前端技术栈与无障碍组件、Connect/Protobuf API、well-known types、FieldMask/PATCH、AIP-127 HTTP 映射与 Protovalidate 校验、项目开发工具（含 mbx/Cargo）及版本管理、用户级程序的 XDG 数据目录、跨语言的数据存储、分析、压缩、归档、哈希、Telegram Bot 消息呈现及 Python/Rust/Go 第三方库之间做技术选择的场景。
+description: 适用于创建、修改或评审 Skill，或在前端技术栈与无障碍组件、Go CLI/TUI 与终端体验、Connect/Protobuf API、well-known types、FieldMask/PATCH、AIP-127 HTTP 映射与 Protovalidate 校验、项目开发工具（含 mbx/Cargo）及版本管理、用户级程序的 XDG 数据目录、跨语言的数据存储、分析、压缩、归档、哈希、Telegram Bot 消息呈现及 Python/Rust/Go 第三方库之间做技术选择的场景。
 ---
 
 ## Usage
 
 - 创建、修改或评审 Skill 时读取 `references/skill-writing.md`。
 - 选择 React 前端框架、组件库、无障碍基础设施，或从 Protobuf 生成前端 Connect 客户端时读取 `references/frontend.md`。
+- 开发 Go CLI/TUI、改善终端交互与呈现，或选择 Charmbracelet 生态库时读取 `references/go.md`。
 - 选择 Protobuf well-known types、FieldMask 部分更新、Connect RPC、AIP-127 HTTP 映射、Buf 第三方 proto 依赖或 Protovalidate 校验时读取 `references/protobuf.md`；选择 Rust RPC 服务栈或 Protobuf 消息生成链时读取 `references/rust.md`。
 - 先确认选型问题是否跨语言：数据库、分析、压缩或归档场景读取 `references/data-storage.md`；Protobuf 字段 presence 与兼容性判断读取 `references/protobuf.md`；Telegram Bot 消息能力选择读取 `references/telegram-bot-api.md`；语言生态库选择则读取对应语言参考文件。
 - 引入或替换第三方库时优先使用偏好清单。
@@ -33,4 +34,4 @@ description: 适用于创建、修改或评审 Skill，或在前端技术栈与�
 - Telegram Bot API 消息能力选择：`references/telegram-bot-api.md`
 - Python: `references/python.md`
 - Rust 库与 RPC：`references/rust.md`
-- Go: `references/go.md`
+- Go 库、CLI/TUI 与 Charmbracelet：`references/go.md`
