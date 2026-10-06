@@ -103,19 +103,8 @@ description: 使用 GitHub CLI 与 GitHub 资源交互；适用于 repo、issue�
 2. 只有在确认仓库要求与本地代码/提交状态都满足后，才创建 PR；若发现不满足，应先修正，再创建。
 3. `git status` 必须干净，且当前分支已推送到远端。
 4. PR 正文默认先写到本地 Markdown 文件；草稿优先放 `/tmp/*.md`，不要在 shell 里拼多行字符串，也不要依赖交互式编辑。标题通常较短，可直接用 `--title` 传入。
-5. 创建 PR 时优先使用 `--body-file`，例如：
-```
-gh pr create \
-  --title "..." \
-  --body-file /tmp/pr-body.md \
-  --base main \
-  && rm -- /tmp/pr-body.md
-```
-6. 修改 PR 时也复用本地文件，避免手工编辑，例如：`gh pr edit <id> --title "..." --body-file /tmp/pr-body.md`。
-7. 对支持维护者修改的个人 fork PR，默认开启该权限。`gh pr create` 默认允许维护者修改，不传 `--no-maintainer-edit`；使用其它创建入口时显式设置 `maintainer_can_modify: true` 或对应字段。用户明确要求关闭时遵循用户要求。
-8. 创建后回读 PR 的 base/head、正文与 `maintainer_can_modify`（REST）或 `maintainerCanModify`（CLI/GraphQL）。适用但未开启时修正并再次核验；不适用的同仓库或组织 fork PR 按实际分支权限处理，不把该字段为 false 单独视为创建失败，也不声称已授予权限。只读查询不顺带修改已有 PR 权限。
-9. 标题、正文与欢迎维护者修改的声明遵循 `repository-workflow` 的 [change-requests.md](../repository-workflow/references/change-requests.md)；权限核验与文案声明分别落实。
-10. 创建成功并核验后，输出完整 PR URL。
+5. 创建 PR 统一使用 `python scripts/github_pr.py create`，先通过 `--help` 查看参数；脚本默认添加外部贡献声明、允许维护者修改，并回读核验正文和适用的权限。按项目语言或模板要求调整声明选项，已有等价声明时跳过追加。
+6. 更新正文使用 `gh pr edit --body-file`；保留现有贡献声明。核验失败时按脚本返回的 URL 处理，不重复创建。
 
 ## 更新 Issue/PR 标题或描述（前置要求）
 
