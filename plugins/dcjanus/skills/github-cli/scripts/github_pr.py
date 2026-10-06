@@ -1,4 +1,8 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.12"
+# dependencies = []
+# ///
 """创建 PR，默认欢迎维护者修改并核验实际权限。"""
 
 from __future__ import annotations
