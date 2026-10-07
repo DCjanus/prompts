@@ -5,8 +5,8 @@
 # dependencies = [
 #     "playwright>=1.63.0",
 #     "rich>=15.0.0",
-#     "trafilatura>=2.3.0",
-#     "typer>=0.27.2",
+#     "trafilatura>=2.3.1",
+#     "typer>=0.27.3",
 # ]
 # ///
 

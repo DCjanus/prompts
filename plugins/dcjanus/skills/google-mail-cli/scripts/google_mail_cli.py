@@ -7,7 +7,7 @@
 #     "google-auth-httplib2>=0.4.4",
 #     "google-auth-oauthlib>=1.5.0",
 #     "rich>=15.0.0",
-#     "typer>=0.27.2",
+#     "typer>=0.27.3",
 # ]
 # ///
 
