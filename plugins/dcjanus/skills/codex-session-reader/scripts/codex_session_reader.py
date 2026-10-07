@@ -5,7 +5,7 @@
 #     "openai-codex>=0.160.1",
 #     "pydantic>=2.13.5",
 #     "rich>=15.0.0",
-#     "typer>=0.27.2",
+#     "typer>=0.27.3",
 # ]
 # [tool.uv]
 # prerelease = "allow"
