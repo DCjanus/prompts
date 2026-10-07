@@ -6,6 +6,7 @@ DCjanus 的个人 skills，同一份 `plugins/dcjanus/skills` 同时包装为 Co
 - [marketplace.json](.agents/plugins/marketplace.json)：Codex 的 `dcjanus-plugins` marketplace；[Claude Code 版](.claude-plugin/marketplace.json)同名，指向同一个 plugin。
 - [package.json](package.json)：复用同一套 skills 的 Pi package manifest。
 - [AGENTS.md](AGENTS.md)：独立维护的全局个人约定，不由 plugin 自动加载，新电脑按需单独配置。
+- [macOS Amphetamine 配置检查](docs/amphetamine-checklist.md)：交给 Codex 使用 Computer Use 检查插电保持唤醒、电池模式恢复原有行为的独立说明。
 
 ## 安装与更新
 
