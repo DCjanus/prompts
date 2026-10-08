@@ -73,7 +73,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cat > release-notes.md <<EOF_NOTES
-          已验证的 DC Mono SC 四样式字体，包含来源清单、构建报告、OFL 许可证及 Ghostty 配置片段。
+          已验证的 DCjanus Mono SC 四样式字体，包含来源清单、构建报告、OFL 许可证及 Ghostty 配置片段。
 
           构建提交：${GITHUB_SHA}
           安装与更新：https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/docs/terminal-fonts.md
@@ -84,9 +84,9 @@ jobs:
             gh release upload terminal-fonts-latest terminal-fonts.zip --clobber
             gh api --method PATCH "repos/${GITHUB_REPOSITORY}/git/refs/tags/terminal-fonts-latest" \
               -f sha="$GITHUB_SHA" -F force=true >/dev/null
-            gh release edit terminal-fonts-latest --title 'DC Mono SC — latest' \
+            gh release edit terminal-fonts-latest --title 'DCjanus Mono SC — latest' \
               --notes-file release-notes.md --latest=false
           else
             gh release create terminal-fonts-latest terminal-fonts.zip --target "$GITHUB_SHA" \
-              --title 'DC Mono SC — latest' --notes-file release-notes.md --latest=false
+              --title 'DCjanus Mono SC — latest' --notes-file release-notes.md --latest=false
           fi

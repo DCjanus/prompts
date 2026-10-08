@@ -381,7 +381,7 @@ def main(
     ],
     family: Annotated[
         str, typer.Option(help="固定家族名（含 ASCII 字母）；更新无需修改 Ghostty。")
-    ] = "DC Mono SC",
+    ] = "DCjanus Mono SC",
     install_dir: Annotated[
         Path | None,
         typer.Option(

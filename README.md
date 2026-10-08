@@ -59,7 +59,7 @@ Pi 会加载 `pi.skills` 声明的全部 skill，显式调用使用 `/skill:gith
 - [script_deps.py](scripts/script_deps.py)：检查或升级脚本依赖。
 - [upstream_skills.py](scripts/upstream_skills.py)：按 [upstream-skills.toml](upstream-skills.toml) 检查上游 skill 更新。
 
-- [终端合并字体](docs/terminal-fonts.md)：生成 DC Mono SC 四样式字体；PR 检查上游更新，CI 构建并覆盖固定字体 release。
+- [终端合并字体](docs/terminal-fonts.md)：生成 DCjanus Mono SC 四样式字体；PR 检查上游更新，CI 构建并覆盖固定字体 release。
 
 ## 编写指南
 

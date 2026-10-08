@@ -1,4 +1,4 @@
-# DC Mono SC 终端字体
+# DCjanus Mono SC 终端字体
 
 将 Lilex 的西文字形与更纱 Term SC 的中文、框线合并为单一字体，包含 Regular、Bold、Italic、Bold Italic 四个样式。Ghostty 无需 `font-codepoint-map`，常规、粗体及斜体直接选择同一家族中的对应样式。
 
@@ -8,7 +8,7 @@
 
 备份 Ghostty 配置，移除现有 `font-family`、`font-family-bold`、`font-family-italic`、`font-family-bold-italic` 和所有 `font-codepoint-map`，再加入包内 `ghostty.font.conf` 的内容。保留主题等其他设置。重载配置后新建窗口；未发现新字体时退出并重新启动 Ghostty。
 
-家族名固定为 `DC Mono SC`，文件名也固定。更新时覆盖四个 `.ttf`，退出并重新启动 Ghostty；无需修改配置。构建指纹保留在内部 PostScript 名称、唯一标识与报告中，让新字体具有不同的内部身份；正在运行的 Ghostty 仍可能持有旧字体，因此需要重启。不要删除来源字体或其他家族。
+家族名固定为 `DCjanus Mono SC`，文件名也固定。更新时覆盖四个 `.ttf`，退出并重新启动 Ghostty；无需修改配置。构建指纹保留在内部 PostScript 名称、唯一标识与报告中，让新字体具有不同的内部身份；正在运行的 Ghostty 仍可能持有旧字体，因此需要重启。不要删除来源字体或其他家族。
 
 ## 本地构建
 
@@ -24,7 +24,7 @@
   --install-dir "$HOME/Library/Fonts"
 ```
 
-来源和产物目录必须不存在。`--install-dir` 可省略；指定后覆盖同家族、同样式的文件，拒绝覆盖无关或无效字体；先校验再逐文件原子替换。不自动修改 Ghostty。`--family` 可指定独立家族基础名，默认 `DC Mono SC`，家族与文件名保持固定，内部标识包含由来源、转换脚本和布局库版本计算出的 BLAKE3 构建指纹。
+来源和产物目录必须不存在。`--install-dir` 可省略；指定后覆盖同家族、同样式的文件，拒绝覆盖无关或无效字体；先校验再逐文件原子替换。不自动修改 Ghostty。`--family` 可指定独立家族基础名，默认 `DCjanus Mono SC`，家族与文件名保持固定，内部标识包含由来源、转换脚本和布局库版本计算出的 BLAKE3 构建指纹。
 
 ## 上游更新与发布
 

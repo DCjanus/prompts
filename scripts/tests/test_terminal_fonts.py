@@ -126,7 +126,11 @@ def test_build_repeatable_and_install_conflict(tmp_path):
             outputs[1] / face["file"]
         ).read_bytes()
         with TTFont(outputs[0] / face["file"]) as font:
-            assert font["name"].getDebugName(1) == reports[0]["family"] == "DC Mono SC"
+            assert (
+                font["name"].getDebugName(1)
+                == reports[0]["family"]
+                == "DCjanus Mono SC"
+            )
             assert reports[0]["build_id"] in font["name"].getDebugName(6)
             assert font["hmtx"][font.getBestCmap()[ord("中")]][0] == 1000
     for name in ("Lilex.txt", "Sarasa-Gothic.txt"):
