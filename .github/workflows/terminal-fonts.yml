@@ -1,0 +1,109 @@
+name: terminal fonts
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+    paths:
+      - 'scripts/merge_terminal_fonts.py'
+      - 'scripts/terminal_font_sources.py'
+      - 'terminal-fonts.toml'
+      - 'licenses/terminal-fonts/**'
+      - '.github/workflows/terminal-fonts.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terminal-fonts-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      build_required: ${{ steps.plan.outputs.build_required }}
+      input_id: ${{ steps.plan.outputs.input_id }}
+    steps:
+      - uses: actions/checkout@v6.0.3
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v8.2.0
+        with:
+          enable-cache: false
+      - name: Check upstream releases and approved assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/terminal_font_sources.py check
+      - name: Skip unchanged font builds
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            ./scripts/terminal_font_sources.py plan --base "$PR_BASE" --head "$PR_HEAD" \
+              --github-output "$GITHUB_OUTPUT"
+          else
+            ./scripts/terminal_font_sources.py plan --github-output "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: check
+    if: needs.check.outputs.build_required == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.3
+      - uses: astral-sh/setup-uv@v8.2.0
+        with:
+          enable-cache: false
+      - name: Download verified sources
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/terminal_font_sources.py fetch --output-dir font-sources
+      - name: Build and validate all four faces
+        run: |
+          ./scripts/merge_terminal_fonts.py \
+            --sarasa font-sources/sarasa/Sarasa-SuperTTC.ttc \
+            --lilex-dir font-sources/lilex --output-dir terminal-fonts
+          cp terminal-fonts.toml terminal-fonts/
+          zip -j terminal-fonts.zip terminal-fonts/*
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: terminal-fonts
+          path: terminal-fonts.zip
+          retention-days: 3
+
+  publish:
+    needs: [check, build]
+    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6.0.3
+      - uses: astral-sh/setup-uv@v8.2.0
+        with:
+          enable-cache: false
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: terminal-fonts
+      - name: Replace the rolling font release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FONT_INPUT_ID: ${{ needs.check.outputs.input_id }}
+        run: |
+          ./scripts/terminal_font_sources.py notes --bundle terminal-fonts.zip \
+            --commit "$GITHUB_SHA" --fingerprint "$FONT_INPUT_ID" --output release-notes.md
+          if gh release view terminal-fonts-latest >/dev/null 2>&1; then
+            gh release upload terminal-fonts-latest terminal-fonts.zip --clobber
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/git/refs/tags/terminal-fonts-latest" \
+              -f sha="$GITHUB_SHA" -F force=true >/dev/null
+            gh release edit terminal-fonts-latest --title 'DCjanus Mono SC — latest' \
+              --notes-file release-notes.md --latest=false
+          else
+            gh release create terminal-fonts-latest terminal-fonts.zip --target "$GITHUB_SHA" \
+              --title 'DCjanus Mono SC — latest' --notes-file release-notes.md --latest=false
+          fi

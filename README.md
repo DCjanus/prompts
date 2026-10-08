@@ -59,6 +59,8 @@ Pi 会加载 `pi.skills` 声明的全部 skill，显式调用使用 `/skill:gith
 - [script_deps.py](scripts/script_deps.py)：检查或升级脚本依赖。
 - [upstream_skills.py](scripts/upstream_skills.py)：按 [upstream-skills.toml](upstream-skills.toml) 检查上游 skill 更新。
 
+- [终端合并字体](docs/terminal-fonts.md)：生成 DCjanus Mono SC 四样式字体；PR 检查上游更新，CI 构建并覆盖固定字体 release。
+
 ## 编写指南
 
 提示词参考 OpenAI 官方的 [GPT-6 Astra 提示词建议](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-6-astra#prompting-best-practices)和 [AGENTS.md 加载规则](https://developers.openai.com/codex/guides/agents-md)；技能编写遵循 [OpenAI skills 指南](https://developers.openai.com/codex/skills)。
