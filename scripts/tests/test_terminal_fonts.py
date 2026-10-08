@@ -8,6 +8,7 @@ from fontTools.fontBuilder import FontBuilder
 from fontTools.pens.boundsPen import BoundsPen
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib import TTCollection, TTFont
+from rich.text import Text
 from typer.testing import CliRunner
 
 from scripts import merge_terminal_fonts as merge
@@ -185,7 +186,8 @@ def test_upstream_change_and_lookup_failure(monkeypatch):
 
 def test_cli_help_and_invalid_paths():
     for app, args in ((merge.app, ["--help"]), (sources.app, ["fetch", "--help"])):
-        assert "--output-dir" in CliRunner().invoke(app, args).output
+        result = CliRunner().invoke(app, args, env={"FORCE_COLOR": "1"})
+        assert "--output-dir" in Text.from_ansi(result.output).plain
     assert (
         CliRunner().invoke(merge.app, ["--sarasa", "/missing/font.ttc"]).exit_code != 0
     )
