@@ -16,3 +16,12 @@ asset = "Lilex.zip"
 sha256 = "34310edb4ba749f772d42b88e3eec4a6318527e75ceeaa96cfc556ee35366fbc"
 observed_latest = 404003750
 members = ["ttf/Lilex-Regular.ttf", "ttf/Lilex-Bold.ttf", "ttf/Lilex-Italic.ttf", "ttf/Lilex-BoldItalic.ttf"]
+
+[[fonts]]
+name = "nerd-fonts"
+repository = "ryanoasis/nerd-fonts"
+tag = "v3.5.1"
+asset = "NerdFontsSymbolsOnly.zip"
+sha256 = "fdca3682534f6f65e1ccb2345b0362ccf67d9b8eca7c8025330946e93e2473bc"
+observed_latest = 374244625
+members = ["SymbolsNerdFontMono-Regular.ttf"]

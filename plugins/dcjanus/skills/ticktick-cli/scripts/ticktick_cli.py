@@ -4,7 +4,7 @@
 # dependencies = [
 #     "httpxyz>=0.42.1",
 #     "typer>=0.27.3",
-#     "pydantic>=2.13.5",
+#     "pydantic>=2.14.0",
 #     "rich>=15.0.0",
 # ]
 # ///

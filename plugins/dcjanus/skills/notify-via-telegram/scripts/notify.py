@@ -4,7 +4,7 @@
 # requires-python = ">=3.14"
 # dependencies = [
 #     "httpx2>=2.13.1",
-#     "pydantic>=2.13.5",
+#     "pydantic>=2.14.0",
 #     "rich>=15.0.0",
 #     "tomli-w>=1.2.0",
 #     "typer>=0.27.3",

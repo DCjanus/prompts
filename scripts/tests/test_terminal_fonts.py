@@ -19,7 +19,7 @@ def fixture_font(style: str, latin: bool) -> TTFont:
     """建立含宽字形、中文、连字和附加符锚点的最小来源。"""
     characters = set("".join(merge.SHAPING_SAMPLES) + "中文测试á")
     cmap = {ord(char): f"u{ord(char):04X}" for char in sorted(characters)}
-    names = [".notdef", *cmap.values(), "arrow"]
+    names = [".notdef", *cmap.values(), "arrow", *([] if latin else ["wide"])]
     builder = FontBuilder(1000, isTTF=True)
     builder.setupGlyphOrder(names)
     builder.setupCharacterMap(cmap)
@@ -27,6 +27,8 @@ def fixture_font(style: str, latin: bool) -> TTFont:
     for name in names:
         width = 1200 if name == "arrow" else (600 if latin else 500)
         if name in [cmap[ord(char)] for char in "中文测试"]:
+            width = 1000
+        if name == "wide":
             width = 1000
         if name == cmap[0x301]:
             width = 0
@@ -56,7 +58,8 @@ def fixture_font(style: str, latin: bool) -> TTFont:
         feature calt {{ sub {cmap[ord("-")]} {cmap[ord(">")]} by arrow; }} calt;
         markClass {cmap[0x301]} <anchor 0 700> @TOP;
         feature mark {{ pos base {cmap[ord("a")]} <anchor 300 700> mark @TOP; }} mark;
-    """,
+        """
+        + ("" if latin else f"feature WWID {{ sub {cmap[ord('M')]} by wide; }} WWID;"),
     )
     builder.font.recalcTimestamp = False
     builder.font["head"].created = builder.font["head"].modified = 3800000000
@@ -69,6 +72,37 @@ def bounds(font: TTFont, char: str) -> tuple:
     pen = BoundsPen(glyphs)
     glyphs[font.getBestCmap()[ord(char)]].draw(pen)
     return pen.bounds
+
+
+def fixture_icons() -> TTFont:
+    """包含 BMP、补充私用区、已有符号及空格的不同 UPEM 图标来源。"""
+    builder = FontBuilder(2048, isTTF=True)
+    cmap = {cp: f"icon{cp:X}" for cp in (0x20, 0xE606, 0xF030E, ord("中"))}
+    names = [".notdef", *cmap.values()]
+    builder.setupGlyphOrder(names)
+    builder.setupCharacterMap(cmap)
+    glyphs = {}
+    for name in names:
+        pen = TTGlyphPen(None)
+        if name != cmap[0x20]:
+            pen.moveTo((-100, -200))
+            pen.lineTo((2100, -200))
+            pen.lineTo((2100, 1800))
+            pen.lineTo((-100, 1800))
+            pen.closePath()
+        glyphs[name] = pen.glyph()
+    builder.setupGlyf(glyphs)
+    builder.setupHorizontalMetrics({name: (2048, -100) for name in names})
+    builder.setupHorizontalHeader(ascent=1800, descent=-248)
+    builder.setupNameTable(
+        {"familyName": "Symbols Nerd Font Mono", "styleName": "Regular"}
+    )
+    builder.setupOS2()
+    builder.setupPost()
+    builder.setupMaxp()
+    builder.font.recalcTimestamp = False
+    builder.font["head"].created = builder.font["head"].modified = 3800000000
+    return builder.font
 
 
 def test_sidebearings_preserve_height_and_fill_grid():
@@ -92,6 +126,50 @@ def test_sidebearings_preserve_height_and_fill_grid():
     assert anchor.XCoordinate == 300
 
 
+def test_icon_validation_rejects_missing_and_overflowing_glyphs(tmp_path):
+    path = tmp_path / "icons.ttf"
+    font = fixture_icons()
+    font.save(path)
+    with pytest.raises(ValueError, match="缺少 Nerd Fonts"):
+        merge.verify_icons(path, {0xE606, 0xE73C}, {0xE606}, 2048)
+    with pytest.raises(ValueError, match="图标越出单格"):
+        merge.verify_icons(path, {0xE606}, {0xE606}, 2048)
+    merge.fit_icons(font, 500, 965, -215)
+    font["hhea"].ascent, font["hhea"].descent = 965, -215
+    font.save(path)
+    merge.verify_icons(path, {0xE606, 0xF030E}, {0xE606, 0xF030E}, 500)
+
+
+def test_drop_wwid_preserves_characters_and_removes_unencoded_alternates():
+    font = fixture_font("Regular", False)
+    before = dict(font.getBestCmap())
+    assert "wide" in font.getGlyphOrder()
+    merge.subset_font(font, set(before), drop_features={"WWID"})
+    assert font.getBestCmap() == before
+    assert "wide" not in font.getGlyphOrder()
+    assert "WWID" not in {
+        r.FeatureTag for r in font["GSUB"].table.FeatureList.FeatureRecord
+    }
+    assert bounds(font, "M") == (50, 0, 450, 700)
+    assert font["hmtx"][before[ord("中")]][0] == 1000
+
+
+def test_icon_curve_control_points_fit_cell_after_rounding(tmp_path):
+    font = fixture_icons()
+    name = font.getBestCmap()[0xE606]
+    pen = TTGlyphPen(None)
+    pen.moveTo((0, 0))
+    pen.qCurveTo((2500, 1000), (2000, 0))
+    pen.lineTo((0, 0))
+    pen.closePath()
+    font["glyf"][name] = pen.glyph()
+    merge.fit_icons(font, 500, 965, -215)
+    font["hhea"].ascent, font["hhea"].descent = 965, -215
+    path = tmp_path / "curve.ttf"
+    font.save(path)
+    merge.verify_icons(path, {0xE606}, {0xE606}, 500)
+
+
 def test_build_repeatable_and_install_conflict(tmp_path):
     latin_dir = tmp_path / "latin"
     latin_dir.mkdir()
@@ -102,6 +180,8 @@ def test_build_repeatable_and_install_conflict(tmp_path):
         collection.fonts.append(fixture_font(style, False))
     sarasa = tmp_path / "Sarasa-SuperTTC.ttc"
     collection.save(sarasa)
+    nerd_font = tmp_path / "SymbolsNerdFontMono-Regular.ttf"
+    fixture_icons().save(nerd_font)
     outputs = [tmp_path / "first", tmp_path / "second"]
     for output in outputs:
         result = CliRunner().invoke(
@@ -111,6 +191,8 @@ def test_build_repeatable_and_install_conflict(tmp_path):
                 str(sarasa),
                 "--lilex-dir",
                 str(latin_dir),
+                "--nerd-font",
+                str(nerd_font),
                 "--output-dir",
                 str(output),
             ],
@@ -122,6 +204,7 @@ def test_build_repeatable_and_install_conflict(tmp_path):
     assert reports[0] == reports[1]
     assert len(reports[0]["faces"]) == 4
     for face in reports[0]["faces"]:
+        assert face["file"] == f"DCjanusMonoSC-{face['style']}.ttf"
         assert (outputs[0] / face["file"]).read_bytes() == (
             outputs[1] / face["file"]
         ).read_bytes()
@@ -133,7 +216,20 @@ def test_build_repeatable_and_install_conflict(tmp_path):
             )
             assert reports[0]["build_id"] in font["name"].getDebugName(6)
             assert font["hmtx"][font.getBestCmap()[ord("中")]][0] == 1000
-    for name in ("Lilex.txt", "Sarasa-Gothic.txt"):
+            assert bounds(font, "中") == bounds(
+                fixture_font(face["style"], False), "中"
+            )
+            assert face["icons_added"] == 2
+            assert face["icons_covered"] == 3
+            assert face["icons_preserved"] == ["U+4E2D"]
+            assert "wide" not in font.getGlyphOrder()
+            for cp in (0xE606, 0xF030E):
+                assert font["hmtx"][font.getBestCmap()[cp]][0] == 500
+                left, bottom, right, top = bounds(font, chr(cp))
+                assert 0 <= left < right <= 500
+                assert -215 <= bottom < top <= 965
+                assert (right - left) / (top - bottom) == pytest.approx(1.1, abs=0.005)
+    for name in ("Lilex.txt", "Sarasa-Gothic.txt", "Nerd-Fonts.txt"):
         assert "open font license" in (outputs[0] / name).read_text().lower()
     assert reports[0]["family"] in (outputs[0] / "ghostty.font.conf").read_text()
     installed = tmp_path / "installed"
@@ -156,6 +252,8 @@ def test_build_repeatable_and_install_conflict(tmp_path):
             str(sarasa),
             "--lilex-dir",
             str(latin_dir),
+            "--nerd-font",
+            str(nerd_font),
             "--output-dir",
             str(outputs[0]),
         ],
@@ -242,6 +340,9 @@ def test_fetch_checks_bytes_and_extracts_only_selected_members(tmp_path, monkeyp
     result = CliRunner().invoke(sources.app, ["fetch", "--output-dir", str(output)])
     assert result.exit_code == 0, result.exception
     assert (output / "lilex/Lilex-Regular.ttf").read_bytes() == b"font fixture"
+    assert (
+        output / "nerd-fonts/SymbolsNerdFontMono-Regular.ttf"
+    ).read_bytes() == b"font fixture"
     assert not (tmp_path / "unexpected").exists()
     assert (
         CliRunner()
@@ -362,5 +463,6 @@ def test_release_notes_use_bundled_source_versions(tmp_path):
     assert "## 上游来源" in content
     assert "releases/tag/2.777" in content and "2.700" not in content
     assert "releases/tag/v1.0.42" in content
+    assert "releases/tag/v3.5.1" in content
     assert 'font-family = "DCjanus Mono SC"' in content
     assert f"<!-- terminal-font-inputs: {'b' * 64} -->" in content
