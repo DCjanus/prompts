@@ -29,11 +29,12 @@ from blake3 import blake3
 from fontTools import subset
 from fontTools.merge import Merger
 from fontTools.misc.roundTools import otRound
-from fontTools.pens.boundsPen import BoundsPen
+from fontTools.pens.boundsPen import BoundsPen, ControlBoundsPen
 from fontTools.pens.recordingPen import DecomposingRecordingPen
 from fontTools.pens.transformPen import TransformPen
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib import TTCollection, TTFont
+from fontTools.ttLib.scaleUpem import scale_upem
 from rich.console import Console
 
 app = typer.Typer(add_completion=False, pretty_exceptions_show_locals=False)
@@ -96,10 +97,22 @@ def install_fonts(output_dir: Path, install_dir: Path) -> None:
             temporary.unlink(missing_ok=True)
 
 
-def subset_font(font: TTFont, unicodes: set[int]) -> None:
+def subset_font(
+    font: TTFont, unicodes: set[int], *, drop_features: set[str] | None = None
+) -> None:
     """裁剪字符，同时保留连字及其引用字形。"""
     options = subset.Options()
     options.layout_features = ["*"]
+    if drop_features:
+        options.layout_features = sorted(
+            {
+                feature.FeatureTag
+                for tag in ("GSUB", "GPOS")
+                if tag in font
+                for feature in font[tag].table.FeatureList.FeatureRecord
+            }
+            - drop_features
+        )
     options.name_IDs = ["*"]
     options.name_legacy = True
     options.name_languages = ["*"]
@@ -289,6 +302,80 @@ def shape(path: Path, text: str, features: dict[str, bool]) -> list[tuple]:
     ]
 
 
+def fit_icons(font: TTFont, width: int, ascent: int, descent: int) -> None:
+    """将 Symbols Mono 图标等比放入单格，保持轮廓比例并居中。"""
+    if "glyf" not in font or "fvar" in font:
+        raise ValueError("图标来源必须是静态 TrueType 字体")
+    glyphs = font.getGlyphSet()
+    replacements, metrics = {}, {}
+    for name in font.getGlyphOrder():
+        # TTF 的字形边界按控制点计算；仅按曲线极值适配可能在取整后越界。
+        bounds = ControlBoundsPen(glyphs)
+        glyphs[name].draw(bounds)
+        recording = DecomposingRecordingPen(glyphs)
+        glyphs[name].draw(recording)
+        pen = TTGlyphPen(None)
+        advance = font["hmtx"][name][0]
+        scale = width / advance if advance > 0 else 1.0
+        dx = dy = 0.0
+        if bounds.bounds:
+            left, bottom, right, top = bounds.bounds
+            if right > left:
+                scale = min(scale, width / (right - left))
+            if top > bottom:
+                scale = min(scale, (ascent - descent) / (top - bottom))
+            dx = (width - (left + right) * scale) / 2
+            dy = (ascent + descent - (bottom + top) * scale) / 2
+        recording.replay(TransformPen(pen, (scale, 0, 0, scale, dx, dy)))
+        glyph = pen.glyph()
+        replacements[name] = glyph
+        metrics[name] = (
+            width,
+            otRound(bounds.bounds[0] * scale + dx) if bounds.bounds else 0,
+        )
+    font["glyf"].glyphs = replacements
+    font["hmtx"].metrics = metrics
+    # 图标无需文字布局及原像素微调，避免其表参与西文布局合并。
+    for tag in (
+        "GSUB",
+        "GPOS",
+        "GDEF",
+        "kern",
+        "fpgm",
+        "prep",
+        "cvt ",
+        "hdmx",
+        "LTSH",
+        "VDMX",
+        "PfEd",
+    ):
+        if tag in font:
+            del font[tag]
+
+
+def verify_icons(
+    output: Path, codepoints: set[int], added: set[int], width: int
+) -> None:
+    """确认完整图标覆盖及新图标的单格占宽、轮廓边界。"""
+    with TTFont(output) as font:
+        cmap = font.getBestCmap()
+        if missing := codepoints - set(cmap):
+            raise ValueError(f"缺少 Nerd Fonts 字符：{sorted(missing)}")
+        for cp in added:
+            name = cmap[cp]
+            if font["hmtx"][name][0] != width:
+                raise ValueError(f"图标占宽异常：U+{cp:04X}")
+            glyph = font["glyf"][name]
+            if glyph.numberOfContours and not (
+                0 <= glyph.xMin <= glyph.xMax <= width
+                and font["hhea"].descent
+                <= glyph.yMin
+                <= glyph.yMax
+                <= font["hhea"].ascent
+            ):
+                raise ValueError(f"图标越出单格：U+{cp:04X}")
+
+
 def verify(output: Path, latin: Path, target_width: int) -> None:
     """检查双格中文、单格西文和合并后的布局结果。"""
     with TTFont(output) as font, TTFont(latin) as source:
@@ -328,7 +415,7 @@ def rename(
     weight: int,
     build_id: str,
 ) -> None:
-    """创建独立家族并保留两份来源声明。"""
+    """创建独立家族并保留三份来源声明。"""
     display_style = "Bold Italic" if style == "BoldItalic" else style
     ps_family = re.sub(r"[^A-Za-z0-9]", "", family) + build_id
     values = {
@@ -376,6 +463,15 @@ def main(
             help="含 Lilex-{Regular,Bold,Italic,BoldItalic}.ttf 的目录。",
         ),
     ],
+    nerd_font: Annotated[
+        Path,
+        typer.Option(
+            exists=True,
+            dir_okay=False,
+            readable=True,
+            help="完整 SymbolsNerdFontMono-Regular.ttf 图标字体。",
+        ),
+    ],
     output_dir: Annotated[
         Path, typer.Option(file_okay=False, help="输出目录；必须不存在，避免覆盖。")
     ],
@@ -389,7 +485,7 @@ def main(
         ),
     ] = None,
 ) -> None:
-    """合并 Lilex 与更纱：收紧西文侧边距，保留中文、框线及编程连字。
+    """合并 Lilex、更纱与完整 Nerd Fonts 图标集，保留中文及编程连字。
 
     生成四个静态 TTF、构建报告、许可证及 Ghostty 配置片段。
     家族名和文件名固定；内部标识随构建变化，不修改 Ghostty 配置。
@@ -409,7 +505,7 @@ def main(
     provenance = {
         "sources": [
             {"file": path.name, "blake3": digest(path)}
-            for path in [sarasa, *paths.values()]
+            for path in [sarasa, *paths.values(), nerd_font]
         ],
         "converter": digest(Path(__file__)),
         "dependencies": {name: version(name) for name in ("fonttools", "uharfbuzz")},
@@ -435,6 +531,10 @@ def main(
             console.print(f"处理 {style}…")
             cjk = faces[ps_name]
             latin = TTFont(paths[style])
+            icons = TTFont(nerd_font)
+            if icons["name"].getDebugName(1) != "Symbols Nerd Font Mono":
+                raise ValueError("图标来源须为 Symbols Nerd Font Mono")
+            icon_codepoints = set(icons.getBestCmap()) - {0, 0x20, 0xA0}
             weight = latin["OS/2"].usWeightClass
             if cjk["head"].unitsPerEm != latin["head"].unitsPerEm:
                 raise ValueError("来源字体 UPEM 不同，当前不支持")
@@ -446,6 +546,10 @@ def main(
                 for cp in latin.getBestCmap()
                 if any(start <= cp <= end for start, end in LATIN_RANGES)
             }
+            existing = set(cjk.getBestCmap()) | selected
+            added_icons = icon_codepoints - existing
+            if not added_icons:
+                raise ValueError("图标来源没有可加入的图标")
             notices = {
                 name_id: "\n\n".join(
                     filter(
@@ -453,6 +557,7 @@ def main(
                         (
                             cjk["name"].getDebugName(name_id),
                             latin["name"].getDebugName(name_id),
+                            icons["name"].getDebugName(name_id),
                         ),
                     )
                 )
@@ -460,12 +565,17 @@ def main(
             }
             metrics = copy.deepcopy(cjk["hhea"])
             os2 = copy.deepcopy(cjk["OS/2"])
-            subset_font(cjk, set(cjk.getBestCmap()) - selected)
+            # WWID 的双格替代字形会使完整 Nerd Fonts 超出 TTF 字形上限。
+            # 保留所有字符和默认占宽，仅移除可选的双格字宽替换。
+            subset_font(cjk, set(cjk.getBestCmap()) - selected, drop_features={"WWID"})
             subset_font(latin, selected)
             fit_counts = fit_sidebearings(latin, factor)
+            subset_font(icons, added_icons)
+            scale_upem(icons, cjk["head"].unitsPerEm)
+            fit_icons(icons, width, metrics.ascent, metrics.descent)
             # Lilex 直立样式有竖排表，斜体没有。终端不使用竖排，统一移除，
             # 避免 Merger 无法合并缺失一侧的 vhea/vmtx。
-            for font in (cjk, latin):
+            for font in (cjk, latin, icons):
                 for tag in ("vhea", "vmtx", "VORG"):
                     if tag in font:
                         del font[tag]
@@ -473,7 +583,14 @@ def main(
             cjk.recalcTimestamp = latin.recalcTimestamp = False
             cjk.save(cjk_path)
             latin.save(latin_path)
-            merged = Merger().merge([str(cjk_path), str(latin_path)])
+            icons_path = staging / "icons.ttf"
+            icons.recalcTimestamp = False
+            icons.save(icons_path)
+            merged = Merger().merge([str(cjk_path), str(latin_path), str(icons_path)])
+            if len(merged.getGlyphOrder()) > 65535:
+                raise ValueError(
+                    f"合并后有 {len(merged.getGlyphOrder())} 个字形，超出 TTF 的 65535 上限"
+                )
             # 保留更纱的行高；防止 Merger 自动选用 Lilex 的更大行高。
             for attr in ("ascent", "descent", "lineGap"):
                 setattr(merged["hhea"], attr, getattr(metrics, attr))
@@ -495,6 +612,7 @@ def main(
             output = staging / filename
             merged.save(output)
             verify(output, latin_path, width)
+            verify_icons(output, icon_codepoints, added_icons, width)
             reports.append(
                 {
                     "style": style,
@@ -506,13 +624,21 @@ def main(
                     "fit_counts": fit_counts,
                     "latin_width": width,
                     "cjk_width": width * 2,
+                    "icons_source": nerd_font.name,
+                    "cjk_features_removed": ["WWID"],
+                    "icons_covered": len(icon_codepoints),
+                    "icons_added": len(added_icons),
+                    "icons_preserved": [
+                        f"U+{cp:04X}" for cp in sorted(icon_codepoints & existing)
+                    ],
                     "glyphs": merged["maxp"].numGlyphs,
                     "blake3": digest(output),
-                    "validation": "widths, outlines and HarfBuzz shaping passed",
+                    "validation": "widths, outlines, HarfBuzz shaping and full icon coverage passed",
                 }
             )
             merged.close()
             latin.close()
+            icons.close()
         output_dir.mkdir(parents=True)
         for report in reports:
             (output_dir / report["file"]).write_bytes(
@@ -525,7 +651,7 @@ def main(
                     "build_id": build_id,
                     "faces": reports,
                     **provenance,
-                    "notes": "收紧西文侧边距；保留中文与行高；移除西文 hinting。",
+                    "notes": "收紧西文侧边距；保留中文与行高；移除西文 hinting 和更纱 WWID 可选字宽替换；完整 Nerd Fonts 图标等比适配单格。",
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -534,7 +660,7 @@ def main(
             encoding="utf-8",
         )
     licenses = Path(__file__).resolve().parents[1] / "licenses" / "terminal-fonts"
-    for name in ("Lilex.txt", "Sarasa-Gothic.txt"):
+    for name in ("Lilex.txt", "Sarasa-Gothic.txt", "Nerd-Fonts.txt"):
         shutil.copyfile(licenses / name, output_dir / name)
     (output_dir / "ghostty.font.conf").write_text(
         f'# 移除旧 font-codepoint-map 后使用。\nfont-family = ""\nfont-family = "{family}"\n',
