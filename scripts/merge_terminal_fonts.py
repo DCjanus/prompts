@@ -20,7 +20,7 @@ import re
 import shutil
 from importlib.metadata import version
 from pathlib import Path
-from tempfile import TemporaryDirectory
+from tempfile import NamedTemporaryFile, TemporaryDirectory
 from typing import Annotated
 
 import typer
@@ -69,18 +69,31 @@ def digest(path: Path) -> str:
 
 
 def install_fonts(output_dir: Path, install_dir: Path) -> None:
-    """安装四个字体；拒绝覆盖不同内容的同名文件。"""
+    """覆盖安装同家族、同样式字体，拒绝无关文件，并逐文件原子替换。"""
     fonts = sorted(output_dir.glob("*.ttf"))
     for source in fonts:
         target = install_dir / source.name
         if target.exists() and digest(target) != digest(source):
-            raise ValueError(f"安装目标已存在且内容不同：{target.name}")
+            try:
+                with TTFont(source) as new, TTFont(target) as old:
+                    if any(
+                        new["name"].getDebugName(key) != old["name"].getDebugName(key)
+                        for key in (1, 2)
+                    ):
+                        raise ValueError("家族或样式不同")
+            except Exception as error:
+                raise ValueError(f"拒绝覆盖无关或无效字体：{target.name}") from error
     install_dir.mkdir(parents=True, exist_ok=True)
     for source in fonts:
-        target = install_dir / source.name
-        shutil.copyfile(source, target)
-        if digest(target) != digest(source):
-            raise ValueError(f"安装后校验失败：{target.name}")
+        with NamedTemporaryFile(dir=install_dir, suffix=".tmp", delete=False) as temp:
+            temporary = Path(temp.name)
+        try:
+            shutil.copyfile(source, temporary)
+            if digest(temporary) != digest(source):
+                raise ValueError(f"安装前校验失败：{source.name}")
+            temporary.replace(install_dir / source.name)
+        finally:
+            temporary.unlink(missing_ok=True)
 
 
 def subset_font(font: TTFont, unicodes: set[int]) -> None:
@@ -308,17 +321,22 @@ def verify(output: Path, latin: Path, target_width: int) -> None:
 
 
 def rename(
-    font: TTFont, family: str, style: str, notices: dict[int, str], weight: int
+    font: TTFont,
+    family: str,
+    style: str,
+    notices: dict[int, str],
+    weight: int,
+    build_id: str,
 ) -> None:
     """创建独立家族并保留两份来源声明。"""
     display_style = "Bold Italic" if style == "BoldItalic" else style
-    ps_family = re.sub(r"[^A-Za-z0-9]", "", family)
+    ps_family = re.sub(r"[^A-Za-z0-9]", "", family) + build_id
     values = {
         1: family,
         2: display_style,
         3: f"{ps_family}-{style}",
         4: f"{family} {display_style}",
-        5: f"Version 1.000; {family}",
+        5: f"Version 1.000; build {build_id}",
         6: f"{ps_family}-{style}",
         16: family,
         17: display_style,
@@ -362,17 +380,19 @@ def main(
         Path, typer.Option(file_okay=False, help="输出目录；必须不存在，避免覆盖。")
     ],
     family: Annotated[
-        str, typer.Option(help="新字体家族名（含 ASCII 字母）；不覆盖原字体。")
+        str, typer.Option(help="固定家族名（含 ASCII 字母）；更新无需修改 Ghostty。")
     ] = "DC Mono SC",
     install_dir: Annotated[
         Path | None,
-        typer.Option(file_okay=False, help="可选安装目录；默认仅生成字体。"),
+        typer.Option(
+            file_okay=False, help="可选安装目录；覆盖同家族同样式文件，默认仅生成。"
+        ),
     ] = None,
 ) -> None:
     """合并 Lilex 与更纱：收紧西文侧边距，保留中文、框线及编程连字。
 
     生成四个静态 TTF、构建报告、许可证及 Ghostty 配置片段。
-    家族名自动附加构建标识；不修改 Ghostty 配置。
+    家族名和文件名固定；内部标识随构建变化，不修改 Ghostty 配置。
     """
     if output_dir.exists():
         raise typer.BadParameter(
@@ -396,7 +416,6 @@ def main(
         "family_base": family,
     }
     build_id = blake3(json.dumps(provenance, sort_keys=True).encode()).hexdigest()[:12]
-    family = f"{family} {build_id}"
     collection = TTCollection(sarasa, lazy=True)
     faces = {}
     for face in collection.fonts:
@@ -471,7 +490,7 @@ def main(
             merged["head"].created = cjk["head"].created
             merged["head"].modified = max(cjk["head"].modified, latin["head"].modified)
             merged["post"].isFixedPitch = 1
-            rename(merged, family, style, notices, weight)
+            rename(merged, family, style, notices, weight, build_id)
             filename = f"{re.sub(r'[^A-Za-z0-9]', '', family)}-{style}.ttf"
             output = staging / filename
             merged.save(output)

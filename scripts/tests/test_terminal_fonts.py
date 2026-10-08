@@ -126,7 +126,8 @@ def test_build_repeatable_and_install_conflict(tmp_path):
             outputs[1] / face["file"]
         ).read_bytes()
         with TTFont(outputs[0] / face["file"]) as font:
-            assert font["name"].getDebugName(1) == reports[0]["family"]
+            assert font["name"].getDebugName(1) == reports[0]["family"] == "DC Mono SC"
+            assert reports[0]["build_id"] in font["name"].getDebugName(6)
             assert font["hmtx"][font.getBestCmap()[ord("中")]][0] == 1000
     for name in ("Lilex.txt", "Sarasa-Gothic.txt"):
         assert "open font license" in (outputs[0] / name).read_text().lower()
@@ -135,8 +136,14 @@ def test_build_repeatable_and_install_conflict(tmp_path):
     merge.install_fonts(outputs[0], installed)
     merge.install_fonts(outputs[0], installed)
     target = next(installed.glob("*.ttf"))
+    source = outputs[0] / target.name
+    with TTFont(source) as updated:
+        updated["name"].setName("Version 1.001", 5, 3, 1, 0x409)
+        updated.save(source)
+    merge.install_fonts(outputs[0], installed)
+    assert target.read_bytes() == source.read_bytes()
     target.write_bytes(b"different")
-    with pytest.raises(ValueError, match="内容不同"):
+    with pytest.raises(ValueError, match="拒绝覆盖"):
         merge.install_fonts(outputs[0], installed)
     result = CliRunner().invoke(
         merge.app,
