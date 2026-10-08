@@ -254,3 +254,76 @@ def test_fetch_checks_bytes_and_extracts_only_selected_members(tmp_path, monkeyp
     result = CliRunner().invoke(sources.app, ["fetch", "--output-dir", str(output)])
     assert result.exit_code != 0
     assert not output.exists()
+
+
+def test_ci_skips_unrelated_or_published_inputs(tmp_path, monkeypatch):
+    import subprocess
+    from urllib.error import HTTPError
+
+    repository = sources.DEFAULT_MANIFEST.parent
+    fingerprint = sources.input_id(repository)
+    payload = {
+        "draft": False,
+        "body": f"<!-- terminal-font-inputs: {fingerprint} -->",
+        "assets": [{"name": "terminal-fonts.zip", "state": "uploaded"}],
+    }
+    assert sources.release_is_current(payload, fingerprint)
+    assert not sources.release_is_current(payload, "different")
+    assert not sources.release_is_current({**payload, "assets": []}, fingerprint)
+    assert not sources.release_is_current({**payload, "draft": True}, fingerprint)
+    output = tmp_path / "outputs"
+    monkeypatch.setattr(sources, "release", lambda font: payload)
+    result = CliRunner().invoke(sources.app, ["plan", "--github-output", str(output)])
+    assert result.exit_code == 0, result.exception
+    assert "build_required=false" in output.read_text()
+    monkeypatch.setattr(
+        sources,
+        "release",
+        lambda font: (_ for _ in ()).throw(HTTPError("url", 404, "missing", {}, None)),
+    )
+    result = CliRunner().invoke(sources.app, ["plan", "--github-output", str(output)])
+    assert result.exit_code == 0
+    assert output.read_text().endswith(f"build_required=true\ninput_id={fingerprint}\n")
+    monkeypatch.setattr(
+        sources,
+        "release",
+        lambda font: (_ for _ in ()).throw(
+            HTTPError("url", 403, "rate limited", {}, None)
+        ),
+    )
+    assert CliRunner().invoke(sources.app, ["plan"]).exit_code != 0
+    monkeypatch.setattr(
+        sources.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args, 0, "README.md\n", ""),
+    )
+    result = CliRunner().invoke(
+        sources.app, ["plan", "--base", "a" * 40, "--head", "b" * 40]
+    )
+    assert result.exit_code == 0 and "跳过构建" in result.output
+    monkeypatch.setattr(
+        sources.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args, 0, "scripts/merge_terminal_fonts.py\n", ""
+        ),
+    )
+    assert (
+        CliRunner()
+        .invoke(sources.app, ["plan", "--base", "a" * 40, "--head", "b" * 40])
+        .exit_code
+        != 0
+    )
+    assert CliRunner().invoke(sources.app, ["plan", "--base", "a" * 40]).exit_code != 0
+
+
+def test_ci_input_fingerprint_changes_with_scripts(tmp_path):
+    original = sources.input_id(sources.DEFAULT_MANIFEST.parent)
+    for path in sources.build_inputs(sources.DEFAULT_MANIFEST.parent):
+        relative = path.relative_to(sources.DEFAULT_MANIFEST.parent)
+        target = tmp_path / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(path.read_bytes())
+    assert sources.input_id(tmp_path) == original
+    (tmp_path / "scripts/merge_terminal_fonts.py").write_bytes(b"changed converter")
+    assert sources.input_id(tmp_path) != original

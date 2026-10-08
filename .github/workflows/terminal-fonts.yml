@@ -17,13 +17,18 @@ permissions:
 
 concurrency:
   group: terminal-fonts-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   check:
     runs-on: ubuntu-latest
+    outputs:
+      build_required: ${{ steps.plan.outputs.build_required }}
+      input_id: ${{ steps.plan.outputs.input_id }}
     steps:
       - uses: actions/checkout@v6.0.3
+        with:
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@v8.2.0
         with:
           enable-cache: false
@@ -31,9 +36,23 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: ./scripts/terminal_font_sources.py check
+      - name: Skip unchanged font builds
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            ./scripts/terminal_font_sources.py plan --base "$PR_BASE" --head "$PR_HEAD" \
+              --github-output "$GITHUB_OUTPUT"
+          else
+            ./scripts/terminal_font_sources.py plan --github-output "$GITHUB_OUTPUT"
+          fi
 
   build:
     needs: check
+    if: needs.check.outputs.build_required == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6.0.3
@@ -58,7 +77,7 @@ jobs:
           retention-days: 3
 
   publish:
-    needs: build
+    needs: [check, build]
     if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
@@ -71,9 +90,12 @@ jobs:
       - name: Replace the rolling font release
         env:
           GH_TOKEN: ${{ github.token }}
+          FONT_INPUT_ID: ${{ needs.check.outputs.input_id }}
         run: |
           cat > release-notes.md <<EOF_NOTES
           已验证的 DCjanus Mono SC 四样式字体，包含来源清单、构建报告、OFL 许可证及 Ghostty 配置片段。
+
+          <!-- terminal-font-inputs: ${FONT_INPUT_ID} -->
 
           构建提交：${GITHUB_SHA}
           安装与更新：https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/docs/terminal-fonts.md

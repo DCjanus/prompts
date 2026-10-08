@@ -3,6 +3,7 @@
 # /// script
 # requires-python = ">=3.14"
 # dependencies = [
+#     "blake3>=1.0.11",
 #     "rich>=15.0.0",
 #     "typer>=0.27.3",
 # ]
@@ -16,15 +17,18 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import zipfile
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Annotated
+from urllib.error import HTTPError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 import tomllib
 import typer
+from blake3 import blake3
 from rich.console import Console
 
 app = typer.Typer(add_completion=False, pretty_exceptions_show_locals=False)
@@ -92,6 +96,108 @@ def check(
         console.print(failure, style="red")
     if failures:
         raise typer.Exit(1)
+
+
+def build_inputs(repository: Path) -> list[Path]:
+    """列出会影响字体构建或随包分发的输入。"""
+    return [
+        repository / "scripts/merge_terminal_fonts.py",
+        repository / "scripts/terminal_font_sources.py",
+        repository / "terminal-fonts.toml",
+        repository / ".github/workflows/terminal-fonts.yml",
+        *sorted((repository / "licenses/terminal-fonts").glob("*.txt")),
+    ]
+
+
+def input_id(repository: Path) -> str:
+    """按路径和内容计算构建输入指纹。"""
+    hasher = blake3()
+    for path in build_inputs(repository):
+        name = path.relative_to(repository).as_posix().encode()
+        content = path.read_bytes()
+        for value in (name, content):
+            hasher.update(len(value).to_bytes(8, "big"))
+            hasher.update(value)
+    return hasher.hexdigest()
+
+
+def release_is_current(payload: dict, fingerprint: str) -> bool:
+    """只有已发布、含字体包且构建输入一致的 release 才能复用。"""
+    marker = f"<!-- terminal-font-inputs: {fingerprint} -->"
+    return (
+        payload.get("draft") is False
+        and marker in (payload.get("body") or "")
+        and any(
+            asset.get("name") == "terminal-fonts.zip"
+            and asset.get("state") == "uploaded"
+            for asset in payload.get("assets", [])
+        )
+    )
+
+
+@app.command()
+def plan(
+    repository: Annotated[
+        Path,
+        typer.Option(exists=True, file_okay=False, help="仓库目录；默认脚本所在仓库。"),
+    ] = DEFAULT_MANIFEST.parent,
+    base: Annotated[
+        str | None,
+        typer.Option(help="PR base 的完整 commit SHA；须与 --head 同时提供。"),
+    ] = None,
+    head: Annotated[
+        str | None,
+        typer.Option(help="PR head 的完整 commit SHA；须与 --base 同时提供。"),
+    ] = None,
+    github_output: Annotated[
+        Path | None,
+        typer.Option(
+            dir_okay=False,
+            help="追加 build_required 与 input_id 到 GitHub Actions 输出文件。",
+        ),
+    ] = None,
+) -> None:
+    """决定是否构建；无相关 PR 变化或已有相同输入的 release 时跳过。
+
+    默认读取固定字体 release；仅首次发布的 404 视为需要构建，其他查询失败报错。
+    """
+    if (base is None) != (head is None):
+        raise typer.BadParameter("--base 与 --head 必须同时提供")
+    repository = repository.resolve()
+    fingerprint = input_id(repository)
+    relevant = True
+    if base is not None:
+        if not all(re.fullmatch(r"[0-9a-f]{40}", value) for value in (base, head)):
+            raise typer.BadParameter("--base 与 --head 必须是完整 commit SHA")
+        changed = subprocess.run(
+            ["git", "-C", str(repository), "diff", "--name-only", f"{base}...{head}"],
+            check=True,
+            text=True,
+            capture_output=True,
+        ).stdout.splitlines()
+        inputs = {
+            path.relative_to(repository).as_posix() for path in build_inputs(repository)
+        }
+        relevant = any(
+            name in inputs or name.startswith("licenses/terminal-fonts/")
+            for name in changed
+        )
+    required = relevant
+    if relevant:
+        try:
+            payload = release(
+                {"repository": "DCjanus/prompts", "tag": "terminal-fonts-latest"}
+            )
+            required = not release_is_current(payload, fingerprint)
+        except HTTPError as error:
+            if error.code != 404:
+                raise
+    values = f"build_required={str(required).lower()}\ninput_id={fingerprint}\n"
+    if github_output is not None:
+        with github_output.open("a") as output:
+            output.write(values)
+    console.print("需要构建字体" if required else "构建输入未变化，跳过构建及发布")
+    console.print(f"构建输入：{fingerprint}")
 
 
 @app.command()

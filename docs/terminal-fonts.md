@@ -34,7 +34,9 @@
 
 介入更新时：查看上游发布说明，修改构建 tag、资产名、摘要和成员路径，重新构建并验收四样式、编程连字、中文对齐与字符画；确认后更新 `observed_latest`。若有意继续采用旧版本，说明原因后仅更新检查基线。许可证随来源更新一起核对。
 
-CI 下载并验证来源、生成四样式字体并验证布局。PR 仅提供保留三天的构建 artifact；默认分支成功构建后覆盖固定 `terminal-fonts-latest` release 的 `terminal-fonts.zip`，不创建版本号 release，也不累积字体附件。手动触发仅在默认分支发布。发布需仓库允许 `GITHUB_TOKEN` 写入 contents，并允许可更新的 release；不要为该滚动 release 启用不可变发布。
+每个 PR 的上游检查仅调用少量 GitHub API；使用自动提供的 `GITHUB_TOKEN`，无需配置个人 Token、variable 或 secret。PR 未修改来源清单、转换/下载脚本、许可证或字体 workflow 时，跳过字体构建。相关输入与现有 release 指纹一致时也跳过构建及发布。更新 PR 的新提交会取消同一个 PR 的旧构建。
+
+确需构建时，CI 才下载并验证来源、生成四样式字体并验证布局。PR 仅提供保留三天的构建 artifact；默认分支成功构建后覆盖固定 `terminal-fonts-latest` release 的 `terminal-fonts.zip`，不创建版本号 release，也不累积字体附件。手动触发仅在默认分支发布。发布需仓库允许 `GITHUB_TOKEN` 写入 contents，并允许可更新的 release；不要为该滚动 release 启用不可变发布。
 
 ## 转换与验证
 
