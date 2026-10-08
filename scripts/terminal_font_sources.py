@@ -39,10 +39,8 @@ DEFAULT_MANIFEST = Path(__file__).resolve().parents[1] / "terminal-fonts.toml"
 def load_manifest(path: Path) -> list[dict]:
     """读取固定版本、下载摘要和上游检查基线。"""
     fonts = tomllib.loads(path.read_text())["fonts"]
-    if {font["name"] for font in fonts} != {"sarasa", "lilex", "nerd-fonts"} or len(
-        fonts
-    ) != 3:
-        raise ValueError("清单必须包含且仅包含 sarasa、lilex 和 nerd-fonts")
+    if {font["name"] for font in fonts} != {"sarasa", "lilex"} or len(fonts) != 2:
+        raise ValueError("清单必须包含且仅包含 sarasa 和 lilex")
     for font in fonts:
         if not re.fullmatch(r"[\w.-]+/[\w.-]+", font["repository"]):
             raise ValueError("无效 GitHub repository")
@@ -231,16 +229,11 @@ def notes(
         fonts = tomllib.loads(archive.read("terminal-fonts.toml").decode())["fonts"]
     lines = [
         f"{report['family']} 终端字体，包含 Regular、Bold、Italic、Bold Italic 四个样式。",
-        "完整嵌入 Nerd Fonts 图标集；保留默认中西文占宽和编程连字。更纱的可选 `WWID` 双格替换特性已移除。",
         "",
         "## 上游来源",
         "",
     ]
-    labels = {
-        "lilex": "Lilex",
-        "sarasa": "更纱黑体 Sarasa Gothic",
-        "nerd-fonts": "Nerd Fonts Symbols Mono",
-    }
+    labels = {"lilex": "Lilex", "sarasa": "更纱黑体 Sarasa Gothic"}
     for font in fonts:
         url = f"https://github.com/{font['repository']}/releases/tag/{quote(font['tag'], safe='')}"
         lines.append(f"- {labels[font['name']]}：[{font['tag']}]({url})")
@@ -249,7 +242,7 @@ def notes(
             "",
             "## 安装与更新",
             "",
-            "下载 `terminal-fonts.zip`，包含四个支持完整 Nerd Fonts 图标集的 TTF、来源清单、构建报告、来源许可证和 Ghostty 配置片段。",
+            "下载 `terminal-fonts.zip`，包含四个 TTF、来源清单、构建报告、OFL 许可证和 Ghostty 配置片段。",
             "",
             'macOS 将四个 TTF 覆盖安装到 `~/Library/Fonts/`。Ghostty 使用固定的 `font-family = "DCjanus Mono SC"`；更新后退出并重新启动，无需修改配置。',
             "",
@@ -284,8 +277,7 @@ def fetch(
         raise typer.BadParameter("输出目录已存在", param_hint="--output-dir")
     with TemporaryDirectory(prefix="terminal-font-sources-") as temp:
         staging = Path(temp)
-        fonts = load_manifest(manifest)
-        for font in fonts:
+        for font in load_manifest(manifest):
             asset = approved_asset(font, release(font))
             url = asset["browser_download_url"]
             expected = f"https://github.com/{font['repository']}/releases/download/"
@@ -311,8 +303,8 @@ def fetch(
                     ):
                         shutil.copyfileobj(source, target)
         output_dir.mkdir(parents=True)
-        for font in fonts:
-            shutil.copytree(staging / font["name"], output_dir / font["name"])
+        for name in ("sarasa", "lilex"):
+            shutil.copytree(staging / name, output_dir / name)
         shutil.copyfile(manifest, output_dir / "terminal-fonts.toml")
     console.print(f"已校验并输出：{output_dir}")
 
