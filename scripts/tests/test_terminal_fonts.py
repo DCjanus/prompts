@@ -327,3 +327,40 @@ def test_ci_input_fingerprint_changes_with_scripts(tmp_path):
     assert sources.input_id(tmp_path) == original
     (tmp_path / "scripts/merge_terminal_fonts.py").write_bytes(b"changed converter")
     assert sources.input_id(tmp_path) != original
+
+
+def test_release_notes_use_bundled_source_versions(tmp_path):
+    import zipfile
+
+    manifest = sources.DEFAULT_MANIFEST.read_text().replace(
+        'tag = "2.700"', 'tag = "2.777"'
+    )
+    bundle = tmp_path / "terminal-fonts.zip"
+    with zipfile.ZipFile(bundle, "w") as archive:
+        archive.writestr("terminal-fonts.toml", manifest)
+        archive.writestr(
+            "build-report.json",
+            json.dumps({"family": "DCjanus Mono SC", "build_id": "fixture-build"}),
+        )
+    output = tmp_path / "release.md"
+    result = CliRunner().invoke(
+        sources.app,
+        [
+            "notes",
+            "--bundle",
+            str(bundle),
+            "--commit",
+            "a" * 40,
+            "--fingerprint",
+            "b" * 64,
+            "--output",
+            str(output),
+        ],
+    )
+    assert result.exit_code == 0, result.exception
+    content = output.read_text()
+    assert "## 上游来源" in content
+    assert "releases/tag/2.777" in content and "2.700" not in content
+    assert "releases/tag/v1.0.42" in content
+    assert 'font-family = "DCjanus Mono SC"' in content
+    assert f"<!-- terminal-font-inputs: {'b' * 64} -->" in content

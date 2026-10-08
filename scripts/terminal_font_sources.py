@@ -201,6 +201,69 @@ def plan(
 
 
 @app.command()
+def notes(
+    bundle: Annotated[
+        Path,
+        typer.Option(
+            exists=True,
+            dir_okay=False,
+            help="已构建的 terminal-fonts.zip；从包内读取来源版本。",
+        ),
+    ],
+    commit: Annotated[str, typer.Option(help="生成本包的完整 Git commit SHA。")],
+    fingerprint: Annotated[
+        str, typer.Option(help="本包的构建输入指纹，用于避免重复发布。")
+    ],
+    output: Annotated[
+        Path,
+        typer.Option(dir_okay=False, help="写入中文 release 正文的 Markdown 文件。"),
+    ],
+) -> None:
+    """根据实际构建包生成中文 release 说明及固定上游版本链接。"""
+    if not re.fullmatch(r"[0-9a-f]{40}", commit) or not re.fullmatch(
+        r"[0-9a-f]{64}", fingerprint
+    ):
+        raise typer.BadParameter("需要完整 commit SHA 和 64 位构建输入指纹")
+    with zipfile.ZipFile(bundle) as archive:
+        report = json.loads(archive.read("build-report.json"))
+        fonts = tomllib.loads(archive.read("terminal-fonts.toml").decode())["fonts"]
+    lines = [
+        f"{report['family']} 终端字体，包含 Regular、Bold、Italic、Bold Italic 四个样式。",
+        "",
+        "## 上游来源",
+        "",
+    ]
+    labels = {"lilex": "Lilex", "sarasa": "更纱黑体 Sarasa Gothic"}
+    for font in fonts:
+        url = f"https://github.com/{font['repository']}/releases/tag/{quote(font['tag'], safe='')}"
+        lines.append(f"- {labels[font['name']]}：[{font['tag']}]({url})")
+    lines.extend(
+        [
+            "",
+            "## 安装与更新",
+            "",
+            "下载 `terminal-fonts.zip`，包含四个 TTF、来源清单、构建报告、OFL 许可证和 Ghostty 配置片段。",
+            "",
+            'macOS 将四个 TTF 覆盖安装到 `~/Library/Fonts/`。Ghostty 使用固定的 `font-family = "DCjanus Mono SC"`；更新后退出并重新启动，无需修改配置。',
+            "",
+            f"[完整安装与构建说明](https://github.com/DCjanus/prompts/blob/{commit}/docs/terminal-fonts.md)",
+            "",
+            "## 构建信息",
+            "",
+            f"- 字体构建标识：`{report['build_id']}`",
+            f"- 构建提交：[{commit[:12]}](https://github.com/DCjanus/prompts/commit/{commit})",
+            "",
+            "此 release 固定使用 `terminal-fonts-latest` 标签；输入变化并成功构建后覆盖同名附件，不保留历史字体版本。",
+            "",
+            f"<!-- terminal-font-inputs: {fingerprint} -->",
+            "",
+        ]
+    )
+    output.write_text("\n".join(lines), encoding="utf-8")
+    console.print(f"已生成中文 release 说明：{output}")
+
+
+@app.command()
 def fetch(
     output_dir: Annotated[
         Path, typer.Option(file_okay=False, help="输出来源目录；必须不存在。")

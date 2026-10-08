@@ -84,6 +84,9 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v6.0.3
+      - uses: astral-sh/setup-uv@v8.2.0
+        with:
+          enable-cache: false
       - uses: actions/download-artifact@v8.0.2
         with:
           name: terminal-fonts
@@ -92,16 +95,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           FONT_INPUT_ID: ${{ needs.check.outputs.input_id }}
         run: |
-          cat > release-notes.md <<EOF_NOTES
-          已验证的 DCjanus Mono SC 四样式字体，包含来源清单、构建报告、OFL 许可证及 Ghostty 配置片段。
-
-          <!-- terminal-font-inputs: ${FONT_INPUT_ID} -->
-
-          构建提交：${GITHUB_SHA}
-          安装与更新：https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/docs/terminal-fonts.md
-
-          此 release 固定使用 terminal-fonts-latest 标签，每次成功构建覆盖同名附件，不保留历史字体 release。
-          EOF_NOTES
+          ./scripts/terminal_font_sources.py notes --bundle terminal-fonts.zip \
+            --commit "$GITHUB_SHA" --fingerprint "$FONT_INPUT_ID" --output release-notes.md
           if gh release view terminal-fonts-latest >/dev/null 2>&1; then
             gh release upload terminal-fonts-latest terminal-fonts.zip --clobber
             gh api --method PATCH "repos/${GITHUB_REPOSITORY}/git/refs/tags/terminal-fonts-latest" \
