@@ -42,7 +42,7 @@ git diff --name-status <base-or-target>...HEAD
 
 ## 维护者直接接手
 
-PR/MR 的价值也来自问题发现、需求澄清、方案探索和可行性验证，不要求维护者保留具体代码。默认表达贡献者愿意让维护者直接接手：可以修改或重写，也可以关闭后自行实现，无需事先确认，以减少往返沟通和协作成本。贡献者仍负责提交时的质量，并清楚说明问题、目标和必要约束。
+PR/MR 的价值也来自问题发现、需求澄清、方案探索和可行性验证，不要求维护者保留具体代码。声明同时表达两种协作方式：贡献者很乐意根据反馈继续调整；如果维护者直接修改或另行实现更方便，也无需事先确认。维护者可以重写或关闭后自行实现，但正文不必逐项列举这些操作，以免让人误以为贡献者不愿继续推进。贡献者仍负责提交时的质量，并清楚说明问题、目标和必要约束。
 
 - 默认在 PR/MR 正文末尾添加独立的 `## Maintainer edits` 章节；标题始终使用英文，声明跟随正文语言。不放在 `Notes` 中，正文无需加粗。
 - 中文正文使用：
@@ -50,7 +50,7 @@ PR/MR 的价值也来自问题发现、需求澄清、方案探索和可行性�
 ```markdown
 ## Maintainer edits
 
-维护者如有更合适的实现，可以直接修改或重写本 PR，也可以关闭后自行实现，无需事先与我确认。
+我很乐意根据反馈继续调整；如果直接修改或另行实现更方便，维护者也无需事先与我确认。
 ```
 
 - 英文正文使用：
@@ -58,7 +58,7 @@ PR/MR 的价值也来自问题发现、需求澄清、方案探索和可行性�
 ```markdown
 ## Maintainer edits
 
-If maintainers have a better approach, feel free to modify or rewrite this PR, or close it and implement the change independently—no need to check with me first.
+I’m happy to make further changes based on feedback. If it’s easier to edit this PR directly or implement an alternative, feel free to do so without checking with me first.
 ```
 
 - MR 将示例中的 `PR` 替换为 `MR`；其它语言保留相同含义。项目模板或贡献规范有明确要求时优先遵循。

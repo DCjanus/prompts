@@ -17,8 +17,9 @@ from urllib.parse import urlparse
 
 NOTICE = (
     "## Maintainer edits\n\n"
-    "If maintainers have a better approach, feel free to modify or rewrite this PR, "
-    "or close it and implement the change independently—no need to check with me first."
+    "I’m happy to make further changes based on feedback. "
+    "If it’s easier to edit this PR directly or implement an alternative, "
+    "feel free to do so without checking with me first."
 )
 
 
