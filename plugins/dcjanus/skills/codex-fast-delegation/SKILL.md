@@ -1,6 +1,6 @@
 ---
 name: codex-fast-delegation
-description: Codex 开发中希望通过快速 subagent 缩短需求明确、边界清晰的短周期任务耗时，或当前使用 GPT 6.1 Sol 并需要提高执行效率时使用。
+description: 在 Codex 中执行需求明确、边界清晰、风险低且容易验证的短周期任务时使用，帮助选择快速 subagent 提升执行效率。
 ---
 
 # 快速子代理委派
