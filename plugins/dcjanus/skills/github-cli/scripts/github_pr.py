@@ -16,9 +16,10 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 NOTICE = (
-    "## Maintainer edits\n\n"
-    "If maintainers have a better approach, feel free to modify or rewrite this PR, "
-    "or close it and implement the change independently—no need to check with me first."
+    "---\n\n"
+    "I’m happy to make further changes based on feedback. "
+    "If it’s easier to edit this PR directly or implement an alternative, "
+    "feel free to do so without checking with me first."
 )
 
 
@@ -142,7 +143,7 @@ def main() -> int:
         "--no-notice", action="store_true", help="已有等价声明或项目禁止附加声明时使用"
     )
     command.add_argument(
-        "--notice", default=NOTICE, help="按正文语言替换完整声明章节（含英文标题）"
+        "--notice", default=NOTICE, help="按正文语言替换分隔线及完整声明（含 ---）"
     )
     args = parser.parse_args()
     try:
