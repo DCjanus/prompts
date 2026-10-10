@@ -62,8 +62,9 @@ description: 使用 GitLab CLI（glab）与 GitLab 资源交互；适用于 proj
   --squash true \
   --remove-source-branch true
 ```
-6. 修改 MR 时也复用本地文件，避免手工编辑，例如：`./scripts/gitlab_cli.py mr update --cwd /path/to/repo 123 --title "..." --description-file /tmp/mr-body.md`。
-7. 创建成功后，输出完整 MR URL。
+6. 创建、更新 MR 时脚本自动按实际贡献者的目标项目角色和 Assignee 判断协作声明，并在写入后回读实际负责人和正文；声明规则遵循 [change-requests.md](../repository-workflow/references/change-requests.md#维护者直接接手)，起草正文不手工追加声明。按正文语言传 `--notice-language en|zh`；bot 代操作时传 `--actor-id <user-id>`。两入口支持 `--dry-run` 只查询并预览、`--notice-mode auto|always|never` 显式覆盖，参数从 `--help` 探索。
+7. 修改 MR 时也复用本地文件，避免手工编辑，例如：`./scripts/gitlab_cli.py mr update --cwd /path/to/repo 123 --title "..." --description-file /tmp/mr-body.md`。
+8. 创建成功后，输出完整 MR URL。
 
 ## 什么时候直接用 glab
 

@@ -103,8 +103,8 @@ description: 使用 GitHub CLI 与 GitHub 资源交互；适用于 repo、issue�
 2. 只有在确认仓库要求与本地代码/提交状态都满足后，才创建 PR；若发现不满足，应先修正，再创建。
 3. `git status` 必须干净，且当前分支已推送到远端。
 4. PR 正文默认先写到本地 Markdown 文件；草稿优先放 `/tmp/*.md`，不要在 shell 里拼多行字符串，也不要依赖交互式编辑。标题通常较短，可直接用 `--title` 传入。
-5. 创建 PR 统一使用 `./scripts/github_pr.py create`，先通过 `--help` 查看参数；脚本默认在外部贡献正文末尾添加分隔线及声明段落、允许维护者修改，并回读核验正文和适用的权限。声明内容与语言遵循 [change-requests.md](../repository-workflow/references/change-requests.md#维护者直接接手)；通过 `--notice` 替换分隔线及完整声明，已有等价声明时使用 `--no-notice` 跳过追加。
-6. 更新正文使用 `gh pr edit --body-file`；保留现有贡献声明。核验失败时按脚本返回的 URL 处理，不重复创建。
+5. 创建 PR 统一使用 `./scripts/github_pr.py create`，先通过 `--help` 查看参数；脚本自动按实际贡献者的目标仓库角色和 Assignee 判断协作声明，允许维护者修改，并回读核验正文和适用的权限。声明规则遵循 [change-requests.md](../repository-workflow/references/change-requests.md#维护者直接接手)，起草正文不手工追加声明。按正文语言传 `--notice-language en|zh`；bot 代操作时传 `--actor <login>`。
+6. 更新正文使用 `./scripts/github_pr.py update <number|url> --repo owner/repo --body-file <path>`，自动重新判断声明。两入口都支持 `--dry-run` 预览和 `--notice-mode auto|always|never` 显式覆盖；其它参数从 `--help` 探索。核验失败时按返回的 URL 处理，不重复创建。
 
 ## 更新 Issue/PR 标题或描述（前置要求）
 
