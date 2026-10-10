@@ -9,11 +9,9 @@ description: Codex 开发中希望通过快速 subagent 缩短需求明确、边
 
 ## 先检查当前模型
 
-从本 skill 目录执行 `./scripts/check_current_model.py --help` 了解入口，再执行脚本；需要结构化输出时使用 `--json`。
+从本 skill 目录执行 `./scripts/check_current_model.py --help` 了解入口，再执行脚本获取当前模型与推荐结果；需要结构化输出时使用 `--json`。
 
-脚本读取 `CODEX_THREAD_ID`，通过只读 Codex `thread/read` 获取 rollout 路径，读取最后一条完整 `turn_context.model`。`CODEX_BIN` 可指定 Codex 可执行文件；未设置时使用 PATH 中的 `codex`，沿用进程的 Codex 配置环境。
-
-仅当脚本返回 `recommended: true` 时采用下列策略。白名单在脚本中硬编码并精确匹配，初始仅含 `gpt-6.1-sol`；未命中或无法确认模型时，保持使用本 skill 前的工作方式，不猜测模型、不扩大匹配范围。主模型切换后重新检查。命中名单只是允许考虑委派，仍需判断任务是否适合。
+仅当返回 `recommended: true` 时考虑下列策略，仍需判断任务是否适合；返回 false 或执行失败时保持原工作方式。主模型切换后重新检查。
 
 ## 委派策略
 
