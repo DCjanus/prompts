@@ -44,26 +44,22 @@ git diff --name-status <base-or-target>...HEAD
 
 PR/MR 的价值也来自问题发现、需求澄清、方案探索和可行性验证，不要求维护者保留具体代码。声明同时表达两种协作方式：贡献者很乐意根据反馈继续调整；如果维护者直接修改或另行实现更方便，也无需事先确认。维护者可以重写或关闭后自行实现，但正文不必逐项列举这些操作，以免让人误以为贡献者不愿继续推进。贡献者仍负责提交时的质量，并清楚说明问题、目标和必要约束。
 
-- 默认在 PR/MR 正文末尾添加独立的 `## Maintainer edits` 章节；标题始终使用英文，声明跟随正文语言。不放在 `Notes` 中，正文无需加粗。
+- 默认在 PR/MR 正文末尾用 Markdown 引用块呈现声明，跟随正文语言；不添加独立章节标题，不折叠或加粗。
 - 中文正文使用：
 
 ```markdown
-## Maintainer edits
-
-我很乐意根据反馈继续调整；如果直接修改或另行实现更方便，维护者也无需事先与我确认。
+> 我很乐意根据反馈继续调整；如果直接修改或另行实现更方便，维护者也无需事先与我确认。
 ```
 
 - 英文正文使用：
 
 ```markdown
-## Maintainer edits
-
-I’m happy to make further changes based on feedback. If it’s easier to edit this PR directly or implement an alternative, feel free to do so without checking with me first.
+> I’m happy to make further changes based on feedback. If it’s easier to edit this PR directly or implement an alternative, feel free to do so without checking with me first.
 ```
 
 - MR 将示例中的 `PR` 替换为 `MR`；其它语言保留相同含义。项目模板或贡献规范有明确要求时优先遵循。
-- GitHub 创建脚本默认为外部贡献追加英文版本的完整章节，并在适用时允许维护者修改。按正文语言通过 `--notice` 传入完整章节；正文已有等价章节时使用 `--no-notice` 避免重复。GitLab 按上述规则直接起草正文。
-- 更新正文时保留已有声明的意图，按上述独立章节整理；不默认附加“此变更使用 AI 辅助完成”等 AI 辅助声明，除非用户或项目明确要求。
+- GitHub 创建脚本默认为外部贡献追加英文版本的引用块，并在适用时允许维护者修改。按正文语言通过 `--notice` 传入完整引用块；正文已有等价声明时使用 `--no-notice` 避免重复。GitLab 按上述规则直接起草正文。
+- 更新正文时保留已有声明的意图，按上述引用块整理；不默认附加“此变更使用 AI 辅助完成”等 AI 辅助声明，除非用户或项目明确要求。
 - “无需事先确认”针对维护者处理该贡献，不授权 Agent 自行关闭 PR/MR、发送消息或执行其它平台写入。
 
 ## Validation Gate
