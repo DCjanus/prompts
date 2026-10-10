@@ -5,7 +5,6 @@
 # dependencies = [
 #     "openai-codex>=0.162.1",
 #     "pydantic>=2.14.0",
-#     "typer>=0.27.3",
 # ]
 # ///
 
@@ -18,16 +17,13 @@ import json
 import os
 import shutil
 from pathlib import Path
-from typing import Annotated
 
-import typer
 from openai_codex import CodexConfig
 from openai_codex.client import CodexClient
 from openai_codex.errors import CodexError
 from pydantic import BaseModel
 
 MODEL_ALLOWLIST = frozenset({"gpt-6.1-sol"})
-app = typer.Typer(add_completion=False, help=__doc__)
 
 
 class ModelLookupError(RuntimeError):
@@ -101,16 +97,7 @@ def resolve_model(thread_id: str) -> str:
     return read_latest_model(Path(response.thread.path))
 
 
-@app.command()
-def main(
-    json_output: Annotated[
-        bool,
-        typer.Option(
-            "--json",
-            help="输出 thread_id、model、recommended、reason；读取失败时 model 为 null，退出码为 1。",
-        ),
-    ] = False,
-) -> None:
+def main() -> int:
     """读取 CODEX_THREAD_ID 对应的最新模型；白名单精确匹配，未命中也正常退出。"""
 
     thread_id = os.environ.get("CODEX_THREAD_ID", "").strip()
@@ -126,22 +113,12 @@ def main(
         failed = True
         recommended = False
         reason = str(exc)
-    result = {
-        "thread_id": thread_id or None,
-        "model": model,
-        "recommended": recommended,
-        "reason": reason,
-    }
-    if json_output:
-        typer.echo(json.dumps(result, ensure_ascii=False))
-    else:
-        typer.echo(f"当前 thread：{thread_id or '未知'}")
-        typer.echo(f"当前模型：{model or '未知'}")
-        typer.echo(f"是否推荐快速子代理策略：{'是' if recommended else '否'}")
-        typer.echo(f"原因：{reason}")
-    if failed:
-        raise typer.Exit(1)
+    print(f"当前 thread：{thread_id or '未知'}")
+    print(f"当前模型：{model or '未知'}")
+    print(f"是否推荐快速子代理策略：{'是' if recommended else '否'}")
+    print(f"原因：{reason}")
+    return int(failed)
 
 
 if __name__ == "__main__":
-    app()
+    raise SystemExit(main())
