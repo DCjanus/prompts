@@ -26,6 +26,7 @@ import sys
 import tempfile
 import threading
 import time
+import tomllib
 import urllib.request
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -37,7 +38,6 @@ from pathlib import Path
 from typing import Annotated, Any, TextIO
 
 import duckdb
-import tomllib
 import typer
 from kittytgp import render_png
 from resvg_py import svg_to_bytes
@@ -1059,7 +1059,7 @@ def _parse_event_timestamp(value: Any, timezone: Any) -> datetime | None:
     if not isinstance(value, str):
         return None
     try:
-        timestamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        timestamp = datetime.fromisoformat(value)
     except ValueError:
         return None
     if timestamp.tzinfo is None:

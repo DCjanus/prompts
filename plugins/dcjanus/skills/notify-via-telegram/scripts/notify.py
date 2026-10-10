@@ -17,6 +17,7 @@ import json
 import os
 import sys
 import tempfile
+import tomllib
 from enum import Enum
 from pathlib import Path
 from typing import Annotated, Any
@@ -24,7 +25,6 @@ from uuid import UUID
 
 import httpx2
 import tomli_w
-import tomllib
 import typer
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from rich.console import Console

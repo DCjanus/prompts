@@ -14,6 +14,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tomllib
 from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -21,8 +22,6 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
-
-import tomllib
 
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 DEFAULT_MANIFEST = Path(__file__).resolve().parents[1] / "upstream-skills.toml"
