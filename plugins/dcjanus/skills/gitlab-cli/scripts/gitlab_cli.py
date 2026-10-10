@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import sys
 from pathlib import Path
 from typing import Literal
 from urllib.parse import quote
@@ -21,6 +22,11 @@ from urllib.parse import quote
 import typer
 from rich.console import Console
 from rich.table import Table
+
+sys.path.insert(
+    0, str(Path(__file__).resolve().parents[2] / "repository-workflow/scripts")
+)
+from collaboration_notice import CHINESE, ENGLISH, decide, render
 
 console = Console()
 error_console = Console(stderr=True)
@@ -41,6 +47,94 @@ app.add_typer(mr_app, name="mr")
 app.add_typer(issue_app, name="issue")
 
 ToggleChoice = Literal["true", "false"]
+NoticeMode = Literal["auto", "always", "never"]
+NoticeLanguage = Literal["en", "zh"]
+
+
+def prepare_notice(
+    body,
+    *,
+    project,
+    cwd,
+    hostname,
+    actor_id,
+    assignee_ids,
+    notice_mode,
+    notice_language,
+):
+    """读取实际贡献者的继承角色和负责人，失败时保留声明。"""
+
+    def get(endpoint):
+        return run_glab_api(
+            endpoint=endpoint, method="GET", payload=None, cwd=cwd, hostname=hostname
+        )
+
+    maintainer = None
+    actor = actor_id
+    try:
+        if actor is None:
+            actor = get("user")["id"]
+        member = get(project_endpoint(project, f"members/all/{actor}"))
+        level = member.get("access_level")
+        if isinstance(level, int):
+            maintainer = level >= 40
+    except (RuntimeError, KeyError, TypeError):
+        pass
+    include, reason = decide(
+        notice_mode, maintainer, actor is not None and actor in assignee_ids
+    )
+    notice = (
+        CHINESE if notice_language == "zh" else ENGLISH.replace("this PR", "this MR")
+    )
+    error_console.print(
+        f"notice: {'include' if include else 'omit'} ({reason}); actor={actor}"
+    )
+    return render(body, include, notice), reason
+
+
+def finish_mr_notice(
+    response, *, project, cwd, hostname, actor_id, notice_mode, notice_language
+):
+    """回读创建或更新后的负责人，并核验最终正文；错误保留资源链接。"""
+    url = response.get("web_url", "")
+    try:
+        endpoint = project_endpoint(
+            str(response.get("target_project_id") or response["project_id"]),
+            f"merge_requests/{response['iid']}",
+        )
+        actual = run_glab_api(
+            endpoint=endpoint, method="GET", payload=None, cwd=cwd, hostname=hostname
+        )
+        body, _ = prepare_notice(
+            actual.get("description") or "",
+            project=str(actual.get("target_project_id") or actual["project_id"]),
+            cwd=cwd,
+            hostname=hostname,
+            actor_id=actor_id,
+            assignee_ids=[user["id"] for user in actual.get("assignees", [])],
+            notice_mode=notice_mode,
+            notice_language=notice_language,
+        )
+        if body.strip() != (actual.get("description") or "").strip():
+            run_glab_api(
+                endpoint=endpoint,
+                method="PUT",
+                payload={"description": body},
+                cwd=cwd,
+                hostname=hostname,
+            )
+            actual = run_glab_api(
+                endpoint=endpoint,
+                method="GET",
+                payload=None,
+                cwd=cwd,
+                hostname=hostname,
+            )
+        if body.strip() != (actual.get("description") or "").strip():
+            raise RuntimeError("正文回读不一致")
+        return actual
+    except (RuntimeError, KeyError) as exc:
+        raise RuntimeError(f"MR 已写入，请勿重复创建：{url}；核验失败：{exc}") from exc
 
 
 class GitLabApiError(RuntimeError):
@@ -460,6 +554,20 @@ def mr_create(
         None, "--squash", help="是否合并时 squash。"
     ),
     draft: bool = typer.Option(False, "--draft", help="自动补 `Draft:` 前缀。"),
+    notice_mode: NoticeMode = typer.Option(
+        "auto",
+        "--notice-mode",
+        help="auto 按维护者或负责人身份省略声明；always/never 显式覆盖。",
+    ),
+    notice_language: NoticeLanguage = typer.Option(
+        "en", "--notice-language", help="声明语言。"
+    ),
+    actor_id: int | None = typer.Option(
+        None, "--actor-id", help="实际贡献者用户 ID；bot 操作时指定，默认当前登录账号。"
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="只查询并预览最终请求，不写入平台。"
+    ),
     as_json: bool = typer.Option(False, "--json", help="输出原始 JSON。"),
 ) -> None:
     """创建 MR。"""
@@ -485,12 +593,35 @@ def mr_create(
                 "squash": bool_from_choice(squash),
             }
         )
+        body, reason = prepare_notice(
+            payload.get("description") or "",
+            project=project,
+            cwd=cwd,
+            hostname=hostname,
+            actor_id=actor_id,
+            assignee_ids=assignee_id,
+            notice_mode=notice_mode,
+            notice_language=notice_language,
+        )
+        payload["description"] = body
+        if dry_run:
+            print_json({"payload": payload, "notice_reason": reason})
+            return
         response = run_glab_api(
             endpoint=project_endpoint(project, "merge_requests"),
             method="POST",
             payload=payload,
             cwd=cwd,
             hostname=hostname,
+        )
+        response = finish_mr_notice(
+            response,
+            project=project,
+            cwd=cwd,
+            hostname=hostname,
+            actor_id=actor_id,
+            notice_mode=notice_mode,
+            notice_language=notice_language,
         )
     except RuntimeError as exc:
         error_console.print(str(exc))
@@ -540,6 +671,20 @@ def mr_update(
     squash: ToggleChoice | None = typer.Option(
         None, "--squash", help="是否合并时 squash。"
     ),
+    notice_mode: NoticeMode = typer.Option(
+        "auto",
+        "--notice-mode",
+        help="auto 按维护者或负责人身份省略声明；always/never 显式覆盖。",
+    ),
+    notice_language: NoticeLanguage = typer.Option(
+        "en", "--notice-language", help="声明语言。"
+    ),
+    actor_id: int | None = typer.Option(
+        None, "--actor-id", help="实际贡献者用户 ID；bot 操作时指定，默认当前登录账号。"
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="只查询并预览最终请求，不写入平台。"
+    ),
     as_json: bool = typer.Option(False, "--json", help="输出原始 JSON。"),
 ) -> None:
     """更新 MR。"""
@@ -559,12 +704,43 @@ def mr_update(
                 "squash": bool_from_choice(squash),
             }
         )
+        current = run_glab_api(
+            endpoint=project_endpoint(project, f"merge_requests/{iid}"),
+            method="GET",
+            payload=None,
+            cwd=cwd,
+            hostname=hostname,
+        )
+        body, reason = prepare_notice(
+            payload.get("description", current.get("description") or ""),
+            project=str(current.get("target_project_id") or current["project_id"]),
+            cwd=cwd,
+            hostname=hostname,
+            actor_id=actor_id,
+            assignee_ids=assignee_id
+            or [user["id"] for user in current.get("assignees", [])],
+            notice_mode=notice_mode,
+            notice_language=notice_language,
+        )
+        payload["description"] = body
+        if dry_run:
+            print_json({"payload": payload, "notice_reason": reason})
+            return
         response = run_glab_api(
             endpoint=project_endpoint(project, f"merge_requests/{iid}"),
             method="PUT",
             payload=payload,
             cwd=cwd,
             hostname=hostname,
+        )
+        response = finish_mr_notice(
+            response,
+            project=project,
+            cwd=cwd,
+            hostname=hostname,
+            actor_id=actor_id,
+            notice_mode=notice_mode,
+            notice_language=notice_language,
         )
     except RuntimeError as exc:
         error_console.print(str(exc))
