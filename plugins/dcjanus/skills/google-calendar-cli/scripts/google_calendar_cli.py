@@ -278,7 +278,7 @@ def require_confirmation(value: bool, option: str, operation: str) -> None:
 def parse_rfc3339(value: str, option_name: str) -> datetime:
     """解析带时区的 RFC3339 时间。"""
     try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(value)
     except ValueError as exc:
         raise CliError(f"{option_name} 必须是合法 RFC3339 时间：{value}") from exc
     if parsed.utcoffset() is None:
@@ -309,7 +309,7 @@ def _event_endpoint(value: Any, field: str, option_name: str) -> tuple[str, Any]
         except ValueError as exc:
             raise CliError(f"{option_name}.{field}.date 必须是 YYYY-MM-DD。") from exc
     try:
-        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(raw)
     except ValueError as exc:
         raise CliError(
             f"{option_name}.{field}.dateTime 必须是合法 RFC3339 时间。"

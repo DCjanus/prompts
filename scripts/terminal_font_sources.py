@@ -18,6 +18,7 @@ import os
 import re
 import shutil
 import subprocess
+import tomllib
 import zipfile
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -26,7 +27,6 @@ from urllib.error import HTTPError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
-import tomllib
 import typer
 from blake3 import blake3
 from rich.console import Console

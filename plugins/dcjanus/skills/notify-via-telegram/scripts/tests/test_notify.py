@@ -4,10 +4,10 @@ import importlib.util
 import json
 import secrets
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
-import tomllib
 from typer.testing import CliRunner
 
 SCRIPT_PATH = Path(__file__).resolve().parents[1] / "notify.py"

@@ -15,7 +15,11 @@ import tempfile
 from pathlib import Path
 from urllib.parse import urlparse
 
-NOTICE = "Maintainer edits are welcome—feel free to adjust the implementation to fit the project."
+NOTICE = (
+    "## Maintainer edits\n\n"
+    "If maintainers have a better approach, feel free to modify or rewrite this PR, "
+    "or close it and implement the change independently—no need to check with me first."
+)
 
 
 def gh(*args: str, payload: dict | None = None) -> str:
@@ -137,7 +141,9 @@ def main() -> int:
     command.add_argument(
         "--no-notice", action="store_true", help="已有等价声明或项目禁止附加声明时使用"
     )
-    command.add_argument("--notice", default=NOTICE, help="按项目语言替换默认声明")
+    command.add_argument(
+        "--notice", default=NOTICE, help="按正文语言替换完整声明章节（含英文标题）"
+    )
     args = parser.parse_args()
     try:
         print(create(args))

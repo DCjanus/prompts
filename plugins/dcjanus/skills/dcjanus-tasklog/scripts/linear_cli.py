@@ -23,6 +23,7 @@ import sys
 import tempfile
 import threading
 import time
+import tomllib
 import urllib.parse
 import webbrowser
 from dataclasses import dataclass
@@ -33,7 +34,6 @@ from typing import Annotated, Any, Literal
 
 import httpx2 as httpx
 import tomli_w
-import tomllib
 import typer
 from gql import Client as GraphQLClient
 from gql import gql

@@ -8,10 +8,10 @@ import os
 import shutil
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
-import tomllib
 from rich.text import Text
 from typer.testing import CliRunner
 
