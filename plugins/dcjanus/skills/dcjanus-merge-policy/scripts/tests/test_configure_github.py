@@ -4,6 +4,8 @@ import importlib.util
 import json
 from pathlib import Path
 
+import pytest
+
 SCRIPT_PATH = Path(__file__).resolve().parents[1] / "configure_github.py"
 SPEC = importlib.util.spec_from_file_location(
     "configure_squash_merge_policy", SCRIPT_PATH
@@ -32,6 +34,7 @@ def test_policy_payload() -> None:
         "allow_squash_merge": True,
         "allow_merge_commit": False,
         "allow_rebase_merge": False,
+        "allow_auto_merge": True,
         "squash_merge_commit_title": "PR_TITLE",
         "squash_merge_commit_message": "PR_BODY",
         "delete_branch_on_merge": True,
@@ -73,6 +76,7 @@ def test_apply_policy_updates_and_reads_repo(monkeypatch, tmp_path: Path) -> Non
                     "allow_squash_merge": True,
                     "allow_merge_commit": False,
                     "allow_rebase_merge": False,
+                    "allow_auto_merge": True,
                     "squash_merge_commit_title": "PR_TITLE",
                     "squash_merge_commit_message": "PR_BODY",
                     "delete_branch_on_merge": True,
@@ -89,6 +93,7 @@ def test_apply_policy_updates_and_reads_repo(monkeypatch, tmp_path: Path) -> Non
     )
 
     assert response["allow_squash_merge"] is True
+    assert response["allow_auto_merge"] is True
     assert calls == [
         {
             "args": [
@@ -109,6 +114,7 @@ def test_apply_policy_updates_and_reads_repo(monkeypatch, tmp_path: Path) -> Non
                 "allow_squash_merge": True,
                 "allow_merge_commit": False,
                 "allow_rebase_merge": False,
+                "allow_auto_merge": True,
                 "squash_merge_commit_title": "PR_TITLE",
                 "squash_merge_commit_message": "PR_BODY",
                 "delete_branch_on_merge": True,
@@ -149,3 +155,15 @@ def test_validate_settings_reports_mismatch() -> None:
 
     assert "verification failed" in message
     assert "- allow_merge_commit: expected False, got True" in message
+
+
+@pytest.mark.parametrize("actual", [False, None])
+def test_validate_settings_requires_auto_merge(actual: bool | None) -> None:
+    payload = configure_squash_merge_policy.expected_settings()
+    if actual is None:
+        payload.pop("allow_auto_merge")
+    else:
+        payload["allow_auto_merge"] = actual
+
+    with pytest.raises(RuntimeError, match="allow_auto_merge: expected True"):
+        configure_squash_merge_policy.validate_settings(payload)
