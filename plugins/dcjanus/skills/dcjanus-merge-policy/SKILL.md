@@ -34,10 +34,11 @@ uv run --script <skill-dir>/scripts/configure_gitlab.py --project <group/project
 ## GitHub 策略
 
 - 只允许 squash merge，禁用 merge commit 和 rebase merge。
+- 开启 Allow auto-merge，让用户可为单个 PR 启用自动合并；只有该 PR 明确启用后，才会在必需检查和审批等合并条件满足时自动合并。
 - squash commit 标题与正文分别采用 PR 标题和正文；平台可继续自动追加 PR number、分隔线与 `Co-authored-by` trailer。
 - PR 合并后自动删除 source branch。
 
-对应字段：`allow_squash_merge=true`、`allow_merge_commit=false`、`allow_rebase_merge=false`、`squash_merge_commit_title=PR_TITLE`、`squash_merge_commit_message=PR_BODY`、`delete_branch_on_merge=true`。
+对应字段：`allow_squash_merge=true`、`allow_merge_commit=false`、`allow_rebase_merge=false`、`allow_auto_merge=true`、`squash_merge_commit_title=PR_TITLE`、`squash_merge_commit_message=PR_BODY`、`delete_branch_on_merge=true`。
 
 ## GitLab 策略
 
