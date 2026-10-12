@@ -1,10 +1,10 @@
 # Commit messages
 
-先检查仓库已有提交规范；仓库规则优先于本文件默认值。
+先检查仓库已有提交规范；仓库规则优先于本文件默认值。下面的手写 commit 约定与平台生成的合并提交分开处理。
 
 ## Conventional Commits
 
-- commit message 使用简洁、精确的英文，并采用 `type(scope): summary` 形式。
+- 手动创建的 commit message 使用简洁、精确的英文，并采用 `type(scope): summary` 形式；平台 squash merge 使用下文的独立约定。
 - `type` 必须存在。仓库没有额外约定时，优先使用 `feat`、`fix`、`refactor`、`docs`、`test` 或 `chore`。
 - 只有 scope 能准确表达影响边界时才添加；不要为了格式完整而猜测。
 - summary 描述最终结果，不记录执行过程、工具操作或临时状态。
@@ -81,6 +81,13 @@ breaking_change:
 
 ## PR/MR 标题
 
-- PR/MR 标题默认采用同样的 `type(scope): summary` 形式，便于 squash merge 后直接成为合格 commit message。
+- PR/MR 标题默认采用 `type(scope): summary` 形式；语言遵循仓库和用户对 reviewer-facing 工件的要求，不因 squash merge 而强制改为英文。
 - 根据相对 base/target 的最终净变化选择 type、scope 和 summary，不要机械复制某个中间 commit 标题。
 - Issue 标题不使用这项要求。
+
+## 平台合并提交
+
+- 在没有明确强制提交格式的仓库中，squash merge 默认采用平台根据仓库设置生成的标题与正文，不将手写 commit 的英文 Conventional Commits 约束套用于合并提交。仓库明确强制要求或用户当次指定时，才覆盖默认消息。
+- 合并前按最终净变化更新 PR/MR 标题和描述，让平台生成的提交承载最终结果。
+- GitHub 合并时不传覆盖标题或正文的参数（例如 `gh pr merge` 的 `--subject`、`--body`、`--body-file`），不自行拼接提交清单或 trailer；采用仓库的默认 squash message 设置。
+- 本约定只控制已授权合并时的消息处理，不授予合并权限，也不修改仓库的合并方式或消息模板设置。
