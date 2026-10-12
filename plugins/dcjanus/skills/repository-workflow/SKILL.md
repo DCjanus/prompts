@@ -11,7 +11,8 @@ description: 处理从本地 Git 变更到 GitHub/GitLab 协作发布的完整�
 
 - 涉及 commit 或 commit message 时，先完整读取 [commit-messages.md](references/commit-messages.md)。
 - 涉及 Issue、PR/MR 标题或正文、Breaking Change 展示、inline review reply 时，先完整读取 [change-requests.md](references/change-requests.md)。PR/MR 标题还要读取 [commit-messages.md](references/commit-messages.md)。
-- 只涉及 branch、push、merge 或历史管理时，使用本文件即可。
+- 只涉及 branch、push 或历史管理时，使用本文件即可。
+- 执行平台 squash merge 时，同时读取 [commit-messages.md 的平台合并提交约定](references/commit-messages.md#平台合并提交)。
 - 只读查看、搜索、状态检查或 CI 日志不使用本 skill，直接使用对应平台或 CI skill。
 
 ## 授权边界
