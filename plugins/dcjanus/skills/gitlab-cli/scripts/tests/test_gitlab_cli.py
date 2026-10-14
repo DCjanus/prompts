@@ -15,134 +15,75 @@ assert SPEC.loader is not None
 SPEC.loader.exec_module(gitlab_cli)
 
 
-@pytest.mark.parametrize(
-    "level,assigned,reason",
-    [
-        (40, False, "actor-is-maintainer"),
-        (50, False, "actor-is-maintainer"),
-        (30, True, "actor-is-assignee"),
-        (30, False, "external-contribution"),
-        (None, False, "identity-unknown"),
-    ],
-)
-def test_notice_roles_and_assignment(monkeypatch, tmp_path, level, assigned, reason):
-    def api(**kwargs):
-        assert kwargs["method"] == "GET"
-        assert kwargs["hostname"] == "gitlab.example"
-        if kwargs["endpoint"] == "user":
-            return {"id": 7}
-        assert kwargs["endpoint"] == "projects/group%2Frepo/members/all/7"
-        if level is None:
-            raise RuntimeError("403")
-        return {"access_level": level}
-
-    monkeypatch.setattr(gitlab_cli, "run_glab_api", api)
-    body, actual = gitlab_cli.prepare_notice(
-        "Technical",
-        project="group/repo",
-        cwd=tmp_path,
-        hostname="gitlab.example",
-        actor_id=None,
-        assignee_ids=[7] if assigned else [],
-        notice_mode="auto",
-        notice_language="zh",
-    )
-    assert actual == reason
-    assert (gitlab_cli.CHINESE in body) == (
-        reason in {"identity-unknown", "external-contribution"}
-    )
-
-
-def test_mr_create_dry_run(monkeypatch, tmp_path):
+@pytest.mark.parametrize("action", ["create", "update"])
+@pytest.mark.parametrize("dry_run", [True, False])
+def test_mr_preserves_body(monkeypatch, tmp_path, action, dry_run):
     source = tmp_path / "body.md"
-    source.write_text("Technical")
-
-    def api(**kwargs):
-        assert kwargs["method"] == "GET"
-        return {"access_level": 30}
-
-    monkeypatch.setattr(gitlab_cli, "run_glab_api", api)
-    result = CliRunner().invoke(
-        gitlab_cli.app,
-        [
-            "mr",
-            "create",
-            "--title",
-            "Fix",
-            "--target-branch",
-            "main",
-            "--source-branch",
-            "fix",
-            "--project",
-            "1",
-            "--cwd",
-            str(tmp_path),
-            "--description-file",
-            str(source),
-            "--actor-id",
-            "7",
-            "--assignee-id",
-            "7",
-            "--notice-language",
-            "zh",
-            "--dry-run",
-        ],
-    )
-    assert result.exit_code == 0, result.output
-    preview = json.loads(result.stdout)
-    assert preview["payload"]["description"] == "Technical\n"
-    assert preview["notice_reason"] == "actor-is-assignee"
-    assert source.read_text() == "Technical"
-
-
-def test_mr_post_write_reconciles_assignee(monkeypatch, tmp_path):
+    original = "Technical\n\n---\n\nUser-authored footer\n"
+    source.write_text(original)
     writes = []
     actual = {
         "iid": 1,
         "project_id": 2,
-        "target_project_id": 2,
-        "description": "Technical\n\n" + gitlab_cli.CHINESE,
-        "assignees": [{"id": 7}],
+        "title": "Fix",
+        "description": original,
         "web_url": "https://gitlab.example/p/-/merge_requests/1",
     }
 
     def api(**kwargs):
-        if kwargs["endpoint"].endswith("members/all/7"):
-            return {"access_level": 30}
-        if kwargs["method"] == "PUT":
+        assert kwargs["endpoint"] in {
+            "projects/2/merge_requests",
+            "projects/2/merge_requests/1",
+        }
+        if kwargs["method"] != "GET":
             writes.append(kwargs["payload"])
             actual.update(kwargs["payload"])
         return actual.copy()
 
     monkeypatch.setattr(gitlab_cli, "run_glab_api", api)
-    result = gitlab_cli.finish_mr_notice(
-        actual,
-        project="2",
-        cwd=tmp_path,
-        hostname="gitlab.example",
-        actor_id=7,
-        notice_mode="auto",
-        notice_language="zh",
-    )
-    assert result["description"] == "Technical\n"
-    assert writes == [{"description": "Technical\n"}]
+    command = ["mr", action]
+    if action == "create":
+        command += ["--target-branch", "main", "--source-branch", "fix"]
+    else:
+        command += ["1"]
+    command += [
+        "--title",
+        "Fix",
+        "--project",
+        "2",
+        "--cwd",
+        str(tmp_path),
+        "--description-file",
+        str(source),
+        "--assignee-id",
+        "7",
+        "--json",
+    ]
+    if dry_run:
+        command += ["--dry-run"]
+    result = CliRunner().invoke(gitlab_cli.app, command)
+    assert result.exit_code == 0, result.output
+    output = json.loads(result.stdout)
+    if dry_run:
+        assert output["payload"]["description"] == original
+        assert writes == []
+    else:
+        assert output["description"] == original
+        assert len(writes) == 1
+        assert writes[0]["description"] == original
+        assert writes[0]["assignee_ids"] == [7]
+    assert source.read_text() == original
 
 
-def test_mr_update_dry_run_uses_target_and_existing_assignees(monkeypatch, tmp_path):
-    source = tmp_path / "body.md"
-    source.write_text("Technical\n\n" + gitlab_cli.CHINESE)
+def test_mr_metadata_update_leaves_description_untouched(monkeypatch, tmp_path):
+    writes = []
+    actual = {"iid": 1, "project_id": 2, "title": "Old", "description": "Existing body"}
 
     def api(**kwargs):
-        assert kwargs["method"] == "GET"
-        if kwargs["endpoint"] == "projects/2/merge_requests/1":
-            return {
-                "target_project_id": 2,
-                "description": source.read_text(),
-                "assignees": [{"id": 7}],
-                "reviewers": [{"id": 9}],
-            }
-        assert kwargs["endpoint"] == "projects/2/members/all/7"
-        return {"access_level": 30}
+        if kwargs["method"] == "PUT":
+            writes.append(kwargs["payload"])
+            actual.update(kwargs["payload"])
+        return actual.copy()
 
     monkeypatch.setattr(gitlab_cli, "run_glab_api", api)
     result = CliRunner().invoke(
@@ -155,20 +96,18 @@ def test_mr_update_dry_run_uses_target_and_existing_assignees(monkeypatch, tmp_p
             "2",
             "--cwd",
             str(tmp_path),
-            "--description-file",
-            str(source),
-            "--actor-id",
-            "7",
-            "--notice-language",
-            "zh",
-            "--dry-run",
+            "--title",
+            "New",
+            "--json",
         ],
     )
     assert result.exit_code == 0, result.output
-    assert json.loads(result.stdout)["payload"]["description"] == "Technical\n"
+    assert writes == [{"title": "New"}]
+    assert json.loads(result.stdout)["description"] == "Existing body"
 
 
-def test_mr_verification_failure_preserves_link(monkeypatch, tmp_path):
+@pytest.mark.parametrize("read_error", [True, False])
+def test_mr_verification_failure_preserves_link(monkeypatch, tmp_path, read_error):
     response = {
         "project_id": 2,
         "iid": 1,
@@ -176,20 +115,19 @@ def test_mr_verification_failure_preserves_link(monkeypatch, tmp_path):
     }
 
     def api(**kwargs):
-        raise RuntimeError("read failed")
+        if read_error:
+            raise RuntimeError("read failed")
+        return {"description": "Unexpected"}
 
     monkeypatch.setattr(gitlab_cli, "run_glab_api", api)
     with pytest.raises(
         RuntimeError, match="MR 已写入，请勿重复创建：https://gitlab.example"
     ):
-        gitlab_cli.finish_mr_notice(
+        gitlab_cli.verify_mr(
             response,
-            project="2",
+            payload={"description": "Expected"},
             cwd=tmp_path,
             hostname="gitlab.example",
-            actor_id=7,
-            notice_mode="auto",
-            notice_language="zh",
         )
 
 

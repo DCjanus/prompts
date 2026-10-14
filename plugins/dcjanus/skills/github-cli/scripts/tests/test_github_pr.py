@@ -1,4 +1,4 @@
-"""验证 PR 默认声明与修改权限的实际创建契约。"""
+"""验证 PR 正文传递与修改权限的实际创建契约。"""
 
 import argparse
 import importlib.util
@@ -15,56 +15,85 @@ spec.loader.exec_module(module)
 
 
 class GitHubPrTest(unittest.TestCase):
-    def test_create_notice_and_preserve_source(self):
-        for owner, no_notice, original, expected in (
-            ("upstream", False, "Original", "Original\n\n" + module.NOTICE),
-            ("DCjanus", False, "Original", "Original"),
-            ("upstream", True, "Equivalent notice", "Equivalent notice"),
-            ("upstream", False, module.NOTICE, module.NOTICE),
-        ):
+    def test_create_preserves_body_and_source(self):
+        original = "## What\n\nTechnical\n\n---\n\nUser-authored footer\n"
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "body.md"
+            source.write_text(original)
+            args = argparse.Namespace(
+                repo="upstream/repo",
+                base="main",
+                head="DCjanus:fix",
+                title="Fix",
+                body_file=source,
+                draft=False,
+                no_maintainer_edit=False,
+                assignee=["owner"],
+            )
+
+            def gh(*command, **kwargs):
+                self.assertEqual(command[:2], ("pr", "create"))
+                body = Path(command[command.index("--body-file") + 1]).read_text()
+                self.assertEqual(body, original)
+                self.assertNotIn("--no-maintainer-edit", command)
+                self.assertIn("--assignee", command)
+                return "https://github.com/upstream/repo/pull/1"
+
             with (
-                self.subTest(owner=owner, original=original),
-                tempfile.TemporaryDirectory() as directory,
+                patch.object(module, "gh", side_effect=gh),
+                patch.object(
+                    module,
+                    "verify_permission",
+                    return_value={"title": "Fix", "body": original},
+                ),
             ):
-                source = Path(directory) / "body.md"
-                source.write_text(original)
-                args = argparse.Namespace(
-                    repo=f"{owner}/repo",
-                    base="main",
-                    head="DCjanus:fix",
-                    title="Fix",
-                    body_file=source,
-                    draft=False,
-                    no_notice=no_notice,
-                    notice=module.NOTICE,
-                    no_maintainer_edit=False,
-                )
+                module.create(args)
+            self.assertEqual(source.read_text(), original)
+            args.dry_run = True
+            with patch.object(module, "gh") as gh_mock:
+                self.assertEqual(json.loads(module.create(args)), {"body": original})
+                gh_mock.assert_not_called()
 
-                def gh(*command, args=args, expected=expected, **kwargs):
-                    if command[0] == "repo":
-                        return json.dumps(
-                            {
-                                "nameWithOwner": args.repo,
-                                "url": "https://github.com/" + args.repo,
-                            }
-                        )
-                    if command[0] == "api":
-                        return "DCjanus"
-                    body = Path(command[command.index("--body-file") + 1]).read_text()
-                    self.assertEqual(body.strip(), expected)
-                    self.assertNotIn("--no-maintainer-edit", command)
-                    return "https://github.com/upstream/repo/pull/1"
+    def test_update_preserves_body_and_sets_assignees(self):
+        original = "Technical\n\n---\n\nUser-authored footer\n"
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "body.md"
+            source.write_text(original)
+            args = argparse.Namespace(
+                repo="upstream/repo",
+                pr="1",
+                body_file=source,
+                dry_run=True,
+                title="Fix",
+                assignee=["owner"],
+            )
+            actual = {
+                "url": "https://github.com/upstream/repo/pull/1",
+                "title": "Old",
+                "body": "Old",
+            }
+            writes = []
 
-                with (
-                    patch.object(module, "gh", side_effect=gh),
-                    patch.object(
-                        module,
-                        "verify_permission",
-                        return_value={"title": "Fix", "body": expected},
-                    ),
-                ):
-                    module.create(args)
-                self.assertEqual(source.read_text(), original)
+            def gh(*command, **kwargs):
+                if command[:2] == ("pr", "view"):
+                    return json.dumps(actual)
+                self.assertIn("repos/upstream/repo/issues/1", command)
+                writes.append(kwargs["payload"])
+                actual.update(kwargs["payload"])
+                return "{}"
+
+            with (
+                patch.object(module, "gh", side_effect=gh),
+                patch.object(module, "read_pr", return_value=actual),
+            ):
+                self.assertEqual(json.loads(module.update(args)), {"body": original})
+                self.assertEqual(writes, [])
+                args.dry_run = False
+                module.update(args)
+            self.assertEqual(
+                writes, [{"body": original, "title": "Fix", "assignees": ["owner"]}]
+            )
+            self.assertEqual(source.read_text(), original)
 
     def test_permission_repair_and_non_applicable(self):
         for owner_type, same_repo, repair in (

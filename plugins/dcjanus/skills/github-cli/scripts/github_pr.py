@@ -3,7 +3,7 @@
 # requires-python = ">=3.12"
 # dependencies = []
 # ///
-"""创建 PR，默认欢迎维护者修改并核验实际权限。"""
+"""创建与更新 PR，核验正文及维护者修改权限。"""
 
 from __future__ import annotations
 
@@ -14,62 +14,6 @@ import sys
 import tempfile
 from pathlib import Path
 from urllib.parse import urlparse
-
-sys.path.insert(
-    0, str(Path(__file__).resolve().parents[2] / "repository-workflow/scripts")
-)
-from collaboration_notice import CHINESE, ENGLISH, decide, render
-
-NOTICE = ENGLISH
-
-
-def notice_body(args, body: str, pr: dict | None = None) -> tuple[str, str]:
-    """按目标仓库角色和负责人统一处理声明。"""
-    target = json.loads(gh("repo", "view", args.repo, "--json", "nameWithOwner,url"))
-    host = urlparse(target["url"]).netloc
-    actor = getattr(args, "actor", None)
-    if actor is None:
-        try:
-            actor = gh("api", "--hostname", host, "user", "--jq", ".login")
-        except subprocess.CalledProcessError:
-            actor = ""
-    assignees = getattr(args, "assignee", None)
-    if assignees is None:
-        assignees = [user["login"] for user in (pr or {}).get("assignees", [])]
-    assigned = actor.casefold() in {name.casefold() for name in assignees}
-    owner = target["nameWithOwner"].split("/", 1)[0]
-    maintainer = True if owner.casefold() == actor.casefold() else None
-    if maintainer is None and actor:
-        try:
-            permission = json.loads(
-                gh(
-                    "api",
-                    "--hostname",
-                    host,
-                    f"repos/{target['nameWithOwner']}/collaborators/{actor}/permission",
-                )
-            )
-            if permission.get("role_name") or permission.get("permission"):
-                maintainer = (
-                    permission.get("role_name") in {"maintain", "admin"}
-                    or permission.get("permission") == "admin"
-                )
-        except (subprocess.CalledProcessError, ValueError):
-            maintainer = None
-    mode = (
-        "never"
-        if getattr(args, "no_notice", False)
-        else getattr(args, "notice_mode", "auto")
-    )
-    include, reason = decide(mode, maintainer, assigned)
-    notice = getattr(args, "notice", None) or (
-        CHINESE if getattr(args, "notice_language", "en") == "zh" else ENGLISH
-    )
-    print(
-        f"notice: {'include' if include else 'omit'} ({reason}); actor={actor}",
-        file=sys.stderr,
-    )
-    return render(body, include, notice), reason
 
 
 def gh(*args: str, payload: dict | None = None) -> str:
@@ -135,9 +79,8 @@ def create(args: argparse.Namespace) -> str:
     body = args.body_file.read_text(encoding="utf-8")
     if not body.strip():
         raise ValueError("PR 正文不能为空")
-    body, reason = notice_body(args, body)
     if getattr(args, "dry_run", False):
-        return json.dumps({"body": body, "notice_reason": reason}, ensure_ascii=False)
+        return json.dumps({"body": body}, ensure_ascii=False)
     with tempfile.TemporaryDirectory(prefix="github-pr-") as temporary:
         body_path = Path(temporary) / "body.md"
         body_path.write_text(body, encoding="utf-8")
@@ -164,22 +107,6 @@ def create(args: argparse.Namespace) -> str:
         url = gh(*command)
     try:
         pr = verify_permission(url, not args.no_maintainer_edit)
-        actual_args = argparse.Namespace(**vars(args))
-        actual_args.assignee = None
-        final_body, _ = notice_body(actual_args, body, pr)
-        if final_body != body:
-            parsed = urlparse(url)
-            gh(
-                "api",
-                "--hostname",
-                parsed.netloc,
-                f"repos/{target_repo(url)}/pulls/{pr['number']}",
-                "--method",
-                "PATCH",
-                payload={"body": final_body},
-            )
-            body = final_body
-            pr = read_pr(url)
         if (
             pr.get("title") != args.title
             or (pr.get("body") or "").strip() != body.strip()
@@ -196,7 +123,7 @@ def target_repo(url: str) -> str:
 
 
 def update(args) -> str:
-    """更新正文，读取实际负责人并回读核验。"""
+    """更新正文及负责人并回读核验。"""
     pr = json.loads(
         gh(
             "pr",
@@ -205,12 +132,12 @@ def update(args) -> str:
             "--repo",
             args.repo,
             "--json",
-            "url,title,body,assignees",
+            "url,title,body",
         )
     )
-    body, reason = notice_body(args, args.body_file.read_text(encoding="utf-8"), pr)
+    body = args.body_file.read_text(encoding="utf-8")
     if args.dry_run:
-        return json.dumps({"body": body, "notice_reason": reason}, ensure_ascii=False)
+        return json.dumps({"body": body}, ensure_ascii=False)
     payload = {"body": body}
     if args.title:
         payload["title"] = args.title
@@ -228,21 +155,6 @@ def update(args) -> str:
         payload=payload,
     )
     actual = read_pr(url)
-    actual_args = argparse.Namespace(**vars(args))
-    actual_args.assignee = None
-    final_body, _ = notice_body(actual_args, body, actual)
-    if final_body != body:
-        gh(
-            "api",
-            "--hostname",
-            parsed.netloc,
-            f"repos/{target_repo(url)}/pulls/{parsed.path.split('/')[-1]}",
-            "--method",
-            "PATCH",
-            payload={"body": final_body},
-        )
-        actual = read_pr(url)
-        body = final_body
     if (actual.get("body") or "").strip() != body.strip() or (
         args.title and actual.get("title") != args.title
     ):
@@ -262,32 +174,21 @@ def main() -> int:
     command.add_argument(
         "--no-maintainer-edit", action="store_true", help="明确关闭修改权限"
     )
-    command.add_argument(
-        "--no-notice", action="store_true", help="已有等价声明或项目禁止附加声明时使用"
-    )
-    edit = commands.add_parser("update", help="更新正文并自动判断声明")
+    edit = commands.add_parser("update", help="更新正文并回读核验")
     edit.add_argument("pr", help="PR 编号或 URL")
     edit.add_argument("--repo", required=True)
     edit.add_argument("--body-file", type=Path, required=True)
     edit.add_argument("--title")
     for entry in (command, edit):
         entry.add_argument(
-            "--actor", help="实际贡献者登录名；bot 操作时显式指定，默认当前登录账号"
-        )
-        entry.add_argument(
             "--assignee",
             action="append",
             help="负责人登录名；可重复，update 时替换负责人列表",
         )
         entry.add_argument(
-            "--notice-mode", choices=["auto", "always", "never"], default="auto"
-        )
-        entry.add_argument("--notice-language", choices=["en", "zh"], default="en")
-        entry.add_argument("--notice", help="替换分隔线及完整声明")
-        entry.add_argument(
             "--dry-run",
             action="store_true",
-            help="只查询，输出最终正文和判断理由，不写入平台",
+            help="预览最终正文，不写入平台",
         )
     args = parser.parse_args()
     try:
