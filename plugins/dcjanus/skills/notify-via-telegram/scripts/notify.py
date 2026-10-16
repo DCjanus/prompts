@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --script
 #
 # /// script
-# requires-python = ">=3.14"
+# requires-python = ">=3.15"
 # dependencies = [
 #     "httpx2>=2.13.1",
 #     "pydantic>=2.14.1",
@@ -283,7 +283,7 @@ def load_config(path: Path, *, allow_missing: bool = False) -> TelegramConfig:
         with path.open("rb") as config_file:
             raw_config = tomllib.load(config_file)
         return TelegramConfig.model_validate(raw_config)
-    except (OSError, tomllib.TOMLDecodeError):
+    except OSError, tomllib.TOMLDecodeError:
         abort(f"无法读取配置文件：{path}")
     except ValidationError:
         abort("配置内容无效；请检查是否只包含 bot_token 和 chat_id。")
