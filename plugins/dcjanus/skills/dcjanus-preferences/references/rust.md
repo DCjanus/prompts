@@ -1,3 +1,4 @@
+- sccache: Rust 项目默认优先使用的编译缓存工具，用于减少重复构建的开销；通过 `RUSTC_WRAPPER=sccache` 或 Cargo 的 `build.rustc-wrapper` 接入，保持原有 Cargo 命令。已有 wrapper 或构建入口时先确认接入方式，不盲目覆盖。Rust 增量编译需要关闭才能使用 sccache 缓存，可在需要缓存的构建环境中设置 `CARGO_INCREMENTAL=0`；不因接入缓存而全局关闭其它项目的增量编译。接入后用 `sccache --show-stats` 核实命中，不能把设置了 wrapper 当作缓存生效。参见 [sccache 使用说明](https://github.com/mozilla/sccache#usage)和 [Rust 缓存限制](https://github.com/mozilla/sccache/blob/main/docs/Rust.md)。
 - tracing: 结构化的应用级诊断/追踪框架，适合异步系统的日志与链路诊断。
 - tracing-subscriber: `tracing` 的订阅器实现与组合工具，适合将 tracing 事件输出到日志/外部系统。
 - blake3: 通用 hash 场景的默认算法选择，适用于数据校验、内容寻址、去重和缓存键等用途；支持任意长度输出与并行 hash；不适用于用户密码存储与校验等场景。
