@@ -5,7 +5,7 @@
 # dependencies = [
 #     "blake3>=1.0.11",
 #     "duckdb>=1.5.6",
-#     "fonttools>=4.66.1",
+#     "fonttools>=4.67.0",
 #     "google-api-python-client>=2.201.0",
 #     "google-auth-httplib2>=0.4.4",
 #     "google-auth-oauthlib>=1.5.0",
@@ -14,7 +14,7 @@
 #     "httpxyz>=0.42.1",
 #     "kittytgp>=0.0.3",
 #     "markdown-it-py>=4.2.0",
-#     "openai-codex>=0.162.1",
+#     "openai-codex>=0.163.0",
 #     "pydantic>=2.14.1",
 #     "pytest>=9.1.1",
 #     "pyyaml>=6.0.3",
