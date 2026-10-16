@@ -67,5 +67,6 @@ jobs:
         uses: astral-sh/setup-uv@v8.2.0
         with:
           enable-cache: false
+          python-version: "3.14"
       - name: Run all tests
         run: ./scripts/run_tests.py
