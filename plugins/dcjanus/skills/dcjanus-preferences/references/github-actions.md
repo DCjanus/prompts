@@ -1,5 +1,7 @@
 # GitHub Actions、CI 与发布偏好
 
+配置前先遵循 [私有仓库与 Actions 成本偏好](repository-maintenance.md#私有仓库与-actions-成本)，确认仓库可见性与启用意图；以下自动化约定适用于已决定启用 Actions 的仓库。
+
 ## Action 版本与原生 lockfile
 
 这是用户明确的版本偏好：用语义化版本的兼容范围表达升级意图，用 GitHub 原生 `.github/workflows/actions.lock` 固定实际执行的提交和受支持的传递依赖。
