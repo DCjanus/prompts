@@ -32,6 +32,7 @@ def test_help_uses_progressive_resource_groups() -> None:
     assert root.exit_code == 0, root.output
     assert "team" in root.output
     assert "issue" in root.output
+    assert "document" in root.output
     assert "workflow-state" in root.output
     assert "team-show" not in root.output
     assert "issue-get" not in root.output
@@ -71,6 +72,11 @@ def test_help_uses_progressive_resource_groups() -> None:
     assert api.exit_code == 0, api.output
     assert "graphql" in api.output
 
+    document = runner.invoke(linear_cli.app, ["document", "--help"])
+    assert document.exit_code == 0, document.output
+    for command in ("list", "search", "get", "create", "update"):
+        assert command in document.output
+
 
 @pytest.mark.parametrize(
     ("arguments", "expected"),
@@ -104,6 +110,21 @@ def test_help_uses_progressive_resource_groups() -> None:
             ["ISSUE_ID", "MARKDOWN_FILE"],
         ),
         (["view", "create", "--help"], ["JSON_OBJECT"]),
+        (
+            ["document", "create", "--help"],
+            [
+                "--content-file",
+                "MARKDOWN_FILE",
+                "--team",
+                "--project-id",
+                "UUID",
+                "--yes",
+            ],
+        ),
+        (
+            ["document", "update", "--help"],
+            ["DOCUMENT_ID", "--content-file", "MARKDOWN_FILE", "--title", "--yes"],
+        ),
     ],
 )
 def test_help_exposes_semantic_parameter_contracts(
@@ -115,6 +136,368 @@ def test_help_exposes_semantic_parameter_contracts(
     output = Text.from_ansi(result.output).plain
     for value in expected:
         assert value in output
+
+
+@pytest.fixture
+def document_client(monkeypatch: pytest.MonkeyPatch):
+    """使用真实 GraphQL 客户端记录请求，并通过队列提供服务端响应。"""
+    calls: list[dict] = []
+    replies: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(json.loads(request.content))
+        assert replies, f"出现预期外的 GraphQL 请求：{calls[-1]}"
+        return response({"data": replies.pop(0)})
+
+    client = linear_cli.LinearClient(
+        linear_cli.Settings("https://linear.test/graphql", "lin_api_test", False),
+        transport=httpx.MockTransport(handler),
+    )
+    monkeypatch.setattr(linear_cli, "get_client", lambda endpoint: client)
+    monkeypatch.setattr(linear_cli, "default_team_from_config", lambda: "SD")
+    return calls, replies
+
+
+def test_document_list_and_search_use_server_scopes_and_pagination(
+    document_client,
+) -> None:
+    calls, replies = document_client
+    team = {"teams": {"nodes": [{"id": "side-id", "key": "SD", "name": "Side"}]}}
+    page = {
+        "nodes": [{"id": "doc-id", "title": "设备记录"}],
+        "pageInfo": {"hasNextPage": True, "endCursor": "next"},
+    }
+    replies.extend(
+        [
+            team,
+            {"documents": page},
+            team,
+            {"searchDocuments": {**page, "totalCount": 2}},
+        ]
+    )
+    runner = CliRunner()
+
+    listed = runner.invoke(
+        linear_cli.app, ["document", "list", "--first", "2", "--after", "previous"]
+    )
+    assert listed.exit_code == 0, listed.output
+    assert json.loads(listed.output) == page
+    assert calls[0]["variables"] == {"key": "SD"}
+    assert calls[1]["variables"] == {
+        "filter": {"team": {"id": {"eq": "side-id"}}},
+        "first": 2,
+        "after": "previous",
+        "includeArchived": False,
+    }
+    assert "content" not in calls[1]["query"]
+
+    searched = runner.invoke(
+        linear_cli.app,
+        [
+            "document",
+            "search",
+            " 路由器 ",
+            "--first",
+            "2",
+            "--after",
+            "previous",
+            "--no-include-comments",
+            "--include-archived",
+        ],
+    )
+    assert searched.exit_code == 0, searched.output
+    assert json.loads(searched.output) == {**page, "totalCount": 2}
+    assert calls[3]["variables"] == {
+        "term": "路由器",
+        "teamId": "side-id",
+        "first": 2,
+        "after": "previous",
+        "includeComments": False,
+        "includeArchived": True,
+    }
+    assert "searchDocuments(" in calls[3]["query"]
+    assert not replies
+
+
+def test_document_project_scope_bypasses_default_team(document_client) -> None:
+    calls, replies = document_client
+    page = {"nodes": [], "pageInfo": {"hasNextPage": False, "endCursor": None}}
+    replies.append({"documents": page})
+    project_id = "11111111-1111-4111-8111-111111111111"
+
+    result = CliRunner().invoke(
+        linear_cli.app, ["document", "list", "--project-id", project_id]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output) == page
+    assert len(calls) == 1
+    assert calls[0]["variables"]["filter"] == {"project": {"id": {"eq": project_id}}}
+
+
+def test_document_create_preview_and_write_preserve_markdown_and_read_back(
+    document_client,
+    tmp_path: Path,
+) -> None:
+    calls, replies = document_client
+    markdown = "# 设备记录\n\n```sh\nsysctl -n net.netfilter.nf_conntrack_max\n```\n"
+    body = tmp_path / "document.md"
+    body.write_text(markdown, encoding="utf-8")
+    project_id = "11111111-1111-4111-8111-111111111111"
+    fields = {"title": "设备记录", "content": markdown, "projectId": project_id}
+    actual = {
+        "id": "doc-id",
+        "title": "设备记录",
+        "content": markdown,
+        "url": "https://linear.test/doc-id",
+        "project": {"id": project_id},
+    }
+    replies.extend(
+        [
+            {"documents": {"nodes": []}},
+            {"documents": {"nodes": []}},
+            {"documentCreate": {"success": True, "document": {"id": "doc-id"}}},
+            {"document": actual},
+        ]
+    )
+    args = [
+        "document",
+        "create",
+        "--project-id",
+        project_id,
+        "--title",
+        " 设备记录 ",
+        "--content-file",
+        str(body),
+    ]
+    runner = CliRunner()
+
+    preview = runner.invoke(linear_cli.app, args)
+    assert preview.exit_code == 0, preview.output
+    assert json.loads(preview.output) == {
+        "action": "documentCreate",
+        "input": fields,
+        "preview": True,
+    }
+    assert len(calls) == 1
+    assert calls[0]["variables"]["filter"] == {
+        "project": {"id": {"eq": project_id}},
+        "title": {"eq": "设备记录"},
+    }
+    assert "includeArchived: true" in calls[0]["query"]
+
+    created = runner.invoke(linear_cli.app, [*args, "--yes"])
+    assert created.exit_code == 0, created.output
+    assert json.loads(created.output) == actual
+    assert calls[2]["variables"] == {"input": fields}
+    assert calls[3]["variables"] == {"id": "doc-id"}
+    assert "content" in calls[3]["query"]
+    assert not replies
+
+
+def test_document_create_uses_team_and_rejects_duplicates(
+    document_client, tmp_path: Path
+) -> None:
+    calls, replies = document_client
+    body = tmp_path / "document.md"
+    body.write_text("记录", encoding="utf-8")
+    replies.extend(
+        [
+            {"teams": {"nodes": [{"id": "side-id", "key": "SD", "name": "Side"}]}},
+            {
+                "documents": {
+                    "nodes": [
+                        {
+                            "id": "existing",
+                            "title": "设备记录",
+                            "url": "https://linear.test/existing",
+                        }
+                    ]
+                }
+            },
+        ]
+    )
+
+    result = CliRunner().invoke(
+        linear_cli.app,
+        [
+            "document",
+            "create",
+            "--title",
+            "设备记录",
+            "--content-file",
+            str(body),
+            "--yes",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert isinstance(result.exception, linear_cli.LinearError)
+    assert "https://linear.test/existing" in str(result.exception)
+    assert calls[1]["variables"]["filter"] == {
+        "team": {"id": {"eq": "side-id"}},
+        "title": {"eq": "设备记录"},
+    }
+    assert len(calls) == 2
+
+
+def test_document_get_and_update_preview_read_current_body(
+    document_client, tmp_path: Path
+) -> None:
+    calls, replies = document_client
+    current = {
+        "id": "doc-id",
+        "title": "原始标题",
+        "content": "原始正文",
+        "team": {"id": "side-id"},
+    }
+    replies.extend([{"document": current}, {"document": current}])
+    empty_body = tmp_path / "empty.md"
+    empty_body.write_text("", encoding="utf-8")
+    runner = CliRunner()
+
+    got = runner.invoke(linear_cli.app, ["document", "get", "slug-id"])
+    assert got.exit_code == 0, got.output
+    assert json.loads(got.output) == current
+    assert calls[0]["variables"] == {"id": "slug-id"}
+
+    preview = runner.invoke(
+        linear_cli.app,
+        ["document", "update", "slug-id", "--content-file", str(empty_body)],
+    )
+    assert preview.exit_code == 0, preview.output
+    assert json.loads(preview.output) == {
+        "action": "documentUpdate",
+        "before": current,
+        "input": {"content": ""},
+        "preview": True,
+    }
+    assert len(calls) == 2
+
+
+def test_document_update_writes_only_patch_and_reads_actual_state(
+    document_client,
+) -> None:
+    calls, replies = document_client
+    current = {
+        "id": "doc-id",
+        "title": "原始标题",
+        "content": "原始正文",
+        "team": {"id": "side-id"},
+    }
+    actual = {**current, "title": "新标题"}
+    replies.extend(
+        [
+            {"document": current},
+            {"documentUpdate": {"success": True, "document": {"id": "doc-id"}}},
+            {"document": actual},
+        ]
+    )
+
+    result = CliRunner().invoke(
+        linear_cli.app, ["document", "update", "slug-id", "--title", "新标题", "--yes"]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output) == actual
+    assert calls[1]["variables"] == {"id": "doc-id", "input": {"title": "新标题"}}
+    assert calls[2]["variables"] == {"id": "doc-id"}
+
+
+@pytest.mark.parametrize("action", ["create", "update"])
+def test_document_mutation_failure_does_not_claim_success(
+    document_client, tmp_path: Path, action: str
+) -> None:
+    calls, replies = document_client
+    body = tmp_path / "document.md"
+    body.write_text("记录", encoding="utf-8")
+    if action == "create":
+        args = [
+            "document",
+            "create",
+            "--project-id",
+            "11111111-1111-4111-8111-111111111111",
+            "--title",
+            "记录",
+            "--content-file",
+            str(body),
+            "--yes",
+        ]
+        replies.append({"documents": {"nodes": []}})
+    else:
+        args = ["document", "update", "doc-id", "--title", "记录", "--yes"]
+        replies.append({"document": {"id": "doc-id"}})
+    replies.append({f"document{action.title()}": {"success": False, "document": None}})
+
+    result = CliRunner().invoke(linear_cli.app, args)
+
+    assert result.exit_code != 0
+    assert isinstance(result.exception, linear_cli.LinearError)
+    assert "success=false" in str(result.exception)
+    assert len(calls) == 2
+
+
+def test_document_missing_readback_is_failure(document_client) -> None:
+    calls, replies = document_client
+    replies.extend(
+        [
+            {"document": {"id": "doc-id"}},
+            {"documentUpdate": {"success": True, "document": {"id": "doc-id"}}},
+            {"document": None},
+        ]
+    )
+
+    result = CliRunner().invoke(
+        linear_cli.app, ["document", "update", "doc-id", "--title", "新标题", "--yes"]
+    )
+
+    assert result.exit_code != 0
+    assert isinstance(result.exception, linear_cli.LinearError)
+    assert "找不到" in str(result.exception)
+    assert len(calls) == 3
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["document", "search", " "],
+        ["document", "list", "--first", "0"],
+        ["document", "list", "--project-id", "invalid"],
+        [
+            "document",
+            "list",
+            "--team",
+            "SD",
+            "--project-id",
+            "11111111-1111-4111-8111-111111111111",
+        ],
+        ["document", "update", "doc-id"],
+        ["document", "update", "doc-id", "--title", " "],
+    ],
+)
+def test_document_invalid_inputs_do_not_reach_network(
+    document_client, args: list[str]
+) -> None:
+    calls, _ = document_client
+    result = CliRunner().invoke(linear_cli.app, args)
+    assert result.exit_code != 0
+    assert not calls
+
+
+def test_document_rejects_non_utf8_and_directory_content(
+    document_client, tmp_path: Path
+) -> None:
+    calls, _ = document_client
+    binary = tmp_path / "invalid.md"
+    binary.write_bytes(b"\xff\xfe")
+    runner = CliRunner()
+    for path in (binary, tmp_path, tmp_path / "missing.md"):
+        result = runner.invoke(
+            linear_cli.app,
+            ["document", "create", "--title", "记录", "--content-file", str(path)],
+        )
+        assert result.exit_code != 0
+    assert not calls
 
 
 def test_api_key_auth_and_graphql_errors() -> None:

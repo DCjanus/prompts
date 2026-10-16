@@ -1,15 +1,16 @@
 ---
 name: dcjanus-tasklog
-description: 当需要使用 DCjanus 的个人任务模型查询或管理 Linear Issue、Comment、Team、Workflow status、原生关系或 Custom View 时使用。
+description: 当需要使用 DCjanus 的个人任务模型查询或管理 Linear Issue、Document、Comment、Team、Workflow status、原生关系或 Custom View，或将长期参考资料与运维记录保存为 Linear 文档时使用。
 ---
 
 # DCjanus Tasklog
 
-把 Linear 作为 DCjanus 的个人任务与注意力索引，并使用 [linear_cli.py](scripts/linear_cli.py) 调用 Linear 官方 GraphQL API。本 Skill 负责个人 Linear 任务模型与平台操作。
+把 Linear 作为 DCjanus 的个人任务、注意力与参考资料索引，并使用 [linear_cli.py](scripts/linear_cli.py) 调用 Linear 官方 GraphQL API。本 Skill 负责个人 Linear 任务模型与平台操作。
 
 ## 任务模型
 
 - 一个 Issue 表达一个值得再次投入注意力、能够独立判断结果的目标，不把临时步骤或纯信息机械地建成 Issue。
+- 长期参考资料、运维手册与设备配置差异使用原生 Document。跨项目的共享记录放在 Team 文档，项目专属资料放在 Project 文档；需要推进的后续目标另建 Issue 并引用文档。
 - Description 保存稳定的任务背景、目标、范围、注意事项、完成条件和初始来源。只有这些稳定信息变化或需要修正事实错误时才改写 Description。
 - Issue 间的父子、阻塞、被阻塞、相关及重复关系使用 Linear 对应的原生关联维护，不在 Description 中另建关系清单或重复列出关联 Issue 的编号、链接、标题、状态及逐项目标。父 Issue 正文只保留整体目标、共同验收条件和必要的跨事项约束；子 Issue 正文只描述自身任务。只有前置事项未满足就无法继续或验收时才建立阻塞关系，普通关联使用 Related。正文或 Comment 可按需解释阻塞原因、恢复条件和具体决策并引用相关 Issue；外部审批、权限或反馈等没有对应 Linear Issue 的阻塞直接记录实际对象与证据，不为建立关系虚构 Issue。
 - Comment 按时间记录进展、阶段结论、决策、等待对象、恢复条件、下一步变化、交付证据以及完成或取消原因；不把命令流水账或完整外部记录复制进 Linear。
@@ -47,7 +48,7 @@ Linear OAuth 需要先注册 OAuth application，将 `http://127.0.0.1:45831/cal
 
 ## 调用约定
 
-- CLI 按资源分组；从 `./scripts/linear_cli.py --help` 开始，再对 `team`、`issue`、`view` 等逐级使用 `--help`，不要依赖本文件穷举命令。
+- CLI 按资源分组；从 `./scripts/linear_cli.py --help` 开始，再对 `team`、`issue`、`document`、`view` 等逐级使用 `--help`，不要依赖本文件穷举命令。
 - 读操作直接执行；写操作默认输出 JSON 预览，明确授权后才加 `--yes`。
 - 不知道 Team key 时先用 `team list` 查询 workspace 的 Team；若 `pageInfo.hasNextPage` 为 true，用 `--after` 传入 `pageInfo.endCursor` 继续翻页。`team list` 不受默认 Team 限制。
 - Team 优先取命令显式提供的 `--team`；省略时读取配置中的可选 `default_team`。两者都没有时直接报错，不猜测业务 Team。使用 `config set-default-team KEY` 设置，使用 `config clear-default-team` 清除；可用 `doctor --team KEY` 或 `team get --team KEY` 精确验证。
@@ -58,6 +59,7 @@ Linear OAuth 需要先注册 OAuth application，将 `http://127.0.0.1:45831/cal
 - Team 自动关闭与自动归档位于 `team automation`。周期单位为月；禁用设置使用对应的 `--disable-*`，自动关闭目标状态可传精确名称或 UUID。
 - Workflow status 使用 `workflow-state list/create/update` 管理；创建前精确查重，写入默认预览并在完成后按 ID 回读。创建时的 `--type` 使用 Linear 原生类型，如 `backlog`、`unstarted` 或 `started`；更新支持名称、颜色、描述和位置，但 Linear 保留的 `Duplicate` 状态不可更新。
 - Issue 写入后自动回读。关系写入回读两端。
+- Document 从 `document --help` 逐级探索。查重使用 `document search TERM`，完整正文用 `document get` 读取；列举与搜索保留分页信息。创建时明确团队或项目，省略时使用默认 Team；同一容器内存在同名文档（含归档）时拒绝重复创建。正文通过 `--content-file` 从 UTF-8 Markdown 文件读取，更新会替换完整正文，先读取当前版本再准备预览；空文件明确表示清空正文。创建与更新默认预览，正式写入后回读，不将秘密写入文档。
 - 复杂 Issue 描述通过 `issue create/update --description-file FILE` 从 UTF-8 Markdown 文件读取；短描述可继续使用 `--description`，两者不能同时指定。
 - Issue Label 使用 `label list/get/create/update/delete` 管理；创建、更新和删除默认预览，正式写入后回读。创建默认作用于目标 Team，使用 `label create --workspace` 创建所有 Team 可用的 workspace Label；更新支持名称、颜色和描述，删除会移除已有 Issue 关联。
 - Issue 生命周期操作位于 `issue archive/restore/delete`；`delete` 默认进入可恢复 30 天的 Recently deleted，只有管理员明确授权不可恢复删除时才使用 `--permanent --yes`。
@@ -73,6 +75,7 @@ Linear OAuth 需要先注册 OAuth application，将 `http://127.0.0.1:45831/cal
 ./scripts/linear_cli.py team get --team KEY
 ./scripts/linear_cli.py team automation --help
 ./scripts/linear_cli.py issue --help
+./scripts/linear_cli.py document --help
 ./scripts/linear_cli.py label --help
 ./scripts/linear_cli.py workflow-state --help
 ./scripts/linear_cli.py view preferences --help
