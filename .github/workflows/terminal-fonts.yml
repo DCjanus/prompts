@@ -32,7 +32,6 @@ jobs:
       - uses: astral-sh/setup-uv@v8.2.0
         with:
           enable-cache: false
-          python-version: "3.15"
       - name: Check upstream releases and approved assets
         env:
           GH_TOKEN: ${{ github.token }}
@@ -60,7 +59,6 @@ jobs:
       - uses: astral-sh/setup-uv@v8.2.0
         with:
           enable-cache: false
-          python-version: "3.15"
       - name: Download verified sources
         env:
           GH_TOKEN: ${{ github.token }}
@@ -89,7 +87,6 @@ jobs:
       - uses: astral-sh/setup-uv@v8.2.0
         with:
           enable-cache: false
-          python-version: "3.15"
       - uses: actions/download-artifact@v8.0.2
         with:
           name: terminal-fonts

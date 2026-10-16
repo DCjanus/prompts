@@ -37,7 +37,6 @@ jobs:
         uses: astral-sh/setup-uv@v8.2.0
         with:
           enable-cache: false
-          python-version: "3.15"
       - name: Check Python formatting
         run: uvx ruff format --check .
       - name: Check Python lint
@@ -52,14 +51,11 @@ jobs:
         uses: astral-sh/setup-uv@v8.2.0
         with:
           enable-cache: false
-          python-version: "3.15"
       - name: Check uv script dependencies
         run: ./scripts/script_deps.py --only-attention --fail-on-attention --github-summary
 
   unittest:
     runs-on: ubuntu-latest
-    env:
-      CMAKE_BUILD_PARALLEL_LEVEL: "2"
     steps:
       - name: Checkout
         uses: actions/checkout@v6.0.3
@@ -70,8 +66,6 @@ jobs:
       - name: Setup uv
         uses: astral-sh/setup-uv@v8.2.0
         with:
-          enable-cache: true
-          cache-dependency-glob: "scripts/run_tests.py"
-          python-version: "3.15"
+          enable-cache: false
       - name: Run all tests
         run: ./scripts/run_tests.py

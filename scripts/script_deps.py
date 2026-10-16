@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --script
 #
 # /// script
-# requires-python = ">=3.15"
+# requires-python = ">=3.14"
 # dependencies = [
 #     "packaging>=26.3",
 #     "rich>=15.0.0",
@@ -109,7 +109,7 @@ def list_python_files(root: Path) -> list[Path]:
             stderr=subprocess.DEVNULL,
             text=True,
         )
-    except OSError, subprocess.CalledProcessError:
+    except (OSError, subprocess.CalledProcessError):
         return sorted(
             path
             for path in root.rglob("*.py")

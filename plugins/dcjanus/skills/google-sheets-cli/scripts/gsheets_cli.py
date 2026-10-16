@@ -1,6 +1,6 @@
 #!/usr/bin/env -S uv run --script
 # /// script
-# requires-python = ">=3.15"
+# requires-python = ">=3.11"
 # dependencies = [
 #     "google-api-python-client>=2.201.0",
 #     "google-auth-httplib2>=0.4.4",
@@ -117,7 +117,7 @@ def import_client_secret(source: Path, *, overwrite: bool = False) -> Path:
     try:
         content = source.expanduser().read_bytes()
         payload = json.loads(content.decode("utf-8-sig"))
-    except OSError, ValueError, UnicodeError:
+    except (OSError, ValueError, UnicodeError):
         raise CliError("无法读取 client JSON，请提供可读的 UTF-8 JSON 文件。") from None
     installed = payload.get("installed") if isinstance(payload, dict) else None
     required = ("client_id", "client_secret", "auth_uri", "token_uri")
@@ -440,7 +440,7 @@ def handle_http_error(exc: HttpError) -> CliError:
     try:
         payload = json.loads(exc.content.decode("utf-8"))
         message = payload.get("error", {}).get("message")
-    except AttributeError, json.JSONDecodeError, UnicodeDecodeError:
+    except (AttributeError, json.JSONDecodeError, UnicodeDecodeError):
         message = str(exc)
     hint = ""
     if status in {401, 403}:

@@ -1,6 +1,6 @@
 #!/usr/bin/env -S uv run --script
 # /// script
-# requires-python = ">=3.15"
+# requires-python = ">=3.11"
 # dependencies = [
 #     "httpxyz>=0.42.1",
 #     "markdown-it-py>=4.2.0",

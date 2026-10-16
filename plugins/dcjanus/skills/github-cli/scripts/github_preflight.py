@@ -1,6 +1,6 @@
 #!/usr/bin/env -S uv run --script
 # /// script
-# requires-python = ">=3.15"
+# requires-python = ">=3.12"
 # dependencies = [
 #     "pyyaml>=6.0.3",
 #     "rich>=15.0.0",

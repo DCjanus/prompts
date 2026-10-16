@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --script
 #
 # /// script
-# requires-python = ">=3.15"
+# requires-python = ">=3.14"
 # dependencies = [
 #     "google-api-python-client>=2.201.0",
 #     "google-auth-httplib2>=0.4.4",
@@ -262,7 +262,7 @@ def http_error_message(exc: HttpError) -> CliError:
     try:
         payload = json.loads(exc.content.decode("utf-8"))
         message = payload.get("error", {}).get("message") or str(exc)
-    except AttributeError, json.JSONDecodeError, UnicodeDecodeError:
+    except (AttributeError, json.JSONDecodeError, UnicodeDecodeError):
         message = str(exc)
     hint = ""
     if status in {401, 403}:
@@ -292,7 +292,7 @@ def decode_header_value(value: str) -> str:
     """解码 RFC 2047 邮件头。"""
     try:
         return str(make_header(decode_header(value)))
-    except LookupError, UnicodeDecodeError:
+    except (LookupError, UnicodeDecodeError):
         return value
 
 
@@ -352,7 +352,7 @@ def collect_payload_content(
         charset = charset_for_part(part)
         try:
             decoded = raw.decode(charset)
-        except LookupError, UnicodeDecodeError:
+        except (LookupError, UnicodeDecodeError):
             decoded = raw.decode("utf-8", errors="replace")
         (html_parts if mime_type == "text/html" else text_parts).append(decoded)
     for child in part.get("parts") or []:

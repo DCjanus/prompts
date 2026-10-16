@@ -1,6 +1,6 @@
 #!/usr/bin/env -S uv run --script
 # /// script
-# requires-python = ">=3.15"
+# requires-python = ">=3.12"
 # dependencies = []
 # ///
 """创建与更新 PR，核验正文及维护者修改权限。"""

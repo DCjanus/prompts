@@ -10,7 +10,7 @@ DCjanus 的个人 skills，同一份 `plugins/dcjanus/skills` 同时包装为 Co
 
 ## 安装与更新
 
-每台电脑需要支持 plugin 命令的 Codex CLI（已验证 `0.153.4`）、Git 和 [uv](https://github.com/astral-sh/uv)。仓库脚本最低要求 Python 3.15，uv 会按脚本声明自动安装所需解释器。首次安装：
+每台电脑需要支持 plugin 命令的 Codex CLI（已验证 `0.153.4`）、Git 和 [uv](https://github.com/astral-sh/uv)。首次安装：
 
 ```bash
 codex plugin marketplace add DCjanus/prompts --ref master

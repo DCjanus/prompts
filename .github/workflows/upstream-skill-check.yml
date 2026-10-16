@@ -22,7 +22,6 @@ jobs:
         uses: astral-sh/setup-uv@v8.2.0
         with:
           enable-cache: false
-          python-version: "3.15"
       - name: Check upstream skills
         env:
           GITHUB_TOKEN: ${{ github.token }}
