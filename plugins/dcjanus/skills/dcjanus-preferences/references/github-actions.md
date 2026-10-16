@@ -34,7 +34,8 @@ Dependabot 为已接入的 workflow 提出 action 版本更新时会一并更新
 - 将格式、静态检查、测试、构建与发布的依赖关系写清楚；有实际跨平台契约时使用 matrix。重生成资产通过重跑生成器后检查零 diff 验证，避免只测生成脚本能否退出。
 - 常规 PR 或同一分支的新提交可取消过时验证；耗时手动实验与正式发布分别组织并发队列，避免实验阻塞或误触发发布。
 - workflow 默认只读权限，发布等需要写入的 job 单独声明权限；发布仅在约定的默认分支或明确发布入口触发，并依赖对应验证通过。
-- Rust 编译缓存优先使用 sccache；通过 Cargo wrapper 接入，在需要缓存的环境中关闭 incremental。Cargo registry / Git 下载缓存与编译结果分别维护，平台及工具链约束由项目配置定义。
+- Rust 的 CI 编译缓存优先使用 sccache，减少重复构建开销；这项偏好仅用于 CI，本地构建沿用本地工具与项目约定。通过 CI 环境中的 `RUSTC_WRAPPER=sccache` 接入，并在该环境设置 `CARGO_INCREMENTAL=0`；不修改本机全局 Cargo 配置或增量编译设置。Cargo registry / Git 下载缓存与编译结果分别维护，平台及工具链约束由项目配置定义。
+- 接入后用 `sccache --show-stats` 核实 CI 的实际命中，不能把设置了 wrapper 当作缓存生效。接入方式与可缓存范围见 [sccache 使用说明](https://github.com/mozilla/sccache#usage)和 [Rust 缓存限制](https://github.com/mozilla/sccache/blob/main/docs/Rust.md)。
 - 构建收益用冷、热缓存对比、Cargo timings 和必要的 linker timing 判断；同时记录 sccache 的命中、不可缓存原因及读写错误。结构化明细放在 artifact，摘要放 job summary，便于复查，避免把原始数据长期刷到日志。
 - 大型自用 fork 可优先只让默认分支写正式缓存，实验分支只读，减少实验产物挤占正式缓存。
 - 需要复用的仓库 action 可集中在 `.github/actions/`；第三方 action 的运行时或维护状态不适合时，再评估是否用最小本地实现替代。
