@@ -31,6 +31,7 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Annotated, Any, Literal
+from uuid import UUID
 
 import httpx2 as httpx
 import tomli_w
@@ -105,6 +106,14 @@ COMMENT_FIELDS = """
 id body createdAt updatedAt url
 user { id name email }
 """
+
+DOCUMENT_SUMMARY_FIELDS = """
+id slugId title url createdAt updatedAt archivedAt
+team { id key name }
+project { id name }
+"""
+
+DOCUMENT_FIELDS = DOCUMENT_SUMMARY_FIELDS + "\ncontent"
 
 CODEX_RESUME_FOOTER_TEMPLATE = """---
 
@@ -473,6 +482,54 @@ def resolve_label(
     return labels[0]
 
 
+def read_document(client: LinearClient, document_id: str) -> dict[str, Any]:
+    """按 UUID 或 slug ID 读取文档及 Markdown 正文。"""
+    data = client.query(
+        f"""query Document($id: String!) {{
+          document(id: $id) {{ {DOCUMENT_FIELDS} }}
+        }}""",
+        {"id": document_id},
+    )
+    document = data.get("document")
+    if not document:
+        raise LinearError(f"找不到 Linear Document {document_id}")
+    return document
+
+
+def document_scope(
+    client: LinearClient, team: str | None, project_id: UUID | None
+) -> dict[str, str]:
+    """选择团队或项目作为文档容器，项目不受默认团队限制。"""
+    if team is not None and project_id is not None:
+        raise typer.BadParameter("--team 与 --project-id 不能同时使用")
+    if project_id is not None:
+        return {"projectId": str(project_id)}
+    return {"teamId": resolve_team(client, select_team(team))["id"]}
+
+
+def document_filter(scope: dict[str, str]) -> dict[str, Any]:
+    """将文档容器转换为官方 DocumentFilter。"""
+    return {
+        key.removesuffix("Id"): {"id": {"eq": value}} for key, value in scope.items()
+    }
+
+
+def load_document_content(path: Path) -> str:
+    """从 UTF-8 文件读取完整 Markdown，不改写空白或换行。"""
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as error:
+        raise typer.BadParameter(f"无法读取 --content-file {path}：{error}") from error
+
+
+def document_title(title: str) -> str:
+    """拒绝空文档标题。"""
+    title = title.strip()
+    if not title:
+        raise typer.BadParameter("文档标题不能为空")
+    return title
+
+
 def read_view(client: LinearClient, view_id: str) -> dict[str, Any]:
     """按 UUID 或 slug 回读 Custom View。"""
     data = client.query(
@@ -629,6 +686,7 @@ auth_app = typer.Typer(no_args_is_help=True, help="登录或修复 Linear 认证
 team_app = typer.Typer(no_args_is_help=True, help="查询和管理 Team。")
 team_automation_app = typer.Typer(no_args_is_help=True, help="查询和管理 Team 自动化。")
 issue_app = typer.Typer(no_args_is_help=True, help="查询和管理 Issue。")
+document_app = typer.Typer(no_args_is_help=True, help="查询和管理独立文档 Documents。")
 label_app = typer.Typer(no_args_is_help=True, help="查询和管理 Issue Label。")
 workflow_state_app = typer.Typer(
     no_args_is_help=True, help="查询和管理 workflow state。"
@@ -645,6 +703,7 @@ app.add_typer(auth_app, name="auth")
 app.add_typer(team_app, name="team")
 team_app.add_typer(team_automation_app, name="automation")
 app.add_typer(issue_app, name="issue")
+app.add_typer(document_app, name="document")
 app.add_typer(label_app, name="label")
 app.add_typer(workflow_state_app, name="workflow-state")
 issue_app.add_typer(issue_comment_app, name="comment")
@@ -982,6 +1041,221 @@ def doctor(
     if selected_team:
         data["team"] = resolve_team(client, selected_team)
     emit(data)
+
+
+@document_app.command("list")
+def document_list(
+    team: Annotated[
+        str | None,
+        typer.Option(
+            "--team", help="团队 key；与 --project-id 互斥，省略时使用默认团队。"
+        ),
+    ] = None,
+    project_id: Annotated[
+        UUID | None,
+        typer.Option("--project-id", help="项目 UUID；仅列出该项目的文档。"),
+    ] = None,
+    first: Annotated[int, typer.Option(min=1, max=250)] = 50,
+    after: Annotated[
+        str | None, typer.Option(help="上一页的 pageInfo.endCursor。")
+    ] = None,
+    include_archived: Annotated[bool, typer.Option("--include-archived")] = False,
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+) -> None:
+    """列出团队或项目的文档摘要，按更新时间分页。"""
+    client = get_client(endpoint)
+    scope = document_scope(client, team, project_id)
+    data = client.query(
+        f"""query Documents(
+          $filter: DocumentFilter!, $first: Int!, $after: String,
+          $includeArchived: Boolean!
+        ) {{
+          documents(filter: $filter, first: $first, after: $after,
+                    includeArchived: $includeArchived, orderBy: updatedAt) {{
+            nodes {{ {DOCUMENT_SUMMARY_FIELDS} }}
+            pageInfo {{ hasNextPage endCursor }}
+          }}
+        }}""",
+        {
+            "filter": document_filter(scope),
+            "first": first,
+            "after": after,
+            "includeArchived": include_archived,
+        },
+    )
+    emit(data["documents"])
+
+
+@document_app.command("search")
+def document_search(
+    term: Annotated[str, typer.Argument(help="搜索文档标题、正文及可选评论。")],
+    team: Annotated[
+        str | None, typer.Option("--team", help="团队 key；省略时使用默认团队。")
+    ] = None,
+    first: Annotated[int, typer.Option(min=1, max=250)] = 50,
+    after: Annotated[
+        str | None, typer.Option(help="上一页的 pageInfo.endCursor。")
+    ] = None,
+    include_comments: Annotated[
+        bool, typer.Option("--include-comments/--no-include-comments")
+    ] = True,
+    include_archived: Annotated[bool, typer.Option("--include-archived")] = False,
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+) -> None:
+    """使用 Linear 原生搜索，在目标团队内查找文档。"""
+    term = term.strip()
+    if not term:
+        raise typer.BadParameter("搜索词不能为空")
+    client = get_client(endpoint)
+    resolved = resolve_team(client, select_team(team))
+    data = client.query(
+        f"""query SearchDocuments(
+          $term: String!, $teamId: String!, $first: Int!, $after: String,
+          $includeComments: Boolean!, $includeArchived: Boolean!
+        ) {{
+          searchDocuments(term: $term, teamId: $teamId, first: $first, after: $after,
+                          includeComments: $includeComments,
+                          includeArchived: $includeArchived) {{
+            nodes {{ {DOCUMENT_SUMMARY_FIELDS} }}
+            totalCount
+            pageInfo {{ hasNextPage endCursor }}
+          }}
+        }}""",
+        {
+            "term": term,
+            "teamId": resolved["id"],
+            "first": first,
+            "after": after,
+            "includeComments": include_comments,
+            "includeArchived": include_archived,
+        },
+    )
+    emit(data["searchDocuments"])
+
+
+@document_app.command("get")
+def document_get(
+    document_id: Annotated[
+        str, typer.Argument(metavar="DOCUMENT_ID", help="文档 UUID 或 slug ID。")
+    ],
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+) -> None:
+    """读取文档完整 Markdown 和所属团队或项目。"""
+    emit(read_document(get_client(endpoint), document_id))
+
+
+@document_app.command("create")
+def document_create(
+    title: Annotated[str, typer.Option(help="文档标题。")],
+    content_file: Annotated[
+        Path,
+        typer.Option(
+            "--content-file",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+            metavar="MARKDOWN_FILE",
+            help="UTF-8 Markdown 正文文件。",
+        ),
+    ],
+    team: Annotated[
+        str | None,
+        typer.Option(
+            "--team", help="团队 key；与 --project-id 互斥，省略时使用默认团队。"
+        ),
+    ] = None,
+    project_id: Annotated[
+        UUID | None,
+        typer.Option("--project-id", help="项目 UUID；在该项目下创建文档。"),
+    ] = None,
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+    yes: Annotated[bool, typer.Option("--yes", help="执行写入；默认仅预览。")] = False,
+) -> None:
+    """在团队或项目下创建文档；同一容器中存在同名文档时拒绝重复创建。"""
+    title = document_title(title)
+    content = load_document_content(content_file)
+    client = get_client(endpoint)
+    scope = document_scope(client, team, project_id)
+    duplicates = client.query(
+        """query DocumentDuplicates($filter: DocumentFilter!) {
+          documents(filter: $filter, first: 1, includeArchived: true) {
+            nodes { id title url }
+          }
+        }""",
+        {"filter": {**document_filter(scope), "title": {"eq": title}}},
+    )["documents"]["nodes"]
+    if duplicates:
+        duplicate = duplicates[0]
+        raise LinearError(
+            f"已存在同名文档 {duplicate['id']}：{duplicate['url']}；请读取后使用 document update"
+        )
+    fields = {"title": title, "content": content, **scope}
+    if not yes:
+        emit({"action": "documentCreate", "input": fields, "preview": True})
+        return
+    result = client.query(
+        """mutation CreateDocument($input: DocumentCreateInput!) {
+          documentCreate(input: $input) { success document { id } }
+        }""",
+        {"input": fields},
+    )["documentCreate"]
+    if not result["success"]:
+        raise LinearError("documentCreate 返回 success=false")
+    emit(read_document(client, result["document"]["id"]))
+
+
+@document_app.command("update")
+def document_update(
+    document_id: Annotated[
+        str, typer.Argument(metavar="DOCUMENT_ID", help="文档 UUID 或 slug ID。")
+    ],
+    title: Annotated[str | None, typer.Option(help="替换文档标题。")] = None,
+    content_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--content-file",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+            metavar="MARKDOWN_FILE",
+            help="UTF-8 Markdown 文件；替换完整正文，空文件清空正文。",
+        ),
+    ] = None,
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+    yes: Annotated[bool, typer.Option("--yes", help="执行写入；默认仅预览。")] = False,
+) -> None:
+    """预览或更新文档标题、正文；保留所属容器，写入后回读。"""
+    fields = compact_input(
+        {
+            "title": document_title(title) if title is not None else None,
+            "content": load_document_content(content_file)
+            if content_file is not None
+            else None,
+        }
+    )
+    if not fields:
+        raise typer.BadParameter("至少提供 --title 或 --content-file")
+    client = get_client(endpoint)
+    before = read_document(client, document_id)
+    if not yes:
+        emit(
+            {
+                "action": "documentUpdate",
+                "before": before,
+                "input": fields,
+                "preview": True,
+            }
+        )
+        return
+    result = client.query(
+        """mutation UpdateDocument($id: String!, $input: DocumentUpdateInput!) {
+          documentUpdate(id: $id, input: $input) { success document { id } }
+        }""",
+        {"id": before["id"], "input": fields},
+    )["documentUpdate"]
+    if not result["success"]:
+        raise LinearError("documentUpdate 返回 success=false")
+    emit(read_document(client, before["id"]))
 
 
 @team_app.command("list")
