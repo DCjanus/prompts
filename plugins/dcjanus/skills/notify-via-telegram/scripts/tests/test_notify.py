@@ -8,6 +8,7 @@ import tomllib
 from pathlib import Path
 
 import pytest
+from rich.text import Text
 from typer.testing import CliRunner
 
 SCRIPT_PATH = Path(__file__).resolve().parents[1] / "notify.py"
@@ -266,6 +267,8 @@ def test_json_preview_exposes_rich_message_without_config_or_network(
     assert result.exit_code == 0, result.output
     assert result.output.endswith("\n")
     assert json.loads(result.output) == {
+        "ok": True,
+        "delivery": "not_attempted",
         "status": "action-required",
         "rich_message": {
             "blocks": [
@@ -316,3 +319,89 @@ def test_preview_does_not_access_telegram(monkeypatch) -> None:
     assert result.output == (
         "长任务未完成\n\n> 构建失败。\n\n需要你处理：检查构建日志\n\n❌ 未完成\n"
     )
+
+
+@pytest.mark.parametrize("command", ["preview", "send"])
+@pytest.mark.parametrize(
+    ("field", "value", "error_type"),
+    [
+        ("title", "长" * 81, "string_too_long"),
+        ("summary", "长" * 601, "string_too_long"),
+        ("verification", "长" * 201, "string_too_long"),
+        ("action", "长" * 201, "string_too_long"),
+        ("context", "长" * 81, "string_too_long"),
+        ("summary", " \n\t ", "string_too_short"),
+    ],
+)
+def test_invalid_notification_reports_json_before_config_or_network(
+    monkeypatch, command, field, value, error_type
+) -> None:
+    def unexpected_access(*_args, **_kwargs):
+        raise AssertionError("invalid text must not access config or Telegram")
+
+    monkeypatch.setattr(notify, "complete_config", unexpected_access)
+    monkeypatch.setattr(notify, "telegram_call", unexpected_access)
+    options = {"status": "success", "title": "完成", "summary": "已完成"}
+    options[field] = value
+    args = ["--json", command]
+    for key, item in options.items():
+        args.extend([f"--{key}", item])
+    result = CliRunner().invoke(notify.app, args)
+
+    assert result.exit_code != 0
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is False
+    assert payload["error"] == "invalid_notification"
+    assert payload["delivery"] == "not_attempted"
+    assert payload["issues"][0]["loc"] == [field]
+    assert payload["issues"][0]["type"] == error_type
+    assert "input" not in payload["issues"][0]
+
+
+def test_corrected_preview_sends_the_same_payload_once(monkeypatch) -> None:
+    calls = []
+    monkeypatch.setattr(
+        notify,
+        "complete_config",
+        lambda _path: notify.TelegramConfig(
+            bot_token="test-token", chat_id="test-chat"
+        ),
+    )
+
+    def fake_call(_config, _method, payload):
+        calls.append(payload)
+        return {"message_id": 42}
+
+    monkeypatch.setattr(notify, "telegram_call", fake_call)
+    args = [
+        "--status",
+        "success",
+        "--title",
+        "完成",
+        "--summary",
+        "已完成",
+        "--context",
+    ]
+    runner = CliRunner()
+    invalid = runner.invoke(notify.app, ["--json", "preview", *args, "长" * 81])
+    assert invalid.exit_code != 0
+    preview = runner.invoke(notify.app, ["--json", "preview", *args, "prompts"])
+    assert preview.exit_code == 0, preview.output
+    assert calls == []
+    payload = json.loads(preview.output)
+    assert payload["ok"] is True
+    assert payload["delivery"] == "not_attempted"
+    sent = runner.invoke(notify.app, ["--json", "send", *args, "prompts"])
+    assert sent.exit_code == 0, sent.output
+    assert json.loads(sent.output)["message_id"] == 42
+    assert len(calls) == 1
+    assert calls[0]["rich_message"] == payload["rich_message"]
+
+
+@pytest.mark.parametrize("command", ["preview", "send"])
+def test_notification_help_exposes_text_limits(command) -> None:
+    result = CliRunner().invoke(notify.app, [command, "--help"])
+    plain = Text.from_ansi(result.output).plain
+    assert result.exit_code == 0
+    for limit in ("80", "600", "200"):
+        assert limit in plain
