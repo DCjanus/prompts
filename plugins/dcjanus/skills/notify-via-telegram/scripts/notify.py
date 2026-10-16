@@ -108,6 +108,7 @@ STATUS_PRESENTATION = {
 
 def notification_from_options(
     *,
+    state: AppState,
     status: NotificationStatus,
     title: str,
     summary: str,
@@ -128,6 +129,19 @@ def notification_from_options(
             codex_thread_url=current_codex_root_thread_url(),
         )
     except ValidationError as exc:
+        if state.json_output:
+            typer.echo(
+                json.dumps(
+                    {
+                        "ok": False,
+                        "error": "invalid_notification",
+                        "delivery": "not_attempted",
+                        "issues": exc.errors(include_input=False, include_url=False),
+                    },
+                    ensure_ascii=False,
+                )
+            )
+            raise typer.Exit(1) from None
         details = ", ".join(
             f"{error['loc'][-1]}: {error['msg']}"
             for error in exc.errors(include_input=False)
@@ -369,22 +383,23 @@ def send_message(
     status: Annotated[
         NotificationStatus, typer.Option("--status", help="长任务的最终状态。")
     ],
-    title: Annotated[str, typer.Option("--title", help="用于识别任务的简短标题。")],
-    summary: Annotated[str, typer.Option("--summary", help="任务结果的一句话摘要。")],
+    title: Annotated[str, typer.Option("--title", help="任务标题，1–80 字符。")],
+    summary: Annotated[str, typer.Option("--summary", help="结果摘要，1–600 字符。")],
     verification: Annotated[
-        str | None, typer.Option("--verification", help="可选的验证结果。")
+        str | None, typer.Option("--verification", help="可选的验证结果，1–200 字符。")
     ] = None,
     action: Annotated[
-        str | None, typer.Option("--action", help="可选的下一步或所需操作。")
+        str | None, typer.Option("--action", help="可选的下一步操作，1–200 字符。")
     ] = None,
     context: Annotated[
-        str | None, typer.Option("--context", help="可选的仓库或任务上下文。")
+        str | None, typer.Option("--context", help="可选的仓库或任务标签，1–80 字符。")
     ] = None,
 ) -> None:
     """发送一条结构化长任务结果通知。"""
 
     state = state_from_context(ctx)
     notification = notification_from_options(
+        state=state,
         status=status,
         title=title,
         summary=summary,
@@ -420,22 +435,23 @@ def preview_message(
     status: Annotated[
         NotificationStatus, typer.Option("--status", help="长任务的最终状态。")
     ],
-    title: Annotated[str, typer.Option("--title", help="用于识别任务的简短标题。")],
-    summary: Annotated[str, typer.Option("--summary", help="任务结果的一句话摘要。")],
+    title: Annotated[str, typer.Option("--title", help="任务标题，1–80 字符。")],
+    summary: Annotated[str, typer.Option("--summary", help="结果摘要，1–600 字符。")],
     verification: Annotated[
-        str | None, typer.Option("--verification", help="可选的验证结果。")
+        str | None, typer.Option("--verification", help="可选的验证结果，1–200 字符。")
     ] = None,
     action: Annotated[
-        str | None, typer.Option("--action", help="可选的下一步或所需操作。")
+        str | None, typer.Option("--action", help="可选的下一步操作，1–200 字符。")
     ] = None,
     context: Annotated[
-        str | None, typer.Option("--context", help="可选的仓库或任务上下文。")
+        str | None, typer.Option("--context", help="可选的仓库或任务标签，1–80 字符。")
     ] = None,
 ) -> None:
     """在本地预览通知，不读取配置或访问 Telegram。"""
 
     state = state_from_context(ctx)
     notification = notification_from_options(
+        state=state,
         status=status,
         title=title,
         summary=summary,
@@ -447,6 +463,8 @@ def preview_message(
         emit(
             state,
             {
+                "ok": True,
+                "delivery": "not_attempted",
                 "status": notification.status.value,
                 "rich_message": {
                     "blocks": render_notification_blocks(notification),
