@@ -1,3 +1,5 @@
+target-version = "py315"
+
 [lint]
 external = ["E402", "N802", "S310"]
 

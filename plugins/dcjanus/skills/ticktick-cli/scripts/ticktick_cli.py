@@ -1,11 +1,11 @@
 #!/usr/bin/env -S uv run --script
 # /// script
-# requires-python = ">=3.14"
+# requires-python = ">=3.15"
 # dependencies = [
 #     "httpxyz>=0.42.1",
-#     "typer>=0.27.3",
 #     "pydantic>=2.14.1",
 #     "rich>=15.0.0",
+#     "typer>=0.27.3",
 # ]
 # ///
 

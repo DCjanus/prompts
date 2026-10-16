@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --script
 #
 # /// script
-# requires-python = ">=3.14"
+# requires-python = ">=3.15"
 # dependencies = [
 #     "google-api-python-client>=2.201.0",
 #     "google-auth-httplib2>=0.4.4",

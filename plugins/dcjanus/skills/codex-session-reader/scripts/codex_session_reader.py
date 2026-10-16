@@ -1,8 +1,8 @@
 #!/usr/bin/env -S uv run --script
 # /// script
-# requires-python = ">=3.14"
+# requires-python = ">=3.15"
 # dependencies = [
-#     "openai-codex>=0.162.1",
+#     "openai-codex>=0.163.0",
 #     "pydantic>=2.14.1",
 #     "rich>=15.0.0",
 #     "typer>=0.27.3",
@@ -21,7 +21,7 @@ import re
 import shutil
 import sys
 from datetime import UTC, datetime
-from typing import Annotated, Any, Literal, TypeVar
+from typing import Annotated, Any, Literal
 
 import typer
 from openai_codex import CodexConfig
@@ -142,10 +142,8 @@ THREAD_ID_PATTERN = re.compile(
     r"[0-9a-fA-F]{12}$"
 )
 
-AppModelType = TypeVar("AppModelType", bound=BaseModel)
 
-
-def validate_model_or_raise(
+def validate_model_or_raise[AppModelType: BaseModel](
     model_type: type[AppModelType], payload: Any, label: str
 ) -> AppModelType:
     """将 schema 校验失败统一转换为 CLI 友好的错误。"""

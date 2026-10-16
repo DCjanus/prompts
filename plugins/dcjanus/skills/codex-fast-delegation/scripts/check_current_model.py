@@ -1,9 +1,9 @@
 #!/usr/bin/env -S uv run --script
 #
 # /// script
-# requires-python = ">=3.14"
+# requires-python = ">=3.15"
 # dependencies = [
-#     "openai-codex>=0.162.1",
+#     "openai-codex>=0.163.0",
 #     "pydantic>=2.14.1",
 # ]
 # ///
