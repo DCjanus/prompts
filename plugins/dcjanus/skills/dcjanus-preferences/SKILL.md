@@ -1,12 +1,12 @@
 ---
 name: dcjanus-preferences
-description: 适用于创建、修改或评审 Skill，配置 GitHub 个人仓库的合并策略与 Dependabot 更新，设计或评审 CLI 的命名、输入手感、输出与补全，或在前端技术栈与无障碍组件、Connect/Protobuf API、well-known types、FieldMask/PATCH、AIP-127 HTTP 映射与 Protovalidate 校验、项目开发工具（含 sccache/mbx/Cargo）及版本管理、用户级程序的 XDG 数据目录、跨语言的数据存储、分析、压缩、归档、哈希、Telegram Bot 消息呈现及 Python/Rust/Go 第三方库之间做技术选择的场景。
+description: 适用于创建、修改或评审 Skill，配置或复刻 GitHub 个人仓库与长期自用 fork 的维护、CI、发布、合并策略和 Dependabot 更新，设计或评审 CLI 的命名、输入手感、输出与补全，或在前端技术栈与无障碍组件、Connect/Protobuf API、well-known types、FieldMask/PATCH、AIP-127 HTTP 映射与 Protovalidate 校验、项目开发工具（含 sccache/mbx/Cargo）及版本管理、用户级程序的 XDG 数据目录、跨语言的数据存储、分析、压缩、归档、哈希、Telegram Bot 消息呈现及 Python/Rust/Go 第三方库之间做技术选择的场景。
 ---
 
 ## Usage
 
 - 创建、修改或评审 Skill 时读取 [Skill 编写偏好](references/skill-writing.md)。
-- 初始化或调整 DCjanus 自己维护的 GitHub 仓库的合并策略、Dependabot 配置时读取 [个人仓库维护偏好](references/repository-maintenance.md)。
+- 初始化或调整 DCjanus 自己维护的 GitHub 仓库时读取 [个人仓库维护偏好](references/repository-maintenance.md)；长期自用 fork 的分支、上游同步与改造记录读取 [Fork 维护偏好](references/fork-maintenance.md)；Action 版本、lockfile、CI 与发布读取 [GitHub Actions 偏好](references/github-actions.md)。
 - 设计或评审 CLI 的命名、参数入口、输入手感、输出、交互和 shell 补全时读取 [CLI 设计偏好](references/cli-design.md)。
 - 选择 React 前端框架、组件库、无障碍基础设施，或从 Protobuf 生成前端 Connect 客户端时读取 [前端偏好](references/frontend.md)。
 - 选择 Protobuf well-known types、字段 presence、FieldMask 部分更新、Connect RPC、AIP-127 HTTP 映射、Buf 第三方 proto 依赖、Protovalidate 校验或判断兼容性时读取 [Protobuf 偏好](references/protobuf.md)。
@@ -16,6 +16,7 @@ description: 适用于创建、修改或评审 Skill，配置 GitHub 个人仓�
 - 引入或替换第三方库时优先使用偏好清单。
 - 当工作负载同时具有多种特征、偏好清单未覆盖或与明确需求冲突时，先说明主要工作负载、取舍与建议；结论仍不明确时再向用户确认。
 - 新增语言时创建 `references/<language>.md`；新增跨语言主题时创建聚焦该主题的 reference，避免将无关偏好堆入泛化的 general 文件。
+- 持续积累可跨项目复用的个人准则，写清偏好、适用条件与取舍；从具体项目归纳时提炼共性，不在 skill 中保存项目名单、配置快照或维护历史。用户新明确的偏好优先于历史实践，同主题更新原 reference。
 
 ## General Preferences
 
