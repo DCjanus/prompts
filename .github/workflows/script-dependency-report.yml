@@ -15,5 +15,6 @@ jobs:
         uses: astral-sh/setup-uv@v8.2.0
         with:
           enable-cache: false
+          python-version: "3.15"
       - name: Scan uv script dependencies
         run: ./scripts/script_deps.py --github-summary

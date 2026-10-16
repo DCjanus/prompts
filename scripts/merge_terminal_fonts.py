@@ -1,10 +1,10 @@
 #!/usr/bin/env -S uv run --script
 #
 # /// script
-# requires-python = ">=3.14"
+# requires-python = ">=3.15"
 # dependencies = [
 #     "blake3>=1.0.11",
-#     "fonttools>=4.66.1",
+#     "fonttools>=4.67.0",
 #     "rich>=15.0.0",
 #     "typer>=0.27.3",
 #     "uharfbuzz>=0.56.3",

@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --script
 #
 # /// script
-# requires-python = ">=3.14"
+# requires-python = ">=3.15"
 # dependencies = [
 #     "duckdb>=1.5.6",
 #     "kittytgp>=0.0.3",
@@ -787,7 +787,7 @@ def _pricing_cache_load(
             if isinstance(model, str) and isinstance(value, dict)
         }
         return (fetched_at, prices) if prices else None
-    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+    except OSError, KeyError, TypeError, ValueError, json.JSONDecodeError:
         return None
 
 
@@ -931,7 +931,7 @@ def _parse_session_provider(line: bytes) -> str | None:
     """从 rollout 首行 session_meta 提取 model_provider。"""
     try:
         item = json.loads(line)
-    except (UnicodeDecodeError, json.JSONDecodeError):
+    except UnicodeDecodeError, json.JSONDecodeError:
         return None
     if not isinstance(item, dict) or item.get("type") != "session_meta":
         return None
@@ -1307,7 +1307,7 @@ def _parse_turn_context_model(line: bytes) -> str | None:
     """从 turn_context 记录提取模型名。"""
     try:
         item = json.loads(line)
-    except (UnicodeDecodeError, json.JSONDecodeError):
+    except UnicodeDecodeError, json.JSONDecodeError:
         return None
     if not isinstance(item, dict) or item.get("type") != "turn_context":
         return None
@@ -1320,7 +1320,7 @@ def _parse_thread_settings(line: bytes) -> tuple[str | None, str | None]:
     """从 thread_settings_applied 记录提取模型和 service tier。"""
     try:
         item = json.loads(line)
-    except (UnicodeDecodeError, json.JSONDecodeError):
+    except UnicodeDecodeError, json.JSONDecodeError:
         return None, None
     payload = item.get("payload") if isinstance(item, dict) else None
     if (
@@ -1359,7 +1359,7 @@ def _parse_usage_event(
     """解析单条 TokenCount，并推进累计快照。"""
     try:
         item = json.loads(line)
-    except (UnicodeDecodeError, json.JSONDecodeError):
+    except UnicodeDecodeError, json.JSONDecodeError:
         return None, previous_total
     payload = item.get("payload") if isinstance(item, dict) else None
     if not isinstance(payload, dict) or payload.get("type") != "token_count":
@@ -1659,7 +1659,7 @@ def _configured_providers(codex_home: Path) -> tuple[dict[str, Any], str | None]
     """读取 config.toml 声明的 provider 与当前 model_provider。"""
     try:
         data = tomllib.loads((codex_home / "config.toml").read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError):
+    except OSError, UnicodeDecodeError, tomllib.TOMLDecodeError:
         return {}, None
     providers = data.get("model_providers")
     current = data.get("model_provider")
@@ -2954,7 +2954,7 @@ def supports_image_output(stream: Any = None) -> bool:
     target = stream or sys.stdout
     try:
         return bool(target.isatty() and image_environment_hint())
-    except (AttributeError, OSError, RuntimeError):
+    except AttributeError, OSError, RuntimeError:
         return False
 
 
