@@ -34,6 +34,8 @@ CI、构建缓存与发布的可复刻约定见 [GitHub Actions 偏好](github-a
 
 - 使用 GitHub Dependabot 提示依赖更新，在 `.github/dependabot.yml` 中配置项目实际使用的 package ecosystem 和目录；使用 GitHub Actions 时也覆盖 `github-actions`。
 - 常规版本更新优先每周一次（`schedule.interval: weekly`），PR 自动 assign 给 `DCjanus`（`assignees: [DCjanus]`）。
+- 默认不额外设置依赖发布冷却期或最小发布年龄，例如 Dependabot 的 `cooldown`、Renovate 的 `minimumReleaseAge`；用户或项目已有明确要求时遵循该要求。校验工具若要求这类等待，只豁免对应规则，不为了通过检查引入额外等待。
+- 不额外设置冷却期不等于显式设置为零；未获要求时不补 `cooldown: { default-days: 0 }` 等配置。需要说明升级时机时，核实并区分工具自身的隐含默认行为与项目显式配置，不把省略字段描述成零等待。
 - 按 ecosystem 将 minor、patch 等日常更新聚合为少量 PR，包括 lockfile 中的零碎版本更新；默认用 `groups`、`patterns: ["*"]` 和 `update-types: [minor, patch]`。major 更新单独提出，便于评估兼容性，不因未纳入日常分组而忽略它们。
 - 分组还要核对实际兼容性：`0.x` 的 minor 或上游明确带 breaking change 的更新不能只因版本类型叫 minor 就作为日常兼容更新。必要时将相关依赖从通用组排除，单独提出或只聚合兼容的 patch。
 - 每个 ecosystem 的 `open-pull-requests-limit` 可参考设为 `5`。按项目实际需要设置例外，不照搬其它仓库针对特定依赖的 `ignore`。
