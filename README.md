@@ -27,6 +27,8 @@ codex plugin marketplace upgrade dcjanus-plugins --json
 
 支持自动触发的 skill 可由 Codex 按需求选择；显式调用使用 `$dcjanus:github-cli` 等完整名称，也可在技能选择器中搜索短名称后选中。
 
+**Breaking change**：`codex-fast-delegation` 与 `codex-thread-coordination` 已合并重写为 [codex-agent-team](plugins/dcjanus/skills/codex-agent-team/SKILL.md)。更新插件后，将旧的显式调用和文档引用改为 `$dcjanus:codex-agent-team` 或新目录。统一入口按任务选择 subagent、独立 thread、模型和上下文，也支持既有会话的临时资源协调；委派不再依赖特定主模型白名单。
+
 ## Claude Code
 
 同一个 plugin 目录另有 [plugin.json](plugins/dcjanus/.claude-plugin/plugin.json)，skills 由 Claude Code 默认从 `skills/` 发现。每台电脑首次安装：
