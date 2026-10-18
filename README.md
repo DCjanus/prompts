@@ -27,6 +27,10 @@ codex plugin marketplace upgrade dcjanus-plugins --json
 
 支持自动触发的 skill 可由 Codex 按需求选择；显式调用使用 `$dcjanus:github-cli` 等完整名称，也可在技能选择器中搜索短名称后选中。
 
+## 不兼容变更
+
+`codex-agent-team` 已删除，不再随本仓库的 Codex plugin、Claude Code plugin 或 Pi package 分发，原有调用不再可用。
+
 ## Claude Code
 
 同一个 plugin 目录另有 [plugin.json](plugins/dcjanus/.claude-plugin/plugin.json)，skills 由 Claude Code 默认从 `skills/` 发现。每台电脑首次安装：
