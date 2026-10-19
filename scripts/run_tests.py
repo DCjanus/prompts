@@ -10,7 +10,7 @@
 #     "google-auth-httplib2>=0.4.4",
 #     "google-auth-oauthlib>=1.5.0",
 #     "gql[httpx2]>=4.4.0",
-#     "httpx2>=2.13.1",
+#     "httpx2>=2.14.0",
 #     "httpxyz>=0.42.1",
 #     "kittytgp>=0.0.3",
 #     "markdown-it-py>=4.2.0",
