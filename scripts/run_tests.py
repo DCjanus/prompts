@@ -4,13 +4,13 @@
 # requires-python = ">=3.15"
 # dependencies = [
 #     "blake3>=1.0.11",
-#     "duckdb>=1.5.6",
+#     "duckdb>=2.0.0",
 #     "fonttools>=4.67.0",
 #     "google-api-python-client>=2.201.0",
 #     "google-auth-httplib2>=0.4.4",
 #     "google-auth-oauthlib>=1.5.0",
 #     "gql[httpx2]>=4.4.0",
-#     "httpx2>=2.15.1",
+#     "httpx2>=2.16.0",
 #     "httpxyz>=0.42.1",
 #     "kittytgp>=0.0.3",
 #     "markdown-it-py>=4.2.0",

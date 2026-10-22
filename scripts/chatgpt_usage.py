@@ -3,7 +3,7 @@
 # /// script
 # requires-python = ">=3.15"
 # dependencies = [
-#     "duckdb>=1.5.6",
+#     "duckdb>=2.0.0",
 #     "kittytgp>=0.0.3",
 #     "resvg-py>=0.5.0",
 #     "rich>=15.0.0",
