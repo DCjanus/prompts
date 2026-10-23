@@ -1,0 +1,3 @@
+interface:
+  display_name: "Grafana CLI"
+  short_description: "查询指标并维护 Grafana 看板、数据源与告警"
