@@ -7,7 +7,7 @@
 #     "fonttools>=4.67.0",
 #     "rich>=15.0.0",
 #     "typer>=0.27.3",
-#     "uharfbuzz>=0.56.3",
+#     "uharfbuzz>=0.56.4",
 # ]
 # ///
 
