@@ -9,16 +9,6 @@
 
 ## 深链 bridge
 
-配套 Worker 位于 [worker](../worker)，生产地址为 `https://codex-thread-bridge.dcjanus.workers.dev`。它只接受 `/codex/open-thread/<UUID>`，并直接返回指向对应 `codex://threads/<UUID>` 的 `302`；无效路径返回 `404`，因此不能被用作任意 URL 的开放重定向器。重定向响应允许浏览器缓存 1 天，以减少同一链接重复点击产生的 Worker 请求。Cloudflare Static Assets 的重定向规则不允许 `codex://` 目标，因此该 bridge 必须执行一段最小 Worker 脚本；每个未命中浏览器缓存的点击会产生一次 Worker 请求。
+深链 Worker 独立维护，生产地址为 `https://codex-thread-bridge.dcjanus.workers.dev`。
 
-Worker 使用独立 pnpm package，需要 Node.js 22+。`cloudflare.config.ts` 管理 Worker，`wrangler.config.ts` 保留现有 bundler。以下命令在本 skill 目录执行：
-
-```bash
-pnpm --dir worker install --frozen-lockfile
-pnpm --dir worker test
-pnpm --dir worker build
-pnpm --dir worker exec cf deploy --dry-run
-pnpm --dir worker deploy
-```
-
-首次部署前执行 `pnpm --dir worker exec cf auth login`；cf 不复用 Wrangler 登录。CI 继续使用 `CLOUDFLARE_API_TOKEN` 和 `CLOUDFLARE_ACCOUNT_ID`。本地开发用 `pnpm --dir worker dev`，实时日志仍可执行 `pnpm --dir worker exec wrangler tail codex-thread-bridge`。
+它只接受 `/codex/open-thread/<UUID>`，并直接返回指向对应 `codex://threads/<UUID>` 的 `302`；无效路径返回 `404`，因此不能被用作任意 URL 的开放重定向器。重定向响应允许浏览器缓存 1 天，以减少同一链接重复点击产生的 Worker 请求。Cloudflare Static Assets 的重定向规则不允许 `codex://` 目标，因此该 bridge 必须执行一段最小 Worker 脚本；每个未命中浏览器缓存的点击会产生一次 Worker 请求。
