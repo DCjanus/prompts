@@ -1,0 +1,298 @@
+---
+name: gcx
+description: >
+  Manages Grafana Cloud resources via the gcx CLI. Trigger when the user wants to
+  inspect, create, update, delete, query, or automate any Grafana resource -
+  dashboards, datasources, alerts, SLOs, synthetic checks, oncall, incidents,
+  fleet, k6, knowledge graph, or adaptive telemetry.
+user-invocable: true
+disable-model-invocation: false
+allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Agent, AskUserQuestion
+---
+
+# gcx — Grafana Cloud CLI
+
+gcx is a unified CLI for Grafana Cloud, organized like kubectl: named contexts,
+structured output, and a consistent verb model across all resource types.
+
+## Discover Before You Act
+
+gcx has a built-in command catalog. Never guess a command — discover it first.
+Use **progressive disclosure** to minimize token cost:
+
+**Step 1 — Orient** (30 lines, all top-level groups):
+```bash
+gcx help-tree --depth 1 -o text
+```
+
+**Step 2 — Drill down** (5-20 lines per group):
+```bash
+gcx help-tree <group> -o text      # full subtree for one group
+gcx <group> <subcommand> --help    # exact flags and args
+```
+
+**Build payloads:**
+```bash
+gcx resources list-types <kind>     # resource types + JSON schema for a type
+gcx resources list-examples <kind>  # example manifest
+```
+
+Only fall back to `gcx commands --flat -o json` when you need structured metadata
+for automation - the output is hundreds of kilobytes and unsuitable for orientation.
+
+### Intent-to-Group Quick Reference
+
+When you already know the user's intent, skip discovery and go straight to the
+right group:
+
+| Intent | Group | Example |
+|--------|-------|---------|
+| Dashboards, folders, K8s resources | `resources` | `gcx resources get dashboards` |
+| SLO definitions and reports | `slo` | `gcx slo definitions list` |
+| Alert rule status, notification settings | `alert` | `gcx alert rules list` |
+| Create/modify/delete alert rules | `resources` | `gcx resources pull alertrules -p ./rules`, edit, `gcx resources push -p ./rules` |
+| Datasource-managed (Mimir/Loki ruler) rules | `alert ruler` | `gcx alert ruler groups list --datasource <uid>` |
+| Synthetic Monitoring checks | `synthetic-monitoring` | `gcx synthetic-monitoring checks list` |
+| IRM (OnCall + Incidents) | `irm` | `gcx irm oncall schedules list`, `gcx irm incidents list` |
+| k6 load tests, projects, runs | `k6` | `gcx k6 load-tests list` |
+| PromQL / Adaptive Metrics | `metrics` | `gcx metrics query -d <uid> 'up'` |
+| Metric names, labels, metadata | `metrics` | `gcx metrics list-names -d <uid> --contains <term> -o json` |
+| LogQL / Adaptive Logs | `logs` | `gcx logs query -d <uid> '{app="foo"}'` |
+| Profiling (Pyroscope) | `profiles` | `gcx profiles query` |
+| Tracing (Tempo) | `traces` | `gcx traces query -d <uid> '{ status = error }'` (see Tempo LLM-friendly output below) |
+| Datasource info and queries | `datasources` | `gcx datasources list` |
+| Fleet pipelines, collectors | `fleet` | `gcx fleet pipelines list` |
+| Knowledge Graph (Asserts), service dependencies | `kg` | `gcx kg entities list`, `gcx kg graph query "<cypher>" --since 1h` |
+| Frontend Observability | `frontend` | `gcx frontend apps list` |
+| App Observability | `appo11y` | `gcx appo11y overrides get` |
+
+Each signal group has its own discovery commands, for example `gcx metrics labels`,
+`gcx logs labels`, and `gcx traces labels`; `gcx help-tree <group> --depth 1 -o text`
+lists them. Some command areas also have a workflow skill:
+`gcx help-tree --depth 1 -o text` marks them with `# skill:`, `gcx <group> --help`
+lists them under Related skills, and `gcx agent skills get <name> -o text` prints
+one your harness hasn't loaded. Dashboard authoring uses `create-dashboard`.
+
+If no command exists for the requested operation, say so and propose the nearest
+supported flow.
+
+### Avoid Raw API Passthrough
+
+**Do not use `gcx api`** when a dedicated command exists. `gcx api` is a low-level
+fallback for endpoints not yet covered by dedicated commands. Dedicated commands
+provide proper output formatting, pagination, error handling, and token-efficient
+output. Check the intent-to-group table above first.
+
+Similarly, prefer `gcx metrics query` over `gcx datasources query <prometheus-uid>`
+for PromQL queries — the signal-specific command handles datasource resolution
+automatically.
+
+## Target Context
+
+When the target context is known, pass `--context <name>` directly;
+no separate configuration or connectivity check is needed.
+Inspect configuration only when the target is ambiguous or a request fails
+with a configuration, authentication, or connectivity error:
+- `gcx config list-contexts` — list configured contexts and their servers
+- `gcx config current-context` — show the active context name
+- `gcx config check` — validate the active context and test connectivity
+- `gcx config view` — inspect configuration with secrets redacted
+
+## Output Control
+
+| Intent | Flag |
+|--------|------|
+| Structured output for parsing | `-o json` |
+| Field selection | `--json <field1,field2>` (use `--json list` or `--json ?` to discover fields) |
+| Full table output (no truncation) | `--no-truncate` |
+| YAML output | `-o yaml` |
+| Wide table with extra columns | `-o wide` |
+
+Default to `-o json` when working programmatically.
+
+## Safe Mutation Workflow
+
+Follow this sequence for any change. Skip steps only when the user explicitly
+asks for speed.
+
+1. **Verify context** — confirm which environment is targeted
+2. **Read current state** — list or get the resource first
+3. **Build from template** — use list-types/list-examples output, not hand-crafted payloads
+4. **Preview** — use `--dry-run` where available before applying
+5. **Apply** — create, update, or delete
+6. **Verify** — re-read the resource to confirm the change landed
+
+## Key Flags for Operations
+
+| Intent | Flag |
+|--------|------|
+| Preview without changing anything | `--dry-run` |
+| Target a specific context | `--context <name>` |
+| Continue on errors vs stop | `--on-error fail\|ignore\|abort` |
+| Control concurrency | `--max-concurrent <n>` (default 10) |
+
+## Resource Operations
+
+The `gcx resources` group handles CRUD for Grafana's K8s-tier resources:
+- `get` — list or fetch resources
+- `push` — create or update from local files
+- `pull` — export resources to local files
+- `delete` — remove resources
+- `edit` — edit resources interactively
+- `validate` — validate local files against a live instance
+- `list-types` — discover available resource types and their schemas
+- `list-examples` — list example manifests for resource types
+
+All resource commands accept selectors: `gcx resources get dashboards`,
+`gcx resources get dashboards/my-dash`, `gcx resources get dashboards folders`.
+
+## Datasource Queries
+
+The `gcx datasources` group provides typed query interfaces:
+- `list` / `get` — discover available datasources (`get -o yaml` emits an apply-ready manifest)
+- `prometheus` — PromQL queries (query, labels, metadata, targets)
+- `loki` — LogQL queries (query, labels, series)
+- `pyroscope` — profiling queries
+- `tempo` — trace queries
+- `generic` — auto-detect datasource type
+
+Use `gcx datasources <type> --help` to discover type-specific flags.
+
+### Datasource lifecycle (declarative CRUD)
+
+Manage datasource instances with Kubernetes-style manifests (file or stdin):
+- `create -f FILE` / `update UID -f FILE` — apply a manifest; `--dry-run` previews
+  a secret-redacted diff. Secrets go in the top-level `secure` block via
+  `{create: <value>}`, `{fromEnv: <VAR>}`, or `{fromFile: <path>}` — never on argv.
+- `delete UID...` — prompts unless `--force`/`--yes` (auto-approved in agent mode);
+  batch-safe with partial-failure exit code 4.
+- `health [UID]` — exit 0 healthy, 4 unhealthy (resource failure), 1/2/3 command failure.
+- `schemas get --type <plugin>` — plugin configuration schema (when the server
+  serves the datasource app-platform API).
+
+Custom HTTP headers use the flat convention: name in `jsonData.httpHeaderName{N}`,
+value (secret) in `secure.httpHeaderValue{N}`.
+
+### Tempo LLM-friendly output for agents
+
+When fetching Tempo tag values or full trace bodies for this agent to inspect,
+summarize, debug, or include in a prompt, prefer Tempo's compact LLM-friendly
+encoding:
+
+```bash
+# Attribute values grouped by type instead of repeated {type,value} objects.
+gcx traces tags -d <tempo-uid> -l resource.service.name --llm -o json
+
+# Full trace body in Tempo's LLM-friendly trace encoding.
+gcx traces get -d <tempo-uid> <trace-id> --llm -o json
+# When the search's time range is known:
+gcx traces get -d <tempo-uid> <trace-id> --from <search-from> --to <search-to> --llm -o json
+# equivalent legacy path:
+gcx datasources tempo get -d <tempo-uid> <trace-id> --llm -o json
+```
+
+Use `gcx traces labels -d <tempo-uid>` to discover attribute names first. Use
+`gcx traces query` to find trace IDs, then `gcx traces get --llm -o json` to inspect
+a selected trace. Pass `--since` or `--from`/`--to` (e.g. the search's time range)
+to make the lookup much faster. Omit them when the time range is unknown; a
+range that misses the trace returns not found.
+Omit `--llm` only when the user explicitly needs raw Tempo/OTLP JSON or the
+standard `tagValues: [{type, value}]` shape for schema/debugging work.
+
+### Shrinking large traces before analysis
+
+`gcx traces get` supports V2 filtering and span pruning (both experimental) —
+reach for these before manually truncating a huge `--llm` payload yourself:
+
+```bash
+# Only error spans, plus each match's ancestor path to the root.
+gcx traces get -d <tempo-uid> <trace-id> --filter '{ status = error }' --keep-hierarchy --llm -o json
+
+# Collapse repeated sibling spans (e.g. a fan-out of identical DB calls)
+# into one aggregated span. Safe to combine with --filter.
+gcx traces get -d <tempo-uid> <trace-id> --prune --llm -o json
+```
+
+`--filter` takes a TraceQL spanset filter; `--match-depth`/`--ancestor-depth`
+tune how many descendant/ancestor levels around each match are kept and are
+ignored without `--filter`. `--prune` is a bool, off unless set. 
+`--prune-group-by`/`--prune-min-spans`/`--prune-max-parent-depth`
+tune the pruning behavior and apply only when `--prune` enables pruning. Run
+`gcx traces get --help` for full flag details.
+
+If a response is too large for `-o agents`, it spills to a file with a hint
+to read it directly or re-run narrower (e.g. with `--filter` or `--prune`).
+
+## Grafana Assistant
+
+Grafana Assistant is a separate AI agent in Grafana that gcx can hand work to.
+Handing work to it is the user's choice, so start Assistant work when the user
+asks for Grafana Assistant (a prompt, a conversation, an Assistant investigation,
+or a Watcher), or when you are continuing an Assistant workflow the user or
+project has set up. Continuing an authorized workflow does not need fresh
+confirmation each time.
+
+Everything else stays on direct commands: discovery, queries, resource
+operations, and requests to investigate or root-cause a problem. Direct commands
+return the data for you to reason over, give repeatable results, and start no
+Assistant work. None of these is a reason to start Assistant work:
+- You don't yet know which metrics or labels exist, or a query comes back empty:
+  keep discovering with the signal's own commands (see Discover Before You Act).
+- A request fails with 401/403: check the context as described in Target Context,
+  then name the missing permission or credential and what would grant it.
+- Data or a capability is genuinely missing: say what is missing and what would
+  fix it.
+
+For incident and root-cause work, `investigate-alert` and `debug-with-grafana`
+cover the direct workflow.
+
+When the user or project rules out Grafana Assistant, don't start Assistant work
+at all. Reading results the user points you to, such as
+`gcx assistant investigations get <id>` or `gcx assistant conversation get <id>`,
+does not start new work.
+
+Starting Assistant work (`gcx assistant prompt`; creating or resuming an
+investigation; creating, starting, or running a Watcher;
+`gcx instrumentation check --fix-plan=assistant`) consumes Assistant tokens,
+which can be billed; see
+[Assistant pricing](https://grafana.com/docs/grafana-cloud/platform/pricing-and-usage/assistant.md).
+
+```bash
+# Start Assistant work
+gcx assistant prompt "Why is checkout-latency firing?" --json
+gcx assistant prompt "Dig into the database connection issue" --continue
+# v1 stacks require --title and v2 stacks require --instruction; pass both
+gcx assistant investigations create --title="Checkout latency" --instruction="Checkout latency spike after deploy"
+
+# Read existing results without starting new work
+gcx assistant investigations get <id>
+gcx assistant investigations get-narrative <id>
+```
+
+## Provider Commands
+
+Product-specific providers register their own top-level command groups.
+Discover them with `gcx providers`, then explore with `gcx <provider> --help`.
+
+Each provider adds domain-specific subcommands for managing that product's
+resources. The set of providers grows over time — always discover rather than
+hardcode.
+
+## Parallelism
+
+gcx commands are stateless API calls. When multiple operations are independent
+(no output dependency between them), issue them as parallel Bash tool calls in
+a single message. This applies to:
+
+- Multiple list/get calls across different resource types
+- Multiple schema/example fetches
+- Independent create/update operations
+- Concurrent datasource queries
+
+Only sequence commands when a later call needs output from an earlier one.
+
+## Secret Safety
+
+Never read raw config files — they contain plaintext tokens. Use `gcx config view`
+(which redacts secrets) for inspection. When passing tokens to external tools,
+use shell variables rather than inline values.
