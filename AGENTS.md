@@ -22,13 +22,6 @@
 - 破坏既有对外契约时，显著标记 breaking change，说明影响与迁移方法。
 - 保留用户已有改动；默认不改写 Git 历史，例外按用户或项目明确要求执行。
 
-## 文档边界
-
-- 按文档的目标读者和任务选择内容，只写会影响其使用、操作、判断或排障的信息；代码或配置发生变化，不自动意味着需要扩写相关文档。
-- README 只承担项目简介、快速上手和资料导航，用最少的步骤与示例让读者开始使用。详细使用指南、完整参数说明、配置参考和技术说明放入专门文档，README 按需链接，不展开长篇使用教程。
-- CONTRIBUTING.md 和 RELEASE.md 分别保留贡献与发布所需的准备、操作和必要约束。CI job 拓扑、缓存策略、附件上传机制等实现细节，只有影响该读者的必要操作或判断时才提炼写入，不顺手记录实现过程或复述配置。
-- 实现细节维护在对应代码、脚本、配置及必要的就近注释中；确需解释设计取舍时放入相关设计文档。避免在无关文档中重复维护同一事实。
-
 ## Markdown 加粗渲染兼容
 
 本节为 Codex CLI 和 Codex Desktop 的临时兼容约定；经复测确认两端均已解决相关显示问题后，删除本节。
@@ -52,7 +45,7 @@
 
 仅在任务相关时使用以下 skills。
 
-- Git 提交与协作交付：repository-workflow；GitHub/GitLab 交互：对应平台 skill。
+- Git 提交、协作交付与仓库文档编写整理：repository-workflow；GitHub/GitLab 交互：对应平台 skill。
 - Linear 个人任务管理与平台操作：dcjanus-tasklog。
 - 临时 Python、执行环境与 Python 检查：python-execution；可复用单文件 CLI：uv-cli-creator。
 - 依赖或项目版本变更：dependency-management；技术选型：dcjanus-preferences。
