@@ -2,10 +2,10 @@
 [[fonts]]
 name = "sarasa"
 repository = "be5invis/Sarasa-Gothic"
-tag = "v1.0.42"
-asset = "Sarasa-SuperTTC-1.0.42.zip"
-sha256 = "8336401deb67fcd1a3279fe1e3e9f7dfaf7df4d195cb00e2554eedddae54eaf4"
-observed_latest = 397272023
+tag = "v1.0.43"
+asset = "Sarasa-SuperTTC-1.0.43.zip"
+sha256 = "c544bc3605d7424f3d002bba82ab4d5f5f2fed53cbd53c6f55a9df37204b920c"
+observed_latest = 423087877
 members = ["Sarasa-SuperTTC.ttc"]
 
 [[fonts]]
