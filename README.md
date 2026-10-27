@@ -31,8 +31,6 @@ codex plugin marketplace upgrade dcjanus-plugins --json
 
 `codex-agent-team` 已删除，不再随本仓库的 Codex plugin、Claude Code plugin 或 Pi package 分发，原有调用不再可用。
 
-`codex-session-reader` 已删除，原有显式调用不再可用；读取 Codex 会话请使用原生 `tui.read_thread`。
-
 ## Claude Code
 
 同一个 plugin 目录另有 [plugin.json](plugins/dcjanus/.claude-plugin/plugin.json)，skills 由 Claude Code 默认从 `skills/` 发现。每台电脑首次安装：
