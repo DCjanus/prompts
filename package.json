@@ -9,7 +9,6 @@
   "pi": {
     "skills": [
       "./plugins/dcjanus/skills",
-      "!**/codex-session-reader",
       "!**/codex-thread-namer"
     ]
   }

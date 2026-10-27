@@ -31,6 +31,8 @@ codex plugin marketplace upgrade dcjanus-plugins --json
 
 `codex-agent-team` 已删除，不再随本仓库的 Codex plugin、Claude Code plugin 或 Pi package 分发，原有调用不再可用。
 
+`codex-session-reader` 已删除，原有显式调用不再可用；读取 Codex 会话请使用原生 `tui.read_thread`。
+
 ## Claude Code
 
 同一个 plugin 目录另有 [plugin.json](plugins/dcjanus/.claude-plugin/plugin.json)，skills 由 Claude Code 默认从 `skills/` 发现。每台电脑首次安装：
@@ -40,7 +42,7 @@ claude plugin marketplace add DCjanus/prompts
 claude plugin install dcjanus@dcjanus-plugins
 ```
 
-Claude Code 的 plugin.json 不声明 `version`，以 Git commit 作为版本，内容更新无需修改版本号。合并 PR 后希望立即更新时运行 `claude plugin marketplace update dcjanus-plugins` 和 `claude plugin update dcjanus@dcjanus-plugins`，再新开会话。显式调用使用 `/dcjanus:github-cli` 这样的名称。Codex 中 `allow_implicit_invocation: false` 的 skill 在 `SKILL.md` frontmatter 中同步声明 `disable-model-invocation: true`，测试会检查两者一致。Codex 专有的 skill（如 `codex-session-reader`、`codex-thread-namer`）同样会被加载，可在 `/plugin` 中查看或按需忽略。`AGENTS.md` 不由 plugin 加载，需要按需软链到 `~/.claude/CLAUDE.md`。
+Claude Code 的 plugin.json 不声明 `version`，以 Git commit 作为版本，内容更新无需修改版本号。合并 PR 后希望立即更新时运行 `claude plugin marketplace update dcjanus-plugins` 和 `claude plugin update dcjanus@dcjanus-plugins`，再新开会话。显式调用使用 `/dcjanus:github-cli` 这样的名称。Codex 中 `allow_implicit_invocation: false` 的 skill 在 `SKILL.md` frontmatter 中同步声明 `disable-model-invocation: true`，测试会检查两者一致。Codex 专有的 `codex-thread-namer` 同样会被加载，可在 `/plugin` 中查看或按需忽略。`AGENTS.md` 不由 plugin 加载，需要按需软链到 `~/.claude/CLAUDE.md`。
 
 ## Pi
 
@@ -50,7 +52,7 @@ Claude Code 的 plugin.json 不声明 `version`，以 Git commit 作为版本，
 pi install git:github.com/DCjanus/prompts
 ```
 
-Pi 会加载 `pi.skills` 声明的全部 skill，显式调用使用 `/skill:github-cli` 这样的名称，没有 Codex 的 `$dcjanus:` 命名空间。内容更新后运行 `pi update --extensions`；Pi 只在启动时提示包更新，不会自动应用。Codex 专有的 skill（如 `codex-session-reader`、`codex-thread-namer`）也会被加载，可用 `pi config` 单独关闭。`AGENTS.md` 与 Codex 的情形一致，不由 package 自动加载，需要按需软链到 `~/.pi/agent/AGENTS.md`。
+Pi 会加载 `pi.skills` 声明的全部 skill，显式调用使用 `/skill:github-cli` 这样的名称，没有 Codex 的 `$dcjanus:` 命名空间。内容更新后运行 `pi update --extensions`；Pi 只在启动时提示包更新，不会自动应用。Codex 专有的 `codex-thread-namer` 不随 Pi package 加载。`AGENTS.md` 与 Codex 的情形一致，不由 package 自动加载，需要按需软链到 `~/.pi/agent/AGENTS.md`。
 
 ## 开发
 
