@@ -1,6 +1,6 @@
 ---
 name: repository-workflow
-description: 处理从本地 Git 变更到 GitHub/GitLab 协作发布的完整工作流；适用于创建或更新分支、语义化 commit message、commit、push、Issue/PR/MR 文案、inline review reply、Breaking Change 与提交范围核对。纯只读的平台查询不使用本 skill。
+description: 处理从本地 Git 变更到 GitHub/GitLab 协作发布的完整工作流；适用于仓库文档编写与整理、创建或更新分支、语义化 commit message、commit、push、Issue/PR/MR 文案、inline review reply、Breaking Change 与提交范围核对。纯只读的平台查询不使用本 skill。
 ---
 
 # Repository Workflow
@@ -9,6 +9,7 @@ description: 处理从本地 Git 变更到 GitHub/GitLab 协作发布的完整�
 
 ## 路由
 
+- 编写、修改或整理 README、贡献指南、发布手册等仓库文档时，读取 [文档边界](references/documentation.md)；只提交或推送代码时无需加载。
 - 涉及 commit 或 commit message 时，先完整读取 [commit-messages.md](references/commit-messages.md)。
 - 涉及 Issue、PR/MR 标题或正文、Breaking Change 展示、inline review reply 时，先完整读取 [change-requests.md](references/change-requests.md)。PR/MR 标题还要读取 [commit-messages.md](references/commit-messages.md)。
 - 只涉及 branch、push 或历史管理时，使用本文件即可。

@@ -332,9 +332,16 @@ def test_ci_input_fingerprint_changes_with_scripts(tmp_path):
 def test_release_notes_use_bundled_source_versions(tmp_path):
     import zipfile
 
-    manifest = sources.DEFAULT_MANIFEST.read_text().replace(
-        'tag = "2.700"', 'tag = "2.777"'
-    )
+    manifest = """[[fonts]]
+name = "sarasa"
+repository = "be5invis/Sarasa-Gothic"
+tag = "v9.8.7"
+
+[[fonts]]
+name = "lilex"
+repository = "mishamyrt/Lilex"
+tag = "2.777"
+"""
     bundle = tmp_path / "terminal-fonts.zip"
     with zipfile.ZipFile(bundle, "w") as archive:
         archive.writestr("terminal-fonts.toml", manifest)
@@ -360,7 +367,7 @@ def test_release_notes_use_bundled_source_versions(tmp_path):
     assert result.exit_code == 0, result.exception
     content = output.read_text()
     assert "## 上游来源" in content
-    assert "releases/tag/2.777" in content and "2.700" not in content
-    assert "releases/tag/v1.0.42" in content
+    assert "github.com/mishamyrt/Lilex/releases/tag/2.777" in content
+    assert "github.com/be5invis/Sarasa-Gothic/releases/tag/v9.8.7" in content
     assert 'font-family = "DCjanus Mono SC"' in content
     assert f"<!-- terminal-font-inputs: {'b' * 64} -->" in content

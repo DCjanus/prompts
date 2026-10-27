@@ -2,6 +2,12 @@
 
 将 Lilex 的西文字形与更纱 Term SC 的中文、框线合并为单一字体，包含 Regular、Bold、Italic、Bold Italic 四个样式。Ghostty 无需 `font-codepoint-map`，常规、粗体及斜体直接选择同一家族中的对应样式。
 
+## 为什么要合并字体
+
+我希望同时使用 Lilex 的西文字形和更纱 Term SC 的中文与框线，并让普通、粗体、斜体和粗斜体保持一致。Zed 虽然支持后备字体，但不能按字符范围指定字体；相关的 [symbol map 功能请求](https://github.com/zed-industries/zed/issues/4979)仍未实现。Ghostty 的 `font-codepoint-map` 可以指定范围，但[映射字符不会根据文本样式选择对应的字体样式](https://github.com/ghostty-org/ghostty/blob/main/src/font/CodepointResolver.zig)，因此粗体或斜体可能无法正常显示。
+
+将两套字体合并为一个包含四种样式的字体家族后，编辑器和终端可以直接选择这个家族，无需依赖字符映射来组合字形。
+
 ## 下载与安装
 
 从 [固定字体 release](https://github.com/DCjanus/prompts/releases/tag/terminal-fonts-latest) 下载 `terminal-fonts.zip`。解压后将四个 `.ttf` 安装到 macOS 的 `~/Library/Fonts/`；其他系统按其字体安装方式处理。压缩包还包含来源清单、构建报告、两份 OFL 许可证和 `ghostty.font.conf`。

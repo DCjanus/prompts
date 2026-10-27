@@ -1,76 +1,38 @@
 # prompts
 
-DCjanus 的个人 skills，同一份 `plugins/dcjanus/skills` 同时包装为 Codex plugin、Claude Code plugin 和原生 Pi package，均借助 Git 在多台电脑上安装和更新。
+一组我日常使用的 Codex skills，把开发协作、工具操作和个人偏好整理成可以重复使用的工作流。
 
-- [dcjanus](plugins/dcjanus)：plugin 及其 skills、脚本和第三方许可。
-- [marketplace.json](.agents/plugins/marketplace.json)：Codex 的 `dcjanus-plugins` marketplace；[Claude Code 版](.claude-plugin/marketplace.json)同名，指向同一个 plugin。
-- [package.json](package.json)：复用同一套 skills 的 Pi package manifest。
-- [AGENTS.md](AGENTS.md)：独立维护的全局个人约定，不由 plugin 自动加载，新电脑按需单独配置。
-- [macOS Amphetamine 配置检查](docs/amphetamine-checklist.md)：交给 Codex 使用 Computer Use 检查插电保持唤醒、电池模式恢复原有行为的独立说明。
+你可以用它让 Codex 协助处理 GitHub 和 GitLab 上的工作、管理依赖、探索领域模型，或与 Gmail、Google Calendar、Linear 等服务交互。这里也有用于拆解复杂问题、逐步学习和审视方案的 skills。
 
-## 安装与更新
+这套工具根据我的工作方式编写，部分 skill 包含个人偏好或需要单独配置服务凭据。欢迎浏览 [skills 目录](plugins/dcjanus/skills)，挑选适合自己的部分。
 
-每台电脑需要支持 plugin 命令的 Codex CLI（已验证 `0.153.4`）、Git 和 [uv](https://github.com/astral-sh/uv)。仓库脚本最低要求 Python 3.15，uv 会按脚本声明自动安装所需解释器。首次安装：
+## 开始使用
+
+需要支持 plugin 命令的 Codex CLI、Git 和 [uv](https://github.com/astral-sh/uv)。安装 marketplace 和 plugin：
 
 ```bash
 codex plugin marketplace add DCjanus/prompts --ref master
 codex plugin add dcjanus@dcjanus-plugins
 ```
 
-Codex app-server 启动时会尝试刷新配置的 Git marketplace 及已安装插件；本仓库不安装定时任务。合并 PR 后希望立即更新时运行：
+安装后，Codex 可以按任务选择适用的 skill；也可以显式调用，例如 `$dcjanus:github-cli`。使用外部服务的 skill 需要在本机配置相应的凭据和工具。
+
+更新插件：
 
 ```bash
 codex plugin marketplace upgrade dcjanus-plugins --json
 ```
 
-检查输出中的 `errors`，更新后用新任务验证。内容更新不要求每次修改 plugin 版本号；不要直接编辑安装缓存。外部服务凭据和所需工具仍由各台电脑独立配置。
+## 其他资源
 
-支持自动触发的 skill 可由 Codex 按需求选择；显式调用使用 `$dcjanus:github-cli` 等完整名称，也可在技能选择器中搜索短名称后选中。
+- [AGENTS.md](AGENTS.md)：我在本机使用的 Agent 工作约定，可单独配置。
+- [Codex 用量工具](scripts/chatgpt_usage.py)：查看额度与本地用量。
+- [终端字体](docs/terminal-fonts.md)：DCjanus Mono SC 的生成说明。
+- [macOS Amphetamine 配置检查](docs/amphetamine-checklist.md)：借助 Computer Use 检查电源相关设置。
+- [贡献指南](CONTRIBUTING.md)：开发和依赖维护约定。
 
-## 不兼容变更
+## 第三方来源
 
-`codex-agent-team` 已删除，不再随本仓库的 Codex plugin、Claude Code plugin 或 Pi package 分发，原有调用不再可用。
-
-## Claude Code
-
-同一个 plugin 目录另有 [plugin.json](plugins/dcjanus/.claude-plugin/plugin.json)，skills 由 Claude Code 默认从 `skills/` 发现。每台电脑首次安装：
-
-```bash
-claude plugin marketplace add DCjanus/prompts
-claude plugin install dcjanus@dcjanus-plugins
-```
-
-Claude Code 的 plugin.json 不声明 `version`，以 Git commit 作为版本，内容更新无需修改版本号。合并 PR 后希望立即更新时运行 `claude plugin marketplace update dcjanus-plugins` 和 `claude plugin update dcjanus@dcjanus-plugins`，再新开会话。显式调用使用 `/dcjanus:github-cli` 这样的名称。Codex 中 `allow_implicit_invocation: false` 的 skill 在 `SKILL.md` frontmatter 中同步声明 `disable-model-invocation: true`，测试会检查两者一致。Codex 专有的 skill（如 `codex-session-reader`、`codex-thread-namer`）同样会被加载，可在 `/plugin` 中查看或按需忽略。`AGENTS.md` 不由 plugin 加载，需要按需软链到 `~/.claude/CLAUDE.md`。
-
-## Pi
-
-同一份 `plugins/dcjanus/skills` 通过 [package.json](package.json) 的 `pi` manifest 作为原生 [Pi](https://pi.dev/) package 分发。每台电脑安装 Pi 后：
-
-```bash
-pi install git:github.com/DCjanus/prompts
-```
-
-Pi 会加载 `pi.skills` 声明的全部 skill，显式调用使用 `/skill:github-cli` 这样的名称，没有 Codex 的 `$dcjanus:` 命名空间。内容更新后运行 `pi update --extensions`；Pi 只在启动时提示包更新，不会自动应用。Codex 专有的 skill（如 `codex-session-reader`、`codex-thread-namer`）也会被加载，可用 `pi config` 单独关闭。`AGENTS.md` 与 Codex 的情形一致，不由 package 自动加载，需要按需软链到 `~/.pi/agent/AGENTS.md`。
-
-## 开发
-
-开发时修改 Git checkout 并创建 PR；提交前遵循 [贡献指南](CONTRIBUTING.md)，使用 [run_tests.py](scripts/run_tests.py) 运行脚本测试并检查脚本依赖。安装 Codex CLI 后，它还会在独立临时配置中验证插件安装、技能发现与调用入口，以及同版本 Git 更新，不修改日常安装。
-
-## 工具入口
-
-- [chatgpt_usage.py](scripts/chatgpt_usage.py)：查看 Codex 额度与本地用量，本地统计按 provider 拆分（默认 `openai`，可用 `--provider` 切换，`providers` 子命令列出本机可用 provider）。价格表通常缓存 24 小时；本次统计中有模型无法匹配价格时，缓存有效期缩短为 1 小时，到期后在运行时刷新并计价。刷新后仍未知的模型，终端和 SVG 会标出未估价 Token 与模型；JSON 的 `estimated_cost_usd` 为 `null`，`priced_cost_usd` 仅表示已知价格的小计，`unpriced_models` 列出未估价模型。
-- [run_tests.py](scripts/run_tests.py)：运行仓库测试。
-- [script_deps.py](scripts/script_deps.py)：检查或升级脚本依赖。
-- [upstream_skills.py](scripts/upstream_skills.py)：按 [upstream-skills.toml](upstream-skills.toml) 检查上游 skill 更新。
-
-- [终端合并字体](docs/terminal-fonts.md)：生成 DCjanus Mono SC 四样式字体；PR 检查上游更新，CI 构建并覆盖固定字体 release。
-
-## 编写指南
-
-提示词参考 OpenAI 官方的 [GPT-6 Astra 提示词建议](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-6-astra#prompting-best-practices)和 [AGENTS.md 加载规则](https://developers.openai.com/codex/guides/agents-md)；技能编写遵循 [OpenAI skills 指南](https://developers.openai.com/codex/skills)。
-
-## 第三方来源与许可
-
-- [grill-me](plugins/dcjanus/skills/grill-me/SKILL.md)：改编自 Matt Pocock 的 [grilling](https://github.com/mattpocock/skills/blob/95249b0b49782349740fd9b8c6ce32b4e59e497a/skills/productivity/grilling/SKILL.md)，按 [MIT License](plugins/dcjanus/licenses/grill-me/LICENSE) 使用。
-- [domain-modeling](plugins/dcjanus/skills/domain-modeling/SKILL.md)：翻译自 Matt Pocock 的 [domain-modeling](https://github.com/mattpocock/skills/blob/d80fa0f4ebe0c5714af0adf8670336065233ecc6/skills/engineering/domain-modeling/SKILL.md)，按 [MIT License](plugins/dcjanus/licenses/domain-modeling/LICENSE) 使用。领域词汇表使用 `GLOSSARY.md`，多上下文索引使用 `GLOSSARY-MAP.md`；沿用旧约定的项目需将 `CONTEXT.md`、`CONTEXT-MAP.md` 分别重命名，并更新索引和其它文档中的链接。
-- [grafana-cli](plugins/dcjanus/skills/grafana-cli/SKILL.md)：复用 Grafana 官方 [gcx skill](https://github.com/grafana/gcx/blob/3891025ccae6d5854571cb8c4cb4d22f80d4d8db/claude-plugin/skills/gcx/SKILL.md)，按 [Apache License 2.0](plugins/dcjanus/licenses/grafana-cli/LICENSE) 分发官方参考；补充自托管匿名组织、目标 context 和资源代码管理边界。
+- [grill-me](plugins/dcjanus/skills/grill-me/SKILL.md) 改编自 Matt Pocock 的 [grilling](https://github.com/mattpocock/skills/blob/95249b0b49782349740fd9b8c6ce32b4e59e497a/skills/productivity/grilling/SKILL.md)，按 [MIT License](plugins/dcjanus/licenses/grill-me/LICENSE) 使用。
+- [domain-modeling](plugins/dcjanus/skills/domain-modeling/SKILL.md) 翻译自 Matt Pocock 的 [domain-modeling](https://github.com/mattpocock/skills/blob/d80fa0f4ebe0c5714af0adf8670336065233ecc6/skills/engineering/domain-modeling/SKILL.md)，按 [MIT License](plugins/dcjanus/licenses/domain-modeling/LICENSE) 使用。
+- [grafana-cli](plugins/dcjanus/skills/grafana-cli/SKILL.md) 复用 Grafana 官方 [gcx skill](https://github.com/grafana/gcx/blob/3891025ccae6d5854571cb8c4cb4d22f80d4d8db/claude-plugin/skills/gcx/SKILL.md)，按 [Apache License 2.0](plugins/dcjanus/licenses/grafana-cli/LICENSE) 分发。
