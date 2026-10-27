@@ -1,10 +1,9 @@
 # prompts
 
-DCjanus 的个人 skills，同一份 `plugins/dcjanus/skills` 同时包装为 Codex plugin 和原生 Pi package，均借助 Git 在多台电脑上安装和更新。
+DCjanus 的个人 Codex skills，通过 Git marketplace 在多台电脑上安装和更新。
 
 - [dcjanus](plugins/dcjanus)：plugin 及其 skills、脚本和第三方许可。
 - [marketplace.json](.agents/plugins/marketplace.json)：Codex 的 `dcjanus-plugins` marketplace。
-- [package.json](package.json)：复用同一套 skills 的 Pi package manifest。
 - [AGENTS.md](AGENTS.md)：独立维护的全局个人约定，不由 plugin 自动加载，新电脑按需单独配置。
 - [macOS Amphetamine 配置检查](docs/amphetamine-checklist.md)：交给 Codex 使用 Computer Use 检查插电保持唤醒、电池模式恢复原有行为的独立说明。
 
@@ -29,17 +28,7 @@ codex plugin marketplace upgrade dcjanus-plugins --json
 
 ## 不兼容变更
 
-`codex-agent-team` 已删除，不再随本仓库的 Codex plugin 或 Pi package 分发，原有调用不再可用。
-
-## Pi
-
-同一份 `plugins/dcjanus/skills` 通过 [package.json](package.json) 的 `pi` manifest 作为原生 [Pi](https://pi.dev/) package 分发。每台电脑安装 Pi 后：
-
-```bash
-pi install git:github.com/DCjanus/prompts
-```
-
-Pi 会加载 `pi.skills` 声明的全部 skill，显式调用使用 `/skill:github-cli` 这样的名称，没有 Codex 的 `$dcjanus:` 命名空间。内容更新后运行 `pi update --extensions`；Pi 只在启动时提示包更新，不会自动应用。Codex 专有的 `codex-thread-namer` 不随 Pi package 加载。`AGENTS.md` 与 Codex 的情形一致，不由 package 自动加载，需要按需软链到 `~/.pi/agent/AGENTS.md`。
+`codex-agent-team` 已删除，不再随本仓库的 Codex plugin 分发，原有调用不再可用。
 
 ## 开发
 
