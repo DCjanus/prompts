@@ -4,7 +4,7 @@
 # requires-python = ">=3.15"
 # dependencies = [
 #     "blake3>=1.0.11",
-#     "fonttools>=4.67.0",
+#     "fonttools>=4.68.0",
 #     "rich>=15.0.0",
 #     "typer>=0.27.3",
 #     "uharfbuzz>=0.57.0",
