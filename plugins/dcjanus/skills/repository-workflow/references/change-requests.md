@@ -13,9 +13,11 @@
 
 ## 平台引用
 
+- PR/MR 正文引用本仓库文件时，默认直接写行内代码形式的仓库相对路径，如 `docs/design.md`，不生成文件 URL。
+- 不为这类引用默认选择源分支、目标分支或固定 commit，也不增加合并后替换链接的步骤；用户明确要求链接或特定版本时再按其要求处理。
 - GitHub reviewer-facing 文案引用同仓库 commit 时，写裸的完整 40 位 SHA，由 GitHub 自动链接和折叠；不要包反引号或手写 Markdown URL。
 - GitHub 跨仓库 commit 使用 `owner/repo@完整 SHA`。
-- GitLab reviewer-facing 文案中的关联资源使用完整 Markdown URL，兼容自建实例和跨项目引用。
+- GitLab reviewer-facing 文案引用 Issue、MR、pipeline 等平台资源时使用完整 Markdown URL，兼容自建实例和跨项目引用；本仓库文件引用遵循上述相对路径约定。
 
 ## Issue
 
