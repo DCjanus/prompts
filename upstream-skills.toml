@@ -2,7 +2,7 @@
 name = "grill-me"
 repository = "mattpocock/skills"
 path = "skills/productivity/grilling"
-commit = "95249b0b49782349740fd9b8c6ce32b4e59e497a"
+commit = "7739eaed7f8f3915437a8def198a6d0d7206dbc7"
 
 [[skills]]
 name = "domain-modeling"

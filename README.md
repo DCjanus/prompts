@@ -33,6 +33,6 @@ codex plugin marketplace upgrade dcjanus-plugins --json
 
 ## 第三方来源
 
-- [grill-me](plugins/dcjanus/skills/grill-me/SKILL.md) 改编自 Matt Pocock 的 [grilling](https://github.com/mattpocock/skills/blob/95249b0b49782349740fd9b8c6ce32b4e59e497a/skills/productivity/grilling/SKILL.md)，按 [MIT License](plugins/dcjanus/licenses/grill-me/LICENSE) 使用。
+- [grill-me](plugins/dcjanus/skills/grill-me/SKILL.md) 改编自 Matt Pocock 的 [grilling](https://github.com/mattpocock/skills/blob/7739eaed7f8f3915437a8def198a6d0d7206dbc7/skills/productivity/grilling/SKILL.md)，按 [MIT License](plugins/dcjanus/licenses/grill-me/LICENSE) 使用。
 - [domain-modeling](plugins/dcjanus/skills/domain-modeling/SKILL.md) 翻译自 Matt Pocock 的 [domain-modeling](https://github.com/mattpocock/skills/blob/d80fa0f4ebe0c5714af0adf8670336065233ecc6/skills/engineering/domain-modeling/SKILL.md)，按 [MIT License](plugins/dcjanus/licenses/domain-modeling/LICENSE) 使用。
 - [grafana-cli](plugins/dcjanus/skills/grafana-cli/SKILL.md) 复用 Grafana 官方 [gcx skill](https://github.com/grafana/gcx/blob/3891025ccae6d5854571cb8c4cb4d22f80d4d8db/claude-plugin/skills/gcx/SKILL.md)，按 [Apache License 2.0](plugins/dcjanus/licenses/grafana-cli/LICENSE) 分发。
