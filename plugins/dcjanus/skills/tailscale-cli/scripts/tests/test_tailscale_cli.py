@@ -72,6 +72,259 @@ def invoke(*args):
     return CliRunner().invoke(cli.app, ["--json", "policy", *map(str, args)])
 
 
+@pytest.mark.parametrize(
+    "operation,arguments,path",
+    [
+        (
+            "listTailnetDevices",
+            ["--query", "fields=all", "--query", "tags=tag:a", "--query", "tags=tag:b"],
+            "/tailnet/example.com/devices",
+        ),
+        ("getDevice", ["--param", "deviceId=node-1"], "/device/node-1"),
+        ("listDeviceRoutes", ["--param", "deviceId=node-1"], "/device/node-1/routes"),
+        (
+            "getDevicePostureAttributes",
+            ["--param", "deviceId=node-1"],
+            "/device/node-1/attributes",
+        ),
+        (
+            "listDeviceInvites",
+            ["--param", "deviceId=node-1"],
+            "/device/node-1/device-invites",
+        ),
+        ("listUserInvites", [], "/tailnet/example.com/user-invites"),
+        (
+            "getUserInvite",
+            ["--param", "userInviteId=invite-1"],
+            "/user-invites/invite-1",
+        ),
+        (
+            "getDeviceInvite",
+            ["--param", "deviceInviteId=invite-1"],
+            "/device-invites/invite-1",
+        ),
+        (
+            "listConfigurationAuditLogs",
+            [
+                "--query",
+                "start=2026-10-30T00:00:00Z",
+                "--query",
+                "end=2026-10-30T01:00:00Z",
+                "--query",
+                "actor=alice",
+                "--query",
+                "actor=bob",
+            ],
+            "/tailnet/example.com/logging/configuration",
+        ),
+        (
+            "listNetworkFlowLogs",
+            [
+                "--query",
+                "start=2026-10-30T00:00:00Z",
+                "--query",
+                "end=2026-10-30T01:00:00Z",
+            ],
+            "/tailnet/example.com/logging/network",
+        ),
+        (
+            "getLogStreamingStatus",
+            ["--param", "logType=configuration"],
+            "/tailnet/example.com/logging/configuration/stream/status",
+        ),
+        (
+            "getLogStreamingConfiguration",
+            ["--param", "logType=network"],
+            "/tailnet/example.com/logging/network/stream",
+        ),
+        ("listDnsNameservers", [], "/tailnet/example.com/dns/nameservers"),
+        ("getDnsPreferences", [], "/tailnet/example.com/dns/preferences"),
+        ("listDnsSearchPaths", [], "/tailnet/example.com/dns/searchpaths"),
+        ("getSplitDns", [], "/tailnet/example.com/dns/split-dns"),
+        ("getDnsConfiguration", [], "/tailnet/example.com/dns/configuration"),
+        ("listTailnetKeys", ["--query", "all=false"], "/tailnet/example.com/keys"),
+        ("getKey", ["--param", "keyId=key-1"], "/tailnet/example.com/keys/key-1"),
+        ("getPolicyFile", [], "/tailnet/example.com/acl"),
+        ("getPostureIntegrations", [], "/tailnet/example.com/posture/integrations"),
+        (
+            "getPostureIntegration",
+            ["--param", "id=integration-1"],
+            "/posture/integrations/integration-1",
+        ),
+        ("listUsers", ["--query", "role=admin"], "/tailnet/example.com/users"),
+        ("getUser", ["--param", "userId=user-1"], "/users/user-1"),
+        ("getContacts", [], "/tailnet/example.com/contacts"),
+        ("listWebhooks", [], "/tailnet/example.com/webhooks"),
+        ("getWebhook", ["--param", "endpointId=hook-1"], "/webhooks/hook-1"),
+        ("getTailnetSettings", [], "/tailnet/example.com/settings"),
+        ("listServices", [], "/tailnet/example.com/services"),
+        (
+            "getService",
+            ["--param", "serviceName=svc:demo"],
+            "/tailnet/example.com/services/svc%3Ademo",
+        ),
+        ("listOAuthApps", [], "/tailnet/example.com/oauth-apps"),
+        (
+            "getOAuthApp",
+            ["--param", "appId=app-1"],
+            "/tailnet/example.com/oauth-apps/app-1",
+        ),
+        (
+            "listOrganizationTailnets",
+            [
+                "--param",
+                "organization=org-1",
+                "--query",
+                "limit=2",
+                "--query",
+                "cursor=next=token",
+            ],
+            "/organizations/org-1/tailnets",
+        ),
+    ],
+)
+def test_read_api_official_paths_queries_and_unmodified_result(
+    monkeypatch, operation, arguments, path
+):
+    payload = {
+        "items": [],
+        "pagination": {"next": "https://example.org/next"},
+        "unknownField": True,
+    }
+
+    def respond(request):
+        assert request.method == "GET"
+        assert request.url.raw_path.decode().split("?")[0] == "/api/v2" + path
+        assert request.headers["Authorization"] == "Bearer test-api-secret"
+        assert request.headers["Accept"] == "application/json"
+        expected = [
+            argument.split("=", 1)
+            for index, argument in enumerate(arguments)
+            if index and arguments[index - 1] == "--query"
+        ]
+        assert list(request.url.params.multi_items()) == [
+            tuple(item) for item in expected
+        ]
+        return httpx2.Response(200, json=payload)
+
+    requests = mock_api(monkeypatch, respond)
+    result = CliRunner().invoke(
+        cli.app, ["--json", "api", "get", operation, *arguments]
+    )
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == payload
+    assert len(requests) == 1  # 分页 URL 不自动跟随。
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        ["get", "https://example.org"],
+        ["get", "createWebhook"],
+        ["get", "listServiceHosts"],
+        ["get", "getDevice"],
+        ["get", "getDevice", "--param", "deviceId=.."],
+        ["get", "getDevice", "--param", "deviceId=a", "--param", "deviceId=b"],
+        ["get", "getDevice", "--param", "deviceId="],
+        ["get", "getDevice", "--param", "deviceId"],
+        ["get", "listUsers", "--param", "tailnet=other.com"],
+        ["get", "listUsers", "--query", "role=superuser"],
+        ["get", "listUsers", "--query", "role=admin", "--query", "role=member"],
+        ["get", "listTailnetDevices", "--query", "unknown=1"],
+        ["get", "listTailnetKeys", "--query", "all=yes"],
+        ["get", "listConfigurationAuditLogs", "--query", "start=2026-10-30T00:00:00Z"],
+        [
+            "get",
+            "listOrganizationTailnets",
+            "--param",
+            "organization=org",
+            "--query",
+            "limit=oops",
+        ],
+        [
+            "get",
+            "listOrganizationTailnets",
+            "--param",
+            "organization=org",
+            "--query",
+            "limit=0",
+        ],
+    ],
+)
+def test_read_api_invalid_arguments_fail_before_credentials(monkeypatch, arguments):
+    monkeypatch.delenv("TS_API_KEY")
+    monkeypatch.setattr(
+        cli, "Client", lambda *args: pytest.fail("参数错误不应读取凭据")
+    )
+    result = CliRunner().invoke(cli.app, ["api", *arguments])
+    assert result.exit_code == 2, result.output
+
+
+def test_read_api_discovery_and_help_are_offline(monkeypatch):
+    monkeypatch.setattr(cli, "Client", lambda *args: pytest.fail("发现接口不应认证"))
+    runner = CliRunner()
+    result = runner.invoke(cli.app, ["--json", "api", "list", "--search", "dns"])
+    assert result.exit_code == 0
+    operations = json.loads(result.stdout)
+    assert {item["operation"] for item in operations} == {
+        "listDnsNameservers",
+        "getDnsPreferences",
+        "listDnsSearchPaths",
+        "getSplitDns",
+        "getDnsConfiguration",
+    }
+    result = runner.invoke(cli.app, ["--json", "api", "describe", "listUsers"])
+    assert result.exit_code == 0
+    assert json.loads(result.stdout)["parameters"][2]["enum"] == [
+        "owner",
+        "member",
+        "admin",
+        "it-admin",
+        "network-admin",
+        "billing-admin",
+        "auditor",
+        "all",
+    ]
+    for arguments, expected in [
+        ([], ["policy", "api"]),
+        (["api"], ["list", "describe", "get"]),
+        (["api", "get"], ["OPERATION", "--param", "--query", "NAME=VALUE"]),
+    ]:
+        result = runner.invoke(cli.app, [*arguments, "--help"])
+        plain = Text.from_ansi(result.output).plain
+        assert result.exit_code == 0
+        assert all(item in plain for item in expected)
+
+
+def test_read_api_array_output_and_policy_details(monkeypatch):
+    def respond(request):
+        assert request.url.path == ACL_PATH
+        assert request.url.params["details"] == "true"
+        assert request.headers["Accept"] == "*/*"
+        return httpx2.Response(200, json=[{"details": True}])
+
+    mock_api(monkeypatch, respond)
+    result = CliRunner().invoke(
+        cli.app, ["api", "get", "getPolicyFile", "--query", "details=true"]
+    )
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == [{"details": True}]
+
+
+def test_read_api_permission_failure_is_not_an_empty_result(monkeypatch):
+    mock_api(
+        monkeypatch,
+        lambda request: httpx2.Response(
+            403, json={"message": "private server diagnostic"}
+        ),
+    )
+    result = CliRunner().invoke(cli.app, ["--json", "api", "get", "listUsers"])
+    assert result.exit_code == 1
+    assert result.stdout == ""
+    assert "403" in json.loads(result.stderr)["error"]
+    assert "private server diagnostic" not in result.output
+
+
 def test_get_preserves_hujson_and_etag_without_overwrite(monkeypatch, tmp_path):
     def respond(request):
         assert request.method == "GET" and request.url.path == ACL_PATH

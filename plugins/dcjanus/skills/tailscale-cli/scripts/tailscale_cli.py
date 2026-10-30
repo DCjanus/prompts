@@ -31,6 +31,20 @@ API_BASE = "https://api.tailscale.com/api/v2"
 app = typer.Typer(no_args_is_help=True, pretty_exceptions_enable=False)
 policy_app = typer.Typer(no_args_is_help=True, help="读取、校验、预览和发布整份策略。")
 app.add_typer(policy_app, name="policy")
+api_app = typer.Typer(
+    no_args_is_help=True,
+    help="发现并调用官方只读 API，覆盖设备、用户、DNS、设置、日志等。",
+)
+app.add_typer(api_app, name="api")
+READ_API = json.loads(
+    (Path(__file__).resolve().parents[1] / "references/read-api.json").read_text(
+        encoding="utf-8"
+    )
+)
+READ_OPERATIONS = READ_API["operations"]
+ReadOperation = Enum(
+    "ReadOperation", {name: name for name in READ_OPERATIONS}, type=str
+)
 
 
 class OperationError(Exception):
@@ -98,16 +112,18 @@ def credentials_from_op(item: str, vault: str | None) -> dict[str, str]:
     return credentials
 
 
-def emit(state: State, value: dict[str, Any], *, error: bool = False) -> None:
+def emit(state: State, value: Any, *, error: bool = False) -> None:
     """输出结构化结果或便于阅读的文本。"""
     if state.json_output:
         typer.echo(json.dumps(value, ensure_ascii=False), err=error)
-    else:
+    elif isinstance(value, dict):
         for key, item in value.items():
             if key in {"policy", "diff"}:
                 typer.echo(item, nl=not str(item).endswith("\n"), err=error)
             else:
                 typer.echo(f"{key}: {json.dumps(item, ensure_ascii=False)}", err=error)
+    else:
+        typer.echo(json.dumps(value, ensure_ascii=False, indent=2), err=error)
 
 
 def default_config() -> Path:
@@ -145,7 +161,7 @@ def configure(
         typer.Option("--json", help="stdout 输出 JSON 结果，stderr 输出 JSON 错误。"),
     ] = False,
 ) -> None:
-    """管理 Tailscale 后台策略；凭据支持环境变量、TOML 或 op_item 指定的 1Password 条目。"""
+    """管理 Tailscale 策略和查询后台资源；凭据支持环境变量、TOML 或 op_item 指定的 1Password 条目。"""
     ctx.obj = State(config or default_config(), tailnet, json_output)
 
 
@@ -284,6 +300,174 @@ class Client:
                 "策略校验失败：" + json.dumps(result, ensure_ascii=False)
             )
         return result
+
+
+@dataclass(frozen=True)
+class Assignment:
+    """命令行中的具名 API 参数。"""
+
+    name: str
+    value: str
+
+
+def parse_assignment(value: str) -> Assignment:
+    """解析 NAME=VALUE，保留值中的等号。"""
+    name, separator, content = value.partition("=")
+    if not separator or not name or not content:
+        raise ValueError("使用 NAME=VALUE，名称和值不能为空。")
+    return Assignment(name, content)
+
+
+def validate_api_value(parameter: dict, value: str) -> None:
+    """校验目录中声明的枚举和标量类型，剩余语义由服务端判断。"""
+    name = parameter["name"]
+    if "enum" in parameter and value not in parameter["enum"]:
+        raise typer.BadParameter(f"{name} 必须为 {', '.join(parameter['enum'])}。")
+    if parameter["type"] == "boolean" and value not in {"true", "false"}:
+        raise typer.BadParameter(f"{name} 必须为 true 或 false。")
+    if parameter["type"] == "integer":
+        try:
+            number = int(value)
+        except ValueError:
+            raise typer.BadParameter(f"{name} 必须为整数。") from None
+        if number < parameter.get("minimum", number) or number > parameter.get(
+            "maximum", number
+        ):
+            raise typer.BadParameter(f"{name} 超出范围；请查看 api describe。")
+
+
+def prepare_api_request(
+    operation: dict, parameters: list[Assignment], query: list[Assignment]
+) -> tuple[str, list[tuple[str, str]]]:
+    """按只读目录校验参数；tailnet 始终来自全局配置。"""
+    template = operation["path"]
+    for location, supplied in (("path", parameters), ("query", query)):
+        definitions = {
+            p["name"]: p
+            for p in operation["parameters"]
+            if p["in"] == location and p["name"] != "tailnet"
+        }
+        filters = operation.get("device_filters", []) if location == "query" else []
+        seen = set()
+        for pair in supplied:
+            if pair.name not in definitions and pair.name not in filters:
+                raise typer.BadParameter(
+                    f"不支持的 {location} 参数 {pair.name}；用 api describe 查看，tailnet 请使用全局 --tailnet。"
+                )
+            definition = definitions.get(pair.name)
+            if (
+                pair.name in seen
+                and pair.name not in filters
+                and definition["type"] != "array"
+            ):
+                raise typer.BadParameter(f"{pair.name} 不能重复。")
+            if definition:
+                validate_api_value(definition, pair.value)
+            seen.add(pair.name)
+            if location == "path":
+                if pair.value in {".", ".."}:
+                    raise typer.BadParameter("路径参数不能为 . 或 ..。")
+                template = template.replace(
+                    "{" + pair.name + "}", quote(pair.value, safe="")
+                )
+        missing = {
+            name for name, definition in definitions.items() if definition["required"]
+        } - seen
+        if missing:
+            raise typer.BadParameter(
+                f"缺少 {location} 参数：{', '.join(sorted(missing))}；用 api describe 查看。"
+            )
+    return template, [(pair.name, pair.value) for pair in query]
+
+
+@api_app.command("list")
+def list_api(
+    ctx: typer.Context,
+    search: Annotated[
+        str | None,
+        typer.Option(
+            "--search", help="按接口名称、摘要或路径筛选；不联网、不读取凭据。"
+        ),
+    ] = None,
+) -> None:
+    """列出可用的官方 GET 接口；不包含新增的写操作。"""
+    operations = [
+        {"operation": name, "summary": operation["summary"], "path": operation["path"]}
+        for name, operation in READ_OPERATIONS.items()
+    ]
+    if search:
+        operations = [
+            operation
+            for operation in operations
+            if search.casefold() in json.dumps(operation).casefold()
+        ]
+    emit(ctx.obj, operations)
+
+
+@api_app.command("describe")
+def describe_api(
+    ctx: typer.Context,
+    operation: Annotated[
+        ReadOperation,
+        typer.Argument(
+            metavar="OPERATION",
+            help="api list 中的官方 operation ID；不联网、不读取凭据。",
+        ),
+    ],
+) -> None:
+    """查看接口路径、必填参数、类型、枚举与查询说明。"""
+    emit(
+        ctx.obj,
+        {
+            "operation": operation.value,
+            "method": "GET",
+            **READ_OPERATIONS[operation.value],
+        },
+    )
+
+
+@api_app.command("get")
+def get_api(
+    ctx: typer.Context,
+    operation: Annotated[
+        ReadOperation,
+        typer.Argument(
+            metavar="OPERATION",
+            help="api list 中的官方 operation ID；仅允许目录内 GET 接口。",
+        ),
+    ],
+    parameter: Annotated[
+        list[Assignment] | None,
+        typer.Option(
+            "--param",
+            parser=parse_assignment,
+            metavar="NAME=VALUE",
+            help="路径参数，可重复指定不同名称；tailnet 自动取全局配置。",
+        ),
+    ] = None,
+    query: Annotated[
+        list[Assignment] | None,
+        typer.Option(
+            "--query",
+            parser=parse_assignment,
+            metavar="NAME=VALUE",
+            help="查询参数，可重复；数组与设备过滤器允许同名多值，布尔值为 true/false。分页参数需显式传入。",
+        ),
+    ] = None,
+) -> None:
+    """查询一页结果，保留原始 JSON 和分页信息；先用 api describe 查看参数。"""
+    path, query_pairs = prepare_api_request(
+        READ_OPERATIONS[operation.value], parameter or [], query or []
+    )
+    with connection(ctx) as client:
+        path = path.replace("{tailnet}", quote(client.tailnet, safe=""))
+        headers = (
+            {}
+            if operation.value == "getPolicyFile" and ("details", "true") in query_pairs
+            else {"Accept": "application/json"}
+        )
+        response = client.request("GET", path, params=query_pairs, headers=headers)
+        emit(ctx.obj, response.json())
 
 
 @contextmanager

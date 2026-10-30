@@ -1,0 +1,640 @@
+{
+  "source": "https://api.tailscale.com/api/v2",
+  "retrieved": "2026-10-30",
+  "operations": {
+    "listTailnetDevices": {
+      "path": "/tailnet/{tailnet}/devices",
+      "summary": "List tailnet devices",
+      "parameters": [
+        {
+          "name": "tailnet",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "The tailnet ID. \n\nTailnets created before Oct 2025 can still use the legacy ID, but the Tailnet ID is the preferred identifier.\n\nWhen specifying a tailnet in the API, you can:\n\n- Provide a dash (`-`) to reference the default tailnet of the access token being used to make the API call.\n  This is the best option for most users.\n  Your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/-/...\"\n  ```\n\n- Provide the **tailnet ID** found on the **[General Settings](https://login.tailscale.com/admin/settings/general)**\n  page of the Tailscale admin console.\n\n  For example, if your tailnet ID name is `T1234CNTRL`, your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/T1234CNTRL/...\"\n  ```\n\n  Learn more about [tailnet ID](https://tailscale.com/docs/concepts/tailnet-name#tailnet-id)."
+        },
+        {
+          "name": "fields",
+          "in": "query",
+          "required": false,
+          "type": "string",
+          "enum": [
+            "all",
+            "default"
+          ],
+          "description": "Optionally controls whether the response returns **all** fields or only a predefined subset of fields.\nCurrently, there are two supported options:\n\n- **`all`:** return all fields in the response\n- **`default`:** return the following fields\n  - `addresses`\n  - `id`\n  - `nodeId`\n  - `user`\n  - `name`\n  - `hostname`\n  - `clientVersion`\n  - `updateAvailable`\n  - `os`\n  - `created`\n  - `connectedToControl`\n  - `lastSeen`\n  - `keyExpiryDisabled`\n  - `expires`\n  - `authorized`\n  - `isExternal`\n  - `machineKey`\n  - `nodeKey`\n  - `blocksIncomingConnections`\n  - `tailnetLockKey`\n  - `tailnetLockError`\n  - `tags`\n  - `isEphemeral`\n\nIf the `fields` parameter is not supplied, then the default (limited fields) option is used."
+        }
+      ],
+      "device_filters": [
+        "addresses",
+        "advertisedRoutes",
+        "authorized",
+        "blocksIncomingConnections",
+        "clientVersion",
+        "connectedToControl",
+        "created",
+        "enabledRoutes",
+        "expires",
+        "hostname",
+        "id",
+        "isEphemeral",
+        "isExternal",
+        "keyExpiryDisabled",
+        "lastSeen",
+        "machineKey",
+        "multipleConnections",
+        "name",
+        "nodeId",
+        "nodeKey",
+        "os",
+        "sshEnabled",
+        "tags",
+        "tailnetLockError",
+        "tailnetLockKey",
+        "updateAvailable",
+        "user"
+      ]
+    },
+    "getDevice": {
+      "path": "/device/{deviceId}",
+      "summary": "Get a device",
+      "parameters": [
+        {
+          "name": "deviceId",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "ID of the device. Using the device's `nodeId` is preferred, but its numeric `id` value can also be used."
+        },
+        {
+          "name": "fields",
+          "in": "query",
+          "required": false,
+          "type": "string",
+          "enum": [
+            "all",
+            "default"
+          ],
+          "description": "Optionally controls whether the response returns **all** fields or only a predefined subset of fields.\nCurrently, there are two supported options:\n\n- **`all`:** return all fields in the response\n- **`default`:** return the following fields\n  - `addresses`\n  - `id`\n  - `nodeId`\n  - `user`\n  - `name`\n  - `hostname`\n  - `clientVersion`\n  - `updateAvailable`\n  - `os`\n  - `created`\n  - `connectedToControl`\n  - `lastSeen`\n  - `keyExpiryDisabled`\n  - `expires`\n  - `authorized`\n  - `isExternal`\n  - `machineKey`\n  - `nodeKey`\n  - `blocksIncomingConnections`\n  - `tailnetLockKey`\n  - `tailnetLockError`\n  - `tags`\n  - `isEphemeral`\n\nIf the `fields` parameter is not supplied, then the default (limited fields) option is used."
+        }
+      ]
+    },
+    "listDeviceRoutes": {
+      "path": "/device/{deviceId}/routes",
+      "summary": "List device routes",
+      "parameters": [
+        {
+          "name": "deviceId",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "ID of the device. Using the device's `nodeId` is preferred, but its numeric `id` value can also be used."
+        }
+      ]
+    },
+    "getDevicePostureAttributes": {
+      "path": "/device/{deviceId}/attributes",
+      "summary": "Get device posture attributes",
+      "parameters": [
+        {
+          "name": "deviceId",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "ID of the device. Using the device's `nodeId` is preferred, but its numeric `id` value can also be used."
+        }
+      ]
+    },
+    "listDeviceInvites": {
+      "path": "/device/{deviceId}/device-invites",
+      "summary": "List device invites",
+      "parameters": [
+        {
+          "name": "deviceId",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "ID of the device. Using the device's `nodeId` is preferred, but its numeric `id` value can also be used."
+        }
+      ]
+    },
+    "listUserInvites": {
+      "path": "/tailnet/{tailnet}/user-invites",
+      "summary": "List user invites",
+      "parameters": [
+        {
+          "name": "tailnet",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "The tailnet ID. \n\nTailnets created before Oct 2025 can still use the legacy ID, but the Tailnet ID is the preferred identifier.\n\nWhen specifying a tailnet in the API, you can:\n\n- Provide a dash (`-`) to reference the default tailnet of the access token being used to make the API call.\n  This is the best option for most users.\n  Your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/-/...\"\n  ```\n\n- Provide the **tailnet ID** found on the **[General Settings](https://login.tailscale.com/admin/settings/general)**\n  page of the Tailscale admin console.\n\n  For example, if your tailnet ID name is `T1234CNTRL`, your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/T1234CNTRL/...\"\n  ```\n\n  Learn more about [tailnet ID](https://tailscale.com/docs/concepts/tailnet-name#tailnet-id)."
+        }
+      ]
+    },
+    "getUserInvite": {
+      "path": "/user-invites/{userInviteId}",
+      "summary": "Get a user invite",
+      "parameters": [
+        {
+          "name": "userInviteId",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "ID of the user invite."
+        }
+      ]
+    },
+    "getDeviceInvite": {
+      "path": "/device-invites/{deviceInviteId}",
+      "summary": "Get a device invite",
+      "parameters": [
+        {
+          "name": "deviceInviteId",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "ID of the device invite."
+        }
+      ]
+    },
+    "listConfigurationAuditLogs": {
+      "path": "/tailnet/{tailnet}/logging/configuration",
+      "summary": "List configuration audit logs",
+      "parameters": [
+        {
+          "name": "tailnet",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "The tailnet ID. \n\nTailnets created before Oct 2025 can still use the legacy ID, but the Tailnet ID is the preferred identifier.\n\nWhen specifying a tailnet in the API, you can:\n\n- Provide a dash (`-`) to reference the default tailnet of the access token being used to make the API call.\n  This is the best option for most users.\n  Your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/-/...\"\n  ```\n\n- Provide the **tailnet ID** found on the **[General Settings](https://login.tailscale.com/admin/settings/general)**\n  page of the Tailscale admin console.\n\n  For example, if your tailnet ID name is `T1234CNTRL`, your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/T1234CNTRL/...\"\n  ```\n\n  Learn more about [tailnet ID](https://tailscale.com/docs/concepts/tailnet-name#tailnet-id)."
+        },
+        {
+          "name": "start",
+          "in": "query",
+          "required": true,
+          "type": "string",
+          "description": "The start of the time window for which to retrieve logs, in RFC 3339 format."
+        },
+        {
+          "name": "end",
+          "in": "query",
+          "required": true,
+          "type": "string",
+          "description": "The end of the time window for which to retrieve logs, in RFC 3339 format."
+        },
+        {
+          "name": "actor",
+          "in": "query",
+          "required": false,
+          "type": "array",
+          "description": "List of filters on actors, either exact actor IDs or a wildcard search on login name or display name indicated as `~search`."
+        },
+        {
+          "name": "target",
+          "in": "query",
+          "required": false,
+          "type": "array",
+          "description": "List of target elements for which to filter, attempts to match any part of any of the targets to any of the given strings."
+        },
+        {
+          "name": "event",
+          "in": "query",
+          "required": false,
+          "type": "array",
+          "description": "List of events for which to filter."
+        }
+      ]
+    },
+    "listNetworkFlowLogs": {
+      "path": "/tailnet/{tailnet}/logging/network",
+      "summary": "List network flow logs",
+      "parameters": [
+        {
+          "name": "tailnet",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "The tailnet ID. \n\nTailnets created before Oct 2025 can still use the legacy ID, but the Tailnet ID is the preferred identifier.\n\nWhen specifying a tailnet in the API, you can:\n\n- Provide a dash (`-`) to reference the default tailnet of the access token being used to make the API call.\n  This is the best option for most users.\n  Your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/-/...\"\n  ```\n\n- Provide the **tailnet ID** found on the **[General Settings](https://login.tailscale.com/admin/settings/general)**\n  page of the Tailscale admin console.\n\n  For example, if your tailnet ID name is `T1234CNTRL`, your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/T1234CNTRL/...\"\n  ```\n\n  Learn more about [tailnet ID](https://tailscale.com/docs/concepts/tailnet-name#tailnet-id)."
+        },
+        {
+          "name": "start",
+          "in": "query",
+          "required": true,
+          "type": "string",
+          "description": "The start of the time window for which to retrieve logs, in RFC 3339 format."
+        },
+        {
+          "name": "end",
+          "in": "query",
+          "required": true,
+          "type": "string",
+          "description": "The end of the time window for which to retrieve logs, in RFC 3339 format."
+        }
+      ]
+    },
+    "getLogStreamingStatus": {
+      "path": "/tailnet/{tailnet}/logging/{logType}/stream/status",
+      "summary": "Get log streaming status",
+      "parameters": [
+        {
+          "name": "tailnet",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "The tailnet ID. \n\nTailnets created before Oct 2025 can still use the legacy ID, but the Tailnet ID is the preferred identifier.\n\nWhen specifying a tailnet in the API, you can:\n\n- Provide a dash (`-`) to reference the default tailnet of the access token being used to make the API call.\n  This is the best option for most users.\n  Your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/-/...\"\n  ```\n\n- Provide the **tailnet ID** found on the **[General Settings](https://login.tailscale.com/admin/settings/general)**\n  page of the Tailscale admin console.\n\n  For example, if your tailnet ID name is `T1234CNTRL`, your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/T1234CNTRL/...\"\n  ```\n\n  Learn more about [tailnet ID](https://tailscale.com/docs/concepts/tailnet-name#tailnet-id)."
+        },
+        {
+          "name": "logType",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "enum": [
+            "configuration",
+            "network"
+          ],
+          "description": "The type of log."
+        }
+      ]
+    },
+    "getLogStreamingConfiguration": {
+      "path": "/tailnet/{tailnet}/logging/{logType}/stream",
+      "summary": "Get log streaming configuration",
+      "parameters": [
+        {
+          "name": "tailnet",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "The tailnet ID. \n\nTailnets created before Oct 2025 can still use the legacy ID, but the Tailnet ID is the preferred identifier.\n\nWhen specifying a tailnet in the API, you can:\n\n- Provide a dash (`-`) to reference the default tailnet of the access token being used to make the API call.\n  This is the best option for most users.\n  Your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/-/...\"\n  ```\n\n- Provide the **tailnet ID** found on the **[General Settings](https://login.tailscale.com/admin/settings/general)**\n  page of the Tailscale admin console.\n\n  For example, if your tailnet ID name is `T1234CNTRL`, your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/T1234CNTRL/...\"\n  ```\n\n  Learn more about [tailnet ID](https://tailscale.com/docs/concepts/tailnet-name#tailnet-id)."
+        },
+        {
+          "name": "logType",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "enum": [
+            "configuration",
+            "network"
+          ],
+          "description": "The type of log."
+        }
+      ]
+    },
+    "listDnsNameservers": {
+      "path": "/tailnet/{tailnet}/dns/nameservers",
+      "summary": "List DNS nameservers",
+      "parameters": [
+        {
+          "name": "tailnet",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "The tailnet ID. \n\nTailnets created before Oct 2025 can still use the legacy ID, but the Tailnet ID is the preferred identifier.\n\nWhen specifying a tailnet in the API, you can:\n\n- Provide a dash (`-`) to reference the default tailnet of the access token being used to make the API call.\n  This is the best option for most users.\n  Your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/-/...\"\n  ```\n\n- Provide the **tailnet ID** found on the **[General Settings](https://login.tailscale.com/admin/settings/general)**\n  page of the Tailscale admin console.\n\n  For example, if your tailnet ID name is `T1234CNTRL`, your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/T1234CNTRL/...\"\n  ```\n\n  Learn more about [tailnet ID](https://tailscale.com/docs/concepts/tailnet-name#tailnet-id)."
+        }
+      ]
+    },
+    "getDnsPreferences": {
+      "path": "/tailnet/{tailnet}/dns/preferences",
+      "summary": "Get DNS preferences",
+      "parameters": [
+        {
+          "name": "tailnet",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "The tailnet ID. \n\nTailnets created before Oct 2025 can still use the legacy ID, but the Tailnet ID is the preferred identifier.\n\nWhen specifying a tailnet in the API, you can:\n\n- Provide a dash (`-`) to reference the default tailnet of the access token being used to make the API call.\n  This is the best option for most users.\n  Your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/-/...\"\n  ```\n\n- Provide the **tailnet ID** found on the **[General Settings](https://login.tailscale.com/admin/settings/general)**\n  page of the Tailscale admin console.\n\n  For example, if your tailnet ID name is `T1234CNTRL`, your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/T1234CNTRL/...\"\n  ```\n\n  Learn more about [tailnet ID](https://tailscale.com/docs/concepts/tailnet-name#tailnet-id)."
+        }
+      ]
+    },
+    "listDnsSearchPaths": {
+      "path": "/tailnet/{tailnet}/dns/searchpaths",
+      "summary": "List DNS search paths",
+      "parameters": [
+        {
+          "name": "tailnet",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "The tailnet ID. \n\nTailnets created before Oct 2025 can still use the legacy ID, but the Tailnet ID is the preferred identifier.\n\nWhen specifying a tailnet in the API, you can:\n\n- Provide a dash (`-`) to reference the default tailnet of the access token being used to make the API call.\n  This is the best option for most users.\n  Your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/-/...\"\n  ```\n\n- Provide the **tailnet ID** found on the **[General Settings](https://login.tailscale.com/admin/settings/general)**\n  page of the Tailscale admin console.\n\n  For example, if your tailnet ID name is `T1234CNTRL`, your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/T1234CNTRL/...\"\n  ```\n\n  Learn more about [tailnet ID](https://tailscale.com/docs/concepts/tailnet-name#tailnet-id)."
+        }
+      ]
+    },
+    "getSplitDns": {
+      "path": "/tailnet/{tailnet}/dns/split-dns",
+      "summary": "Get split DNS",
+      "parameters": [
+        {
+          "name": "tailnet",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "The tailnet ID. \n\nTailnets created before Oct 2025 can still use the legacy ID, but the Tailnet ID is the preferred identifier.\n\nWhen specifying a tailnet in the API, you can:\n\n- Provide a dash (`-`) to reference the default tailnet of the access token being used to make the API call.\n  This is the best option for most users.\n  Your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/-/...\"\n  ```\n\n- Provide the **tailnet ID** found on the **[General Settings](https://login.tailscale.com/admin/settings/general)**\n  page of the Tailscale admin console.\n\n  For example, if your tailnet ID name is `T1234CNTRL`, your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/T1234CNTRL/...\"\n  ```\n\n  Learn more about [tailnet ID](https://tailscale.com/docs/concepts/tailnet-name#tailnet-id)."
+        }
+      ]
+    },
+    "getDnsConfiguration": {
+      "path": "/tailnet/{tailnet}/dns/configuration",
+      "summary": "Get DNS configuration",
+      "parameters": [
+        {
+          "name": "tailnet",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "The tailnet ID. \n\nTailnets created before Oct 2025 can still use the legacy ID, but the Tailnet ID is the preferred identifier.\n\nWhen specifying a tailnet in the API, you can:\n\n- Provide a dash (`-`) to reference the default tailnet of the access token being used to make the API call.\n  This is the best option for most users.\n  Your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/-/...\"\n  ```\n\n- Provide the **tailnet ID** found on the **[General Settings](https://login.tailscale.com/admin/settings/general)**\n  page of the Tailscale admin console.\n\n  For example, if your tailnet ID name is `T1234CNTRL`, your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/T1234CNTRL/...\"\n  ```\n\n  Learn more about [tailnet ID](https://tailscale.com/docs/concepts/tailnet-name#tailnet-id)."
+        }
+      ]
+    },
+    "listTailnetKeys": {
+      "path": "/tailnet/{tailnet}/keys",
+      "summary": "List tailnet keys",
+      "parameters": [
+        {
+          "name": "tailnet",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "The tailnet ID. \n\nTailnets created before Oct 2025 can still use the legacy ID, but the Tailnet ID is the preferred identifier.\n\nWhen specifying a tailnet in the API, you can:\n\n- Provide a dash (`-`) to reference the default tailnet of the access token being used to make the API call.\n  This is the best option for most users.\n  Your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/-/...\"\n  ```\n\n- Provide the **tailnet ID** found on the **[General Settings](https://login.tailscale.com/admin/settings/general)**\n  page of the Tailscale admin console.\n\n  For example, if your tailnet ID name is `T1234CNTRL`, your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/T1234CNTRL/...\"\n  ```\n\n  Learn more about [tailnet ID](https://tailscale.com/docs/concepts/tailnet-name#tailnet-id)."
+        },
+        {
+          "name": "all",
+          "in": "query",
+          "required": true,
+          "type": "boolean",
+          "description": "If set to true, this will return all auth keys, API access tokens and OAuth clients for the tailnet."
+        }
+      ]
+    },
+    "getKey": {
+      "path": "/tailnet/{tailnet}/keys/{keyId}",
+      "summary": "Get key",
+      "parameters": [
+        {
+          "name": "tailnet",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "The tailnet ID. \n\nTailnets created before Oct 2025 can still use the legacy ID, but the Tailnet ID is the preferred identifier.\n\nWhen specifying a tailnet in the API, you can:\n\n- Provide a dash (`-`) to reference the default tailnet of the access token being used to make the API call.\n  This is the best option for most users.\n  Your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/-/...\"\n  ```\n\n- Provide the **tailnet ID** found on the **[General Settings](https://login.tailscale.com/admin/settings/general)**\n  page of the Tailscale admin console.\n\n  For example, if your tailnet ID name is `T1234CNTRL`, your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/T1234CNTRL/...\"\n  ```\n\n  Learn more about [tailnet ID](https://tailscale.com/docs/concepts/tailnet-name#tailnet-id)."
+        },
+        {
+          "name": "keyId",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "The id of the key.\nThe key ID can be found in the [admin console](https://login.tailscale.com/admin/settings/keys)."
+        }
+      ]
+    },
+    "getPolicyFile": {
+      "path": "/tailnet/{tailnet}/acl",
+      "summary": "Get policy file",
+      "parameters": [
+        {
+          "name": "tailnet",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "The tailnet ID. \n\nTailnets created before Oct 2025 can still use the legacy ID, but the Tailnet ID is the preferred identifier.\n\nWhen specifying a tailnet in the API, you can:\n\n- Provide a dash (`-`) to reference the default tailnet of the access token being used to make the API call.\n  This is the best option for most users.\n  Your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/-/...\"\n  ```\n\n- Provide the **tailnet ID** found on the **[General Settings](https://login.tailscale.com/admin/settings/general)**\n  page of the Tailscale admin console.\n\n  For example, if your tailnet ID name is `T1234CNTRL`, your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/T1234CNTRL/...\"\n  ```\n\n  Learn more about [tailnet ID](https://tailscale.com/docs/concepts/tailnet-name#tailnet-id)."
+        },
+        {
+          "name": "details",
+          "in": "query",
+          "required": false,
+          "type": "boolean",
+          "description": "Request a detailed description of the tailnet policy file by providing `details=true` in the URL query string.\nSupplying any other value for `details`, or not sending the param, is treated as sending `details=false`.\nIf using this, do not supply an `Accept` parameter in the header.\n\nThe response will contain a JSON object with the fields:\n- `acl`: a base64-encoded string representation of the huJSON format.\n- `warnings`: array of strings for syntactically valid but nonsensical entries.\n- `errors`: an array of strings for parsing failures."
+        }
+      ]
+    },
+    "getPostureIntegrations": {
+      "path": "/tailnet/{tailnet}/posture/integrations",
+      "summary": "List all posture integrations",
+      "parameters": [
+        {
+          "name": "tailnet",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "The tailnet ID. \n\nTailnets created before Oct 2025 can still use the legacy ID, but the Tailnet ID is the preferred identifier.\n\nWhen specifying a tailnet in the API, you can:\n\n- Provide a dash (`-`) to reference the default tailnet of the access token being used to make the API call.\n  This is the best option for most users.\n  Your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/-/...\"\n  ```\n\n- Provide the **tailnet ID** found on the **[General Settings](https://login.tailscale.com/admin/settings/general)**\n  page of the Tailscale admin console.\n\n  For example, if your tailnet ID name is `T1234CNTRL`, your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/T1234CNTRL/...\"\n  ```\n\n  Learn more about [tailnet ID](https://tailscale.com/docs/concepts/tailnet-name#tailnet-id)."
+        }
+      ]
+    },
+    "getPostureIntegration": {
+      "path": "/posture/integrations/{id}",
+      "summary": "Get a posture integration",
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "Unique identifier for a posture integration."
+        }
+      ]
+    },
+    "listUsers": {
+      "path": "/tailnet/{tailnet}/users",
+      "summary": "List users",
+      "parameters": [
+        {
+          "name": "tailnet",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "The tailnet ID. \n\nTailnets created before Oct 2025 can still use the legacy ID, but the Tailnet ID is the preferred identifier.\n\nWhen specifying a tailnet in the API, you can:\n\n- Provide a dash (`-`) to reference the default tailnet of the access token being used to make the API call.\n  This is the best option for most users.\n  Your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/-/...\"\n  ```\n\n- Provide the **tailnet ID** found on the **[General Settings](https://login.tailscale.com/admin/settings/general)**\n  page of the Tailscale admin console.\n\n  For example, if your tailnet ID name is `T1234CNTRL`, your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/T1234CNTRL/...\"\n  ```\n\n  Learn more about [tailnet ID](https://tailscale.com/docs/concepts/tailnet-name#tailnet-id)."
+        },
+        {
+          "name": "type",
+          "in": "query",
+          "required": false,
+          "type": "string",
+          "enum": [
+            "member",
+            "shared",
+            "all"
+          ],
+          "description": "Allows for filtering the output by user type.",
+          "default": "member"
+        },
+        {
+          "name": "role",
+          "in": "query",
+          "required": false,
+          "type": "string",
+          "enum": [
+            "owner",
+            "member",
+            "admin",
+            "it-admin",
+            "network-admin",
+            "billing-admin",
+            "auditor",
+            "all"
+          ],
+          "description": "Allows for filtering the output by user role. Learn more about [user roles](/docs/reference/user-roles).",
+          "default": "all"
+        }
+      ]
+    },
+    "getUser": {
+      "path": "/users/{userId}",
+      "summary": "Get a user",
+      "parameters": [
+        {
+          "name": "userId",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "ID of the user."
+        }
+      ]
+    },
+    "getContacts": {
+      "path": "/tailnet/{tailnet}/contacts",
+      "summary": "Get contacts",
+      "parameters": [
+        {
+          "name": "tailnet",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "The tailnet ID. \n\nTailnets created before Oct 2025 can still use the legacy ID, but the Tailnet ID is the preferred identifier.\n\nWhen specifying a tailnet in the API, you can:\n\n- Provide a dash (`-`) to reference the default tailnet of the access token being used to make the API call.\n  This is the best option for most users.\n  Your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/-/...\"\n  ```\n\n- Provide the **tailnet ID** found on the **[General Settings](https://login.tailscale.com/admin/settings/general)**\n  page of the Tailscale admin console.\n\n  For example, if your tailnet ID name is `T1234CNTRL`, your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/T1234CNTRL/...\"\n  ```\n\n  Learn more about [tailnet ID](https://tailscale.com/docs/concepts/tailnet-name#tailnet-id)."
+        }
+      ]
+    },
+    "listWebhooks": {
+      "path": "/tailnet/{tailnet}/webhooks",
+      "summary": "List webhooks",
+      "parameters": [
+        {
+          "name": "tailnet",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "The tailnet ID. \n\nTailnets created before Oct 2025 can still use the legacy ID, but the Tailnet ID is the preferred identifier.\n\nWhen specifying a tailnet in the API, you can:\n\n- Provide a dash (`-`) to reference the default tailnet of the access token being used to make the API call.\n  This is the best option for most users.\n  Your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/-/...\"\n  ```\n\n- Provide the **tailnet ID** found on the **[General Settings](https://login.tailscale.com/admin/settings/general)**\n  page of the Tailscale admin console.\n\n  For example, if your tailnet ID name is `T1234CNTRL`, your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/T1234CNTRL/...\"\n  ```\n\n  Learn more about [tailnet ID](https://tailscale.com/docs/concepts/tailnet-name#tailnet-id)."
+        }
+      ]
+    },
+    "getWebhook": {
+      "path": "/webhooks/{endpointId}",
+      "summary": "Get webhook",
+      "parameters": [
+        {
+          "name": "endpointId",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "ID for the webhook endpoint."
+        }
+      ]
+    },
+    "getTailnetSettings": {
+      "path": "/tailnet/{tailnet}/settings",
+      "summary": "Get tailnet settings",
+      "parameters": [
+        {
+          "name": "tailnet",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "The tailnet ID. \n\nTailnets created before Oct 2025 can still use the legacy ID, but the Tailnet ID is the preferred identifier.\n\nWhen specifying a tailnet in the API, you can:\n\n- Provide a dash (`-`) to reference the default tailnet of the access token being used to make the API call.\n  This is the best option for most users.\n  Your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/-/...\"\n  ```\n\n- Provide the **tailnet ID** found on the **[General Settings](https://login.tailscale.com/admin/settings/general)**\n  page of the Tailscale admin console.\n\n  For example, if your tailnet ID name is `T1234CNTRL`, your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/T1234CNTRL/...\"\n  ```\n\n  Learn more about [tailnet ID](https://tailscale.com/docs/concepts/tailnet-name#tailnet-id)."
+        }
+      ]
+    },
+    "listServices": {
+      "path": "/tailnet/{tailnet}/services",
+      "summary": "List all Services",
+      "parameters": [
+        {
+          "name": "tailnet",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "The tailnet ID. \n\nTailnets created before Oct 2025 can still use the legacy ID, but the Tailnet ID is the preferred identifier.\n\nWhen specifying a tailnet in the API, you can:\n\n- Provide a dash (`-`) to reference the default tailnet of the access token being used to make the API call.\n  This is the best option for most users.\n  Your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/-/...\"\n  ```\n\n- Provide the **tailnet ID** found on the **[General Settings](https://login.tailscale.com/admin/settings/general)**\n  page of the Tailscale admin console.\n\n  For example, if your tailnet ID name is `T1234CNTRL`, your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/T1234CNTRL/...\"\n  ```\n\n  Learn more about [tailnet ID](https://tailscale.com/docs/concepts/tailnet-name#tailnet-id)."
+        }
+      ]
+    },
+    "getService": {
+      "path": "/tailnet/{tailnet}/services/{serviceName}",
+      "summary": "Get a Service",
+      "parameters": [
+        {
+          "name": "tailnet",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "The tailnet ID. \n\nTailnets created before Oct 2025 can still use the legacy ID, but the Tailnet ID is the preferred identifier.\n\nWhen specifying a tailnet in the API, you can:\n\n- Provide a dash (`-`) to reference the default tailnet of the access token being used to make the API call.\n  This is the best option for most users.\n  Your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/-/...\"\n  ```\n\n- Provide the **tailnet ID** found on the **[General Settings](https://login.tailscale.com/admin/settings/general)**\n  page of the Tailscale admin console.\n\n  For example, if your tailnet ID name is `T1234CNTRL`, your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/T1234CNTRL/...\"\n  ```\n\n  Learn more about [tailnet ID](https://tailscale.com/docs/concepts/tailnet-name#tailnet-id)."
+        },
+        {
+          "name": "serviceName",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "The unique name of a Service. The name should be prefixed with \"svc:\". It should be unique\nacross the tailnet, so names already used for a machine cannot be reused for a Service."
+        }
+      ]
+    },
+    "listOAuthApps": {
+      "path": "/tailnet/{tailnet}/oauth-apps",
+      "summary": "List OAuth apps",
+      "parameters": [
+        {
+          "name": "tailnet",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "The tailnet ID. \n\nTailnets created before Oct 2025 can still use the legacy ID, but the Tailnet ID is the preferred identifier.\n\nWhen specifying a tailnet in the API, you can:\n\n- Provide a dash (`-`) to reference the default tailnet of the access token being used to make the API call.\n  This is the best option for most users.\n  Your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/-/...\"\n  ```\n\n- Provide the **tailnet ID** found on the **[General Settings](https://login.tailscale.com/admin/settings/general)**\n  page of the Tailscale admin console.\n\n  For example, if your tailnet ID name is `T1234CNTRL`, your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/T1234CNTRL/...\"\n  ```\n\n  Learn more about [tailnet ID](https://tailscale.com/docs/concepts/tailnet-name#tailnet-id)."
+        }
+      ]
+    },
+    "getOAuthApp": {
+      "path": "/tailnet/{tailnet}/oauth-apps/{appId}",
+      "summary": "Get OAuth app",
+      "parameters": [
+        {
+          "name": "tailnet",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "The tailnet ID. \n\nTailnets created before Oct 2025 can still use the legacy ID, but the Tailnet ID is the preferred identifier.\n\nWhen specifying a tailnet in the API, you can:\n\n- Provide a dash (`-`) to reference the default tailnet of the access token being used to make the API call.\n  This is the best option for most users.\n  Your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/-/...\"\n  ```\n\n- Provide the **tailnet ID** found on the **[General Settings](https://login.tailscale.com/admin/settings/general)**\n  page of the Tailscale admin console.\n\n  For example, if your tailnet ID name is `T1234CNTRL`, your API calls would start:\n\n  ```sh\n  curl \"https://api.tailscale.com/api/v2/tailnet/T1234CNTRL/...\"\n  ```\n\n  Learn more about [tailnet ID](https://tailscale.com/docs/concepts/tailnet-name#tailnet-id)."
+        },
+        {
+          "name": "appId",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "The ID of the OAuth app."
+        }
+      ]
+    },
+    "listOrganizationTailnets": {
+      "path": "/organizations/{organization}/tailnets",
+      "summary": "List tailnets",
+      "parameters": [
+        {
+          "name": "organization",
+          "in": "path",
+          "required": true,
+          "type": "string",
+          "description": "The organization identifier.\n\nUse a dash (`-`) to reference the organization of the access token being used to make the API call."
+        },
+        {
+          "name": "limit",
+          "in": "query",
+          "required": false,
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "description": "Maximum number of tailnets to return per page; defaults to the maximum of 100.",
+          "default": 100
+        },
+        {
+          "name": "cursor",
+          "in": "query",
+          "required": false,
+          "type": "string",
+          "description": "Opaque pagination cursor from a previous response."
+        }
+      ]
+    }
+  }
+}

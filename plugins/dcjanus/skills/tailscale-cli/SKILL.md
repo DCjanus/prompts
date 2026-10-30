@@ -1,17 +1,30 @@
 ---
 name: tailscale-cli
-description: 查询和修改 Tailscale 管理后台的访问控制策略，包括 grants、ACL、SSH 权限、groups 和 tagOwners，以及校验策略和预览用户或目标地址的匹配规则。
+description: 查询 Tailscale 管理后台的设备、用户、DNS、路由、服务、密钥元数据、OAuth apps、Webhook、设置和日志，以及修改 grants、ACL、SSH 权限、groups、tagOwners、校验策略和预览匹配规则。
 ---
 
 # Tailscale 管理
 
 使用本 skill 的 [tailscale_cli.py](scripts/tailscale_cli.py) 调用官方 API。
-从顶层 `--help`、`policy --help` 到目标子命令逐层探索参数；支持直接执行，
+从顶层 `--help` 到 `api --help` 或 `policy --help` 逐层探索参数；支持直接执行，
 也可使用 `uv run --script`。全局 `--json` 放在子命令之前。
 
 首次接入或认证失败时读取 [配置与认证](references/configuration.md)。
-普通 `tailscale` CLI 操作本机连接；本 skill 操作 tailnet 的集中策略，
+普通 `tailscale` CLI 操作本机连接；本 skill 操作 tailnet 的管理 API，
 不通过本机登录状态获取管理权限。
+
+## 后台只读查询
+
+使用 `api list` 发现官方 GET 接口，可用 `--search` 按资源筛选；
+使用 `api describe <operation>` 查看必填参数、类型与限制，再使用 `api get` 查询。
+路径参数通过 `--param NAME=VALUE`、查询参数通过 `--query NAME=VALUE` 传入；
+tailnet 使用全局配置。发现和查看接口不需要认证。
+
+结果保留服务端 JSON 和分页信息；需要下一页时显式传回 cursor 等参数。
+401/403 需核对权限，套餐不支持或资源不存在时如实报告，不解释为空数据。
+部分接口尚处于 alpha/beta，网络流日志等能力还受套餐限制。
+密钥及 Webhook 等响应可能包含敏感字段，按实际需要筛选结果再展示，不把完整响应写进仓库或 PR。
+对应 scopes 与能力边界见 [配置与认证](references/configuration.md#后台查询权限)。
 
 ## 策略编辑
 

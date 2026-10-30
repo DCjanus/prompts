@@ -49,6 +49,7 @@ service account token，并配置 `op_vault`；该 token 仍需通过设备的�
 未登录、拒绝授权、条目不存在或字段缺失都会直接失败；
 检查桌面授权及条目设置，不自动重试或回退到明文。
 查看 `--help` 不会读取 1Password。
+`api list` 和 `api describe` 也不读取凭据。
 
 `op_item` 不能与 TOML 中的 `api_token`、`client_id`、`client_secret` 同时配置。
 迁移已有凭据时，先保存到 1Password 并验证读回一致，再将 TOML 改成条目引用。
@@ -82,6 +83,36 @@ API token 可在后台 [Keys](https://console.tailscale.com/admin/settings/keys)
 
 `policy_file` 包含读取权限；旧 scope `acl` 对应当前的 `policy_file`。
 401/403 时核对凭据、tailnet 和 scopes，不打印 secret 或完整认证响应。
+
+## 后台查询权限
+
+在 Trust credentials 编辑现有 OAuth client 的 Custom scopes，按需要勾选各组的 Read。
+增加读取能力不需要重建 client 或更换 1Password 内的 secret，下一次调用会换取新令牌。
+保留已有策略写权限即可，其他资源无需勾选 Write。
+
+| 查询资源 | Read scopes |
+| --- | --- |
+| DNS | `dns:read` |
+| 用户与用户邀请 | `users:read` |
+| 组织下的 tailnet | `tailnets:read` |
+| 设备、姿态、路由、设备邀请 | `devices:core:read`、`devices:posture_attributes:read`、`devices:routes:read`、`device_invites:read` |
+| 服务、OAuth apps | `services:read`、`oauth_apps:read` |
+| 密钥元数据 | `auth_keys:read`、`api_access_tokens:read`、`oauth_keys:read`、`federated_keys:read` |
+| Webhook、日志流配置与状态 | `webhooks:read`、`log_streaming:read` |
+| 配置审计日志、网络流日志 | `logs:configuration:read`、`logs:network:read` |
+| 联系人、功能设置、网络设置 | `account_settings:read`、`feature_settings:read`、`networking_settings:read` |
+
+后台可能因套餐隐藏部分权限，例如 Free tailnet 没有网络流日志 Read 选项。
+`getTailnetSettings` 的不同字段也受对应 scope 控制。
+`listTailnetKeys` 需显式指定 `--query all=false`；仅在已授予 `all:read` 时使用 `all=true`。
+`all:read` 会包含将来新增的只读权限，按当前用途逐项勾选能更准确控制授权范围。
+服务主机列表和审批状态虽是 GET，但当前官方文档要求服务、设备写权限，未纳入此只读入口。
+`getAwsExternalId` 是 POST，也未纳入此入口。
+API 参数以 `api describe` 为准；接口目录来自 [官方 OpenAPI](https://api.tailscale.com/api/v2)。
+
+响应保留原始 JSON，包括分页字段；`api get` 每次只读取一页，
+不会自动访问响应里的 URL。日期范围按接口要求传入 RFC 3339 时间，
+数组筛选可重复传入同名 `--query`。查询返回非零时不要当作空列表处理。
 
 ## 发布契约
 
