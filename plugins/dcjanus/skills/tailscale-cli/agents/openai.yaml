@@ -1,0 +1,3 @@
+interface:
+  display_name: "Tailscale 管理"
+  short_description: "查询、校验和修改 Tailscale 访问控制策略，预览权限并确认发布结果"
