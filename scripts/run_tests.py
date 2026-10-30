@@ -15,7 +15,7 @@
 #     "kittytgp>=0.0.3",
 #     "markdown-it-py>=4.2.0",
 #     "openai-codex>=0.163.0",
-#     "pydantic>=2.14.1",
+#     "pydantic>=2.14.2",
 #     "pytest>=9.2.0",
 #     "pyyaml>=6.0.3",
 #     "resvg-py>=0.5.0",
