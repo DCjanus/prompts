@@ -20,6 +20,9 @@ description: 查询 Tailscale 管理后台的设备、用户、DNS、路由、�
 路径参数通过 `--param NAME=VALUE`、查询参数通过 `--query NAME=VALUE` 传入；
 tailnet 使用全局配置。发现和查看接口不需要认证。
 
+展示或区分设备、客户端时优先使用 `name`，保留 `-wsl` 等有区分意义的后缀；
+可省略 tailnet 的 DNS 后缀，`hostname` 仅作补充，不能据此将不同设备展示为同名。
+
 结果保留服务端 JSON 和分页信息；需要下一页时显式传回 cursor 等参数。
 401/403 需核对权限，套餐不支持或资源不存在时如实报告，不解释为空数据。
 部分接口尚处于 alpha/beta，网络流日志等能力还受套餐限制。
