@@ -15,6 +15,7 @@ from __future__ import annotations
 import difflib
 import json
 import os
+import subprocess
 import tomllib
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -50,6 +51,51 @@ class State:
     config: Path
     tailnet: str | None
     json_output: bool
+
+
+def credentials_from_op(item: str, vault: str | None) -> dict[str, str]:
+    """一次读取指定条目，只在内存使用凭据，不输出 op 的敏感诊断。"""
+    command = ["op", "item", "get", "--format", "json", "--reveal"]
+    if vault:
+        command.extend(["--vault", vault])
+    command.extend(["--", item])
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+            stdin=subprocess.DEVNULL,
+        )
+    except FileNotFoundError:
+        raise OperationError("未找到 op，请安装 1Password CLI 并加入 PATH。") from None
+    except OSError, subprocess.TimeoutExpired:
+        raise OperationError(
+            "1Password 读取未完成，请检查 op 登录状态或桌面应用授权后重试。"
+        ) from None
+    if result.returncode:
+        raise OperationError(
+            "1Password 条目读取失败，请检查 op 登录或授权、条目 ID/名称和保险库；不会回退到明文凭据。"
+        )
+    try:
+        payload = json.loads(result.stdout)
+        if not isinstance(payload, dict) or not isinstance(payload.get("fields"), list):
+            raise TypeError
+        credentials = {}
+        for field in payload["fields"]:
+            label = field.get("label")
+            if label not in {"api_token", "client_id", "client_secret"}:
+                continue
+            value = field.get("value")
+            if label in credentials or not isinstance(value, str) or not value.strip():
+                raise ValueError
+            credentials[label] = value
+    except ValueError, AttributeError, TypeError:
+        raise OperationError(
+            "1Password 条目格式无效，请检查唯一且非空的 client_id、client_secret 或 api_token 字段。"
+        ) from None
+    return credentials
 
 
 def emit(state: State, value: dict[str, Any], *, error: bool = False) -> None:
@@ -99,7 +145,7 @@ def configure(
         typer.Option("--json", help="stdout 输出 JSON 结果，stderr 输出 JSON 错误。"),
     ] = False,
 ) -> None:
-    """管理 Tailscale 后台策略；凭据来自环境变量或 TOML，详见 skill 配置参考。"""
+    """管理 Tailscale 后台策略；凭据支持环境变量、TOML 或 op_item 指定的 1Password 条目。"""
     ctx.obj = State(config or default_config(), tailnet, json_output)
 
 
@@ -115,12 +161,19 @@ class Client:
                 raise OperationError(
                     "无法读取 TOML 配置，请检查文件格式与权限。"
                 ) from None
-        allowed = {"tailnet", "api_token", "client_id", "client_secret"}
+        allowed = {
+            "tailnet",
+            "api_token",
+            "client_id",
+            "client_secret",
+            "op_item",
+            "op_vault",
+        }
         if settings.keys() - allowed or any(
             not isinstance(v, str) or not v.strip() for v in settings.values()
         ):
             raise OperationError(
-                "配置仅支持非空字符串 tailnet、api_token、client_id、client_secret。"
+                "配置仅支持非空字符串 tailnet、api_token、client_id、client_secret、op_item、op_vault。"
             )
         self.tailnet = state.tailnet or settings.get("tailnet")
         if not self.tailnet or not self.tailnet.strip() or self.tailnet == "-":
@@ -138,6 +191,17 @@ class Client:
             if any(v is not None for v in env_credentials.values())
             else settings
         )
+        if credentials.get("op_vault") and not credentials.get("op_item"):
+            raise OperationError("op_vault 必须与 op_item 一起配置。")
+        if credentials.get("op_item"):
+            if any(
+                credentials.get(key)
+                for key in ("api_token", "client_id", "client_secret")
+            ):
+                raise OperationError("op_item 与 TOML 明文凭据互斥，请仅保留条目引用。")
+            credentials = credentials_from_op(
+                credentials["op_item"], credentials.get("op_vault")
+            )
         token = credentials.get("api_token")
         client_id = credentials.get("client_id")
         secret = credentials.get("client_secret")
@@ -145,7 +209,7 @@ class Client:
             raise OperationError("API token 与 OAuth 凭据互斥，请仅配置一种认证方式。")
         if not token and not (client_id and secret):
             raise OperationError(
-                "请设置 TS_API_KEY，或同时设置 TS_CLIENT_ID 和 TS_CLIENT_SECRET。"
+                "请配置 op_item，或设置 TS_API_KEY，或同时设置 TS_CLIENT_ID 和 TS_CLIENT_SECRET；1Password 条目使用同名小写字段 api_token 或 client_id、client_secret。"
             )
         self.http = httpx2.Client(timeout=30, follow_redirects=False)
         try:

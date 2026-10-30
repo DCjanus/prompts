@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 import sys
 from pathlib import Path
 from urllib.parse import parse_qs
@@ -380,3 +381,161 @@ def test_malformed_config_does_not_echo_secret(tmp_path):
     config.write_text('client_secret = "unclosed-private-secret')
     result = invoke("get")
     assert result.exit_code == 1 and "unclosed-private-secret" not in result.output
+
+
+def op_config(tmp_path, extra=""):
+    """建立只含条目引用的隔离配置。"""
+    path = tmp_path / "tailscale-cli/config.toml"
+    path.parent.mkdir()
+    path.write_text(
+        'op_item = "Tailscale policy management"\nop_vault = "Private"\n' + extra
+    )
+    return path
+
+
+@pytest.mark.parametrize("oauth", [True, False])
+def test_op_item_credentials_reach_api_without_writing_plaintext(
+    monkeypatch, tmp_path, oauth
+):
+    monkeypatch.delenv("TS_API_KEY")
+    config = op_config(tmp_path)
+    before = config.read_bytes()
+    secrets = (
+        {"client_id": "test-client", "client_secret": "private-oauth-secret"}
+        if oauth
+        else {"api_token": "private-api-token"}
+    )
+    calls = []
+
+    def read_item(command, **kwargs):
+        calls.append(command)
+        assert command == [
+            "op",
+            "item",
+            "get",
+            "--format",
+            "json",
+            "--reveal",
+            "--vault",
+            "Private",
+            "--",
+            "Tailscale policy management",
+        ]
+        assert (
+            kwargs["capture_output"] is True and kwargs["stdin"] == subprocess.DEVNULL
+        )
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            json.dumps(
+                {
+                    "fields": [
+                        {"label": key, "value": value} for key, value in secrets.items()
+                    ]
+                }
+            ),
+            "",
+        )
+
+    monkeypatch.setattr(cli.subprocess, "run", read_item)
+
+    def respond(request):
+        if request.url.path.endswith("/oauth/token"):
+            assert parse_qs(request.content.decode())["client_secret"] == [
+                secrets["client_secret"]
+            ]
+            return httpx2.Response(200, json={"access_token": "private-access-token"})
+        assert request.headers["Authorization"] == (
+            "Bearer private-access-token" if oauth else "Bearer private-api-token"
+        )
+        return httpx2.Response(200, content=CURRENT, headers={"ETag": '"v1"'})
+
+    mock_api(monkeypatch, respond)
+    result = invoke("get")
+    assert result.exit_code == 0, result.output
+    assert len(calls) == 1 and config.read_bytes() == before
+    assert "private-" not in result.output
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        "missing",
+        "timeout",
+        "denied",
+        "invalid_json",
+        "empty_field",
+        "missing_field",
+        "duplicate_field",
+    ],
+)
+def test_op_failures_stop_before_api_and_do_not_leak(monkeypatch, tmp_path, failure):
+    monkeypatch.delenv("TS_API_KEY")
+    config = op_config(tmp_path)
+    before = config.read_bytes()
+    calls = []
+
+    def read_item(command, **kwargs):
+        calls.append(command)
+        if failure == "missing":
+            raise FileNotFoundError("private-diagnostic")
+        if failure == "timeout":
+            raise subprocess.TimeoutExpired(command, 120, output="private-diagnostic")
+        if failure == "denied":
+            return subprocess.CompletedProcess(
+                command, 1, "private-secret", "private-diagnostic"
+            )
+        payload = {
+            "fields": [
+                {"label": "client_id", "value": "client"},
+                {"label": "client_secret", "value": "private-secret"},
+            ]
+        }
+        if failure == "empty_field":
+            payload["fields"][1]["value"] = ""
+        if failure == "missing_field":
+            payload["fields"].pop()
+        if failure == "duplicate_field":
+            payload["fields"].append(
+                {"label": "client_secret", "value": "private-secret"}
+            )
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            "private-malformed-json"
+            if failure == "invalid_json"
+            else json.dumps(payload),
+            "",
+        )
+
+    monkeypatch.setattr(cli.subprocess, "run", read_item)
+    result = invoke("get")
+    assert result.exit_code == 1
+    assert result.stdout == "" and "private-" not in result.stderr
+    assert len(calls) == 1 and config.read_bytes() == before
+
+
+def test_env_credentials_and_help_do_not_read_op(monkeypatch, tmp_path):
+    op_config(tmp_path)
+
+    def unexpected_read(*args, **kwargs):
+        pytest.fail("环境变量或帮助不应读取 1Password")
+
+    monkeypatch.setattr(cli.subprocess, "run", unexpected_read)
+    mock_api(
+        monkeypatch,
+        lambda req: httpx2.Response(200, content=CURRENT, headers={"ETag": '"v1"'}),
+    )
+    result = invoke("get")
+    assert result.exit_code == 0, result.output
+    assert invoke("get", "--help").exit_code == 0
+    monkeypatch.delenv("TS_API_KEY")
+    assert invoke("apply", "--help").exit_code == 0
+
+
+def test_op_and_plaintext_are_mutually_exclusive(monkeypatch, tmp_path):
+    monkeypatch.delenv("TS_API_KEY")
+    op_config(tmp_path, 'client_secret = "private-secret"\n')
+    result = invoke("get")
+    assert result.exit_code == 1 and "互斥" in result.stderr
+    assert "private-secret" not in result.output

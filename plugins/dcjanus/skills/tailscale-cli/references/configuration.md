@@ -10,7 +10,8 @@ Tailnet 选择优先级为全局 `--tailnet`、`TS_TAILNET`、TOML 的 `tailnet`
 
 默认配置文件为 `$XDG_CONFIG_HOME/tailscale-cli/config.toml`，
 未设置 XDG 时为 `~/.config/tailscale-cli/config.toml`；可用全局 `--config` 指定。
-普通调用不会创建或改写配置。配置文件不应纳入 Git；存储凭据时将权限设为 `0600`。
+普通调用不会创建或改写配置。存储明文凭据的文件不应纳入 Git，并应将权限设为 `0600`。
+使用下述 1Password 方式时，配置只包含条目定位信息，没有 secret。
 
 可以只保存 tailnet，再从环境变量提供凭据：
 
@@ -20,14 +21,52 @@ tailnet = "example.com"
 
 ## 认证方式
 
-二选一：
+### 1Password（本机推荐）
+
+将凭据保存在专用 1Password 条目中，OAuth 使用 `client_id` 和 `client_secret` 字段，
+其中 secret 字段类型选 Password；API token 方式则只保存 `api_token` 字段。
+字段名必须唯一，不使用内置 username/password 字段代替这些名称。
+
+TOML 只引用条目：
+
+```toml
+tailnet = "example.com"
+op_item = "Tailscale policy management"
+op_vault = "Private"
+```
+
+`op_item` 接受条目 ID 或名称，`op_vault` 接受保险库 ID 或名称，可省略。
+推荐使用 ID，避免重命名或同名条目影响定位；名称包含空格也可使用。
+CLI 每次执行时调用 `op item get` 一次，兼容已配置好的桌面授权或无界面认证。
+取得凭据后仅在进程内换取 Tailscale 令牌，不将凭据或令牌写回配置或磁盘缓存。
+
+需安装 [1Password CLI](https://developer.1password.com/docs/cli/get-started/)。
+本机可在已解锁的桌面应用中开启 Settings → Developer → Integrate with 1Password CLI，
+并批准调用方访问；账户选择沿用 `op` 自身的 `OP_ACCOUNT` 等配置。
+无界面设备可通过环境变量 `OP_SERVICE_ACCOUNT_TOKEN` 提供对指定保险库有读取权限的
+service account token，并配置 `op_vault`；该 token 仍需通过设备的凭据管理机制注入，
+不能写入 Git 或此 TOML。仅保存条目引用不能替代 1Password 本身的认证。
+未登录、拒绝授权、条目不存在或字段缺失都会直接失败；
+检查桌面授权及条目设置，不自动重试或回退到明文。
+查看 `--help` 不会读取 1Password。
+
+`op_item` 不能与 TOML 中的 `api_token`、`client_id`、`client_secret` 同时配置。
+迁移已有凭据时，先保存到 1Password 并验证读回一致，再将 TOML 改成条目引用。
+不要把 secret 放在 `op item create` 的命令参数或临时仓库文件中；
+可通过标准输入传入 JSON 模板，并在进程内处理返回值，避免输出秘密。
+参考：[条目读取](https://developer.1password.com/docs/cli/reference/management-commands/item/)、
+[安全创建条目](https://developer.1password.com/docs/cli/item-create/)。
+
+### 环境变量或明文配置
+
+两种认证凭据二选一：
 
 | 方式 | 环境变量 | 对应 TOML 字段 |
 | --- | --- | --- |
 | API access token | `TS_API_KEY` | `api_token` |
 | OAuth client credentials | `TS_CLIENT_ID`、`TS_CLIENT_SECRET` | `client_id`、`client_secret` |
 
-只要设置了任意凭据环境变量，就完全使用环境变量认证，不与 TOML 凭据拼接。
+只要设置了任意凭据环境变量，就完全使用环境变量认证，不读取 `op_item`，不与 TOML 凭据拼接。
 同一来源中不能同时设置 API token 和 OAuth。OAuth 在每次命令执行时获取短期访问令牌，
 不在磁盘缓存令牌；无需手动续期。
 
