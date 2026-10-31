@@ -10,6 +10,10 @@ description: 查询 Tailscale 管理后台的设备、用户、DNS、路由、�
 也可使用 `uv run --script`。全局 `--json` 放在子命令之前。
 
 首次接入或认证失败时读取 [配置与认证](references/configuration.md)。
+使用 1Password 时，授权只在当前 shell 环境上下文有效；先建立持续运行的交互
+shell，在其中完成 `op signin`，并复用同一 shell 执行后续 CLI 调用。
+不要为每次调用新建 shell，也不要把用户终端或其他工具会话中的授权视为当前已授权；
+更换上下文后重新授权，不通过导出会话令牌或缓存明文凭据绕过此限制。
 先运行 `auth check`，验证配置、凭据读取与策略读取权限；失败时按错误所在阶段处理。
 `op whoami` 未登录不能单独证明桌面集成不可用，不以此阻止实际条目读取。
 普通 `tailscale` CLI 操作本机连接；本 skill 操作 tailnet 的管理 API，

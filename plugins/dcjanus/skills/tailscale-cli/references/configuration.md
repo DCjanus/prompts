@@ -63,8 +63,12 @@ Integrate with 1Password CLI；需要 Touch ID 时同时开启桌面应用的 To
 先处理缺失的 TOML/tailnet/条目配置，再区分 1Password 读取失败与 API 的 401/403。
 `op whoami` 显示未登录不能单独证明桌面集成不可用，以实际条目读取结果为准。
 
-终端授权不保证 Agent 应用内的调用也已授权。保持登录和后续操作在同一个
-交互终端会话中；若 Agent 仍失败，从 Agent 再发起一次 `auth check` 并批准相应提示。
+每次 `op` 授权只在当前 shell 环境上下文有效。Agent 应先启动一个持续运行的
+交互 shell，在该 shell 内完成 `op signin`，再通过同一会话执行 `auth check`、
+查询及发布；每次新建工具 shell 会丢失该上下文。用户在自己的终端批准访问，
+也不等于 Agent 所在 shell 已获授权。需要更换上下文时重新授权，不把 session token
+导出到新 shell、不写入磁盘，也不缓存明文凭据。若 Agent 仍失败，从原会话再发起
+一次 `auth check` 并批准相应提示。
 macOS 若提示跨应用数据访问，还需允许实际运行命令的应用访问 1Password 共享数据；
 具体入口见 [桌面集成排障](https://www.1password.dev/cli/app-integration#troubleshooting)。
 条目读取最多等待 45 秒；超时或拒绝后停止，不自动重试授权，也不回退到明文。
