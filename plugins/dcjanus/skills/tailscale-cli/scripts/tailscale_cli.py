@@ -36,6 +36,8 @@ api_app = typer.Typer(
     help="发现并调用官方只读 API，覆盖设备、用户、DNS、设置、日志等。",
 )
 app.add_typer(api_app, name="api")
+auth_app = typer.Typer(no_args_is_help=True, help="检查配置、凭据读取和策略读取权限。")
+app.add_typer(auth_app, name="auth")
 READ_API = json.loads(
     (Path(__file__).resolve().parents[1] / "references/read-api.json").read_text(
         encoding="utf-8"
@@ -78,7 +80,7 @@ def credentials_from_op(item: str, vault: str | None) -> dict[str, str]:
             command,
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=45,
             check=False,
             stdin=subprocess.DEVNULL,
         )
@@ -86,11 +88,14 @@ def credentials_from_op(item: str, vault: str | None) -> dict[str, str]:
         raise OperationError("未找到 op，请安装 1Password CLI 并加入 PATH。") from None
     except OSError, subprocess.TimeoutExpired:
         raise OperationError(
-            "1Password 读取未完成，请检查 op 登录状态或桌面应用授权后重试。"
+            "1Password 读取未完成。请解锁桌面应用，在设置 → 开发者开启 "
+            "Integrate with 1Password CLI，在本机终端运行 op signin 并批准授权；"
+            "若终端成功而 Agent 失败，需为 Agent 所在应用单独批准访问。"
         ) from None
     if result.returncode:
         raise OperationError(
-            "1Password 条目读取失败，请检查 op 登录或授权、条目 ID/名称和保险库；不会回退到明文凭据。"
+            "1Password 条目读取失败。请在本机终端运行 op signin 并批准授权，"
+            "再核对条目 ID/名称和保险库；不会回退到明文凭据。"
         )
     try:
         payload = json.loads(result.stdout)
@@ -508,6 +513,14 @@ PolicyFile = Annotated[
         help="完整 JSON/HuJSON 策略文件；保留注释和尾逗号，原样发送。",
     ),
 ]
+
+
+@auth_app.command("check")
+def check_auth(ctx: typer.Context) -> None:
+    """读取配置及凭据，并用只读 API 验证策略权限；不展示凭据或策略正文。"""
+    with connection(ctx) as client:
+        client.get()
+        emit(ctx.obj, {"ok": True, "tailnet": client.tailnet, "policy_readable": True})
 
 
 def read_policy(path: Path) -> bytes:

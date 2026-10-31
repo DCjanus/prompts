@@ -10,6 +10,8 @@ description: 查询 Tailscale 管理后台的设备、用户、DNS、路由、�
 也可使用 `uv run --script`。全局 `--json` 放在子命令之前。
 
 首次接入或认证失败时读取 [配置与认证](references/configuration.md)。
+先运行 `auth check`，验证配置、凭据读取与策略读取权限；失败时按错误所在阶段处理。
+`op whoami` 未登录不能单独证明桌面集成不可用，不以此阻止实际条目读取。
 普通 `tailscale` CLI 操作本机连接；本 skill 操作 tailnet 的管理 API，
 不通过本机登录状态获取管理权限。
 

@@ -51,6 +51,24 @@ service account token，并配置 `op_vault`；该 token 仍需通过设备的�
 查看 `--help` 不会读取 1Password。
 `api list` 和 `api describe` 也不读取凭据。
 
+### 本机授权与诊断
+
+先打开并解锁 1Password 桌面应用，在 Settings → Developer 中开启
+Integrate with 1Password CLI；需要 Touch ID 时同时开启桌面应用的 Touch ID。
+在本机终端运行 `op signin`，按提示批准访问。密码只在本机的系统或
+1Password 提示中输入，不通过聊天或脚本参数传递。
+
+配置好条目引用后运行 `tailscale_cli.py auth check`。它实际读取指定条目，
+换取 API 令牌并读取策略，只输出成功状态与 tailnet，不输出凭据或策略正文。
+先处理缺失的 TOML/tailnet/条目配置，再区分 1Password 读取失败与 API 的 401/403。
+`op whoami` 显示未登录不能单独证明桌面集成不可用，以实际条目读取结果为准。
+
+终端授权不保证 Agent 应用内的调用也已授权。保持登录和后续操作在同一个
+交互终端会话中；若 Agent 仍失败，从 Agent 再发起一次 `auth check` 并批准相应提示。
+macOS 若提示跨应用数据访问，还需允许实际运行命令的应用访问 1Password 共享数据；
+具体入口见 [桌面集成排障](https://www.1password.dev/cli/app-integration#troubleshooting)。
+条目读取最多等待 45 秒；超时或拒绝后停止，不自动重试授权，也不回退到明文。
+
 `op_item` 不能与 TOML 中的 `api_token`、`client_id`、`client_secret` 同时配置。
 迁移已有凭据时，先保存到 1Password 并验证读回一致，再将 TOML 改成条目引用。
 不要把 secret 放在 `op item create` 的命令参数或临时仓库文件中；
