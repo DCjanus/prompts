@@ -82,7 +82,8 @@ def credentials_from_op(item: str, vault: str | None) -> dict[str, str]:
             text=True,
             timeout=45,
             check=False,
-            stdin=subprocess.DEVNULL,
+            # 保留当前 shell 的终端输入上下文，供 1Password 桌面集成复用授权。
+            stdin=None,
         )
     except FileNotFoundError:
         raise OperationError("未找到 op，请安装 1Password CLI 并加入 PATH。") from None
