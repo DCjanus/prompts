@@ -72,6 +72,40 @@ def invoke(*args):
     return CliRunner().invoke(cli.app, ["--json", "policy", *map(str, args)])
 
 
+def test_auth_check_verifies_policy_read_without_printing_secrets(monkeypatch):
+    """诊断通过真实 API 读取验证凭据，同时不展示策略和令牌。"""
+    calls = mock_api(
+        monkeypatch,
+        lambda request: httpx2.Response(200, content=CURRENT, headers={"ETag": '"v1"'}),
+    )
+    result = CliRunner().invoke(cli.app, ["--json", "auth", "check"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {
+        "ok": True,
+        "tailnet": "example.com",
+        "policy_readable": True,
+    }
+    assert len(calls) == 1 and calls[0].method == "GET"
+    assert calls[0].url.path == ACL_PATH
+    assert "test-api-secret" not in result.output
+
+
+def test_op_timeout_provides_local_authorization_steps(monkeypatch):
+    """授权超时给出可执行的本机登录步骤，不回显子进程诊断。"""
+
+    def timeout(command, **kwargs):
+        raise subprocess.TimeoutExpired(
+            command, kwargs["timeout"], output="private-secret"
+        )
+
+    monkeypatch.setattr(cli.subprocess, "run", timeout)
+    with pytest.raises(cli.OperationError) as error:
+        cli.credentials_from_op("fixture", None)
+    assert "op signin" in str(error.value)
+    assert "Integrate with 1Password CLI" in str(error.value)
+    assert "private-secret" not in str(error.value)
+
+
 @pytest.mark.parametrize(
     "operation,arguments,path",
     [
