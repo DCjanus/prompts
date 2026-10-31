@@ -38,6 +38,10 @@ api_app = typer.Typer(
 app.add_typer(api_app, name="api")
 auth_app = typer.Typer(no_args_is_help=True, help="检查配置、凭据读取和策略读取权限。")
 app.add_typer(auth_app, name="auth")
+credential_app = typer.Typer(
+    no_args_is_help=True, help="创建 OIDC 联合身份或更新信任凭据；默认只预览。"
+)
+app.add_typer(credential_app, name="credential")
 READ_API = json.loads(
     (Path(__file__).resolve().parents[1] / "references/read-api.json").read_text(
         encoding="utf-8"
@@ -82,7 +86,8 @@ def credentials_from_op(item: str, vault: str | None) -> dict[str, str]:
             text=True,
             timeout=45,
             check=False,
-            stdin=subprocess.DEVNULL,
+            # 保留当前 shell 的终端输入上下文，供 1Password 桌面集成复用授权。
+            stdin=None,
         )
     except FileNotFoundError:
         raise OperationError("未找到 op，请安装 1Password CLI 并加入 PATH。") from None
@@ -261,7 +266,7 @@ class Client:
             response = self.http.request(method, API_BASE + path, **kwargs)
         except httpx2.RequestError:
             raise OperationError(
-                "网络请求失败；若已尝试发布，结果未知，请先重新读取策略再判断，勿盲目重试。"
+                "网络请求失败；若已尝试写入，结果未知，请先重新读取目标资源再判断，勿盲目重试。"
             ) from None
         if not response.is_success:
             if response.status_code == 412:
@@ -521,6 +526,179 @@ def check_auth(ctx: typer.Context) -> None:
     with connection(ctx) as client:
         client.get()
         emit(ctx.obj, {"ok": True, "tailnet": client.tailnet, "policy_readable": True})
+
+
+CREDENTIAL_FIELDS = {
+    "keyType",
+    "description",
+    "scopes",
+    "tags",
+    "issuer",
+    "subject",
+    "audience",
+    "customClaimRules",
+}
+
+
+def credential_fields(payload: dict) -> dict:
+    """只投影官方可配置字段，不携带返回中的密钥正文。"""
+    return {
+        key: value
+        for key, value in payload.items()
+        if key in CREDENTIAL_FIELDS and value is not None
+    }
+
+
+def read_credential(file: Path) -> dict:
+    """读取信任配置，拒绝密钥字段和不支持的结构。"""
+    value = json.loads(file.read_text())
+    if not isinstance(value, dict) or not value or value.keys() - CREDENTIAL_FIELDS:
+        raise OperationError(
+            "配置必须是非空 JSON 对象，仅包含信任凭据的配置字段；不接受 key 或 secret。"
+        )
+    for name, item in value.items():
+        valid = isinstance(item, str) and bool(item)
+        if name in {"scopes", "tags"}:
+            valid = isinstance(item, list) and all(
+                isinstance(x, str) and x for x in item
+            )
+        elif name == "customClaimRules":
+            valid = isinstance(item, dict) and all(
+                isinstance(k, str) and isinstance(v, str) for k, v in item.items()
+            )
+        if not valid:
+            raise OperationError(f"配置字段 {name} 类型或值不合法。")
+    return value
+
+
+def verify_credential(client: Client, path: str, expected: dict) -> dict:
+    """写入后回读并核对配置；不自动重试结果未知的写入。"""
+    actual = client.request("GET", path).json()
+    for key, value in expected.items():
+        observed = actual.get(key)
+        matches = (
+            sorted(value) == sorted(observed or [])
+            if key in {"scopes", "tags"}
+            else value == observed
+        )
+        if not matches:
+            raise OperationError(
+                "写入后回读配置不一致，请重新查询目标凭据，勿重复创建。"
+            )
+    return {"id": actual.get("id"), **credential_fields(actual)}
+
+
+@credential_app.command("create-federated")
+def create_federated(
+    ctx: typer.Context,
+    file: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            dir_okay=False,
+            help="JSON 配置：scopes、issuer、subject 必填；可含 tags、description、audience、customClaimRules。",
+        ),
+    ],
+    execute: Annotated[
+        bool,
+        typer.Option(
+            "--execute", help="创建并回读；默认只校验及预览配置，不读取凭据。"
+        ),
+    ] = False,
+) -> None:
+    """创建不含长期 secret 的 OIDC 联合身份，默认不写入。"""
+    with local_errors(ctx):
+        payload = {"keyType": "federated", **read_credential(file)}
+        if (
+            payload["keyType"] != "federated"
+            or not payload.get("scopes")
+            or not payload.get("issuer", "").startswith("https://")
+            or not payload.get("subject")
+        ):
+            raise OperationError(
+                "联合身份必须为 federated，且包含非空 scopes、HTTPS issuer 和 subject。"
+            )
+        if not execute:
+            emit(ctx.obj, {"applied": False, "configuration": payload})
+            return
+    # 认证与创建在一个连接中完成，避免再次读取 1Password。
+    with connection(ctx) as client:
+        path = f"/tailnet/{quote(client.tailnet, safe='')}/keys"
+        created = client.request("POST", path, json=payload).json()
+        key_id = created.get("id")
+        if not isinstance(key_id, str) or not key_id:
+            raise OperationError(
+                "创建请求成功但响应缺少 id，请查询凭据列表，勿重复创建。"
+            )
+        actual = verify_credential(client, path + "/" + quote(key_id, safe=""), payload)
+        emit(ctx.obj, {"applied": True, "verified": True, "credential": actual})
+
+
+@contextmanager
+def local_errors(ctx: typer.Context):
+    """本地配置预览沿用 CLI 错误格式，不触发认证。"""
+    try:
+        yield
+    except (OperationError, OSError, ValueError) as exc:
+        emit(
+            ctx.obj,
+            {
+                "ok": False,
+                "error": str(exc)
+                if isinstance(exc, OperationError)
+                else "无法解析凭据 JSON 配置。",
+            },
+            error=True,
+        )
+        raise typer.Exit(1) from None
+
+
+@credential_app.command("update")
+def update_credential(
+    ctx: typer.Context,
+    key_id: Annotated[
+        str, typer.Argument(help="目标 OAuth 客户端或 OIDC 联合身份的 ID。")
+    ],
+    file: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            dir_okay=False,
+            help="JSON 配置补丁；scopes/tags 列表整体替换，未指定字段保留。",
+        ),
+    ],
+    execute: Annotated[
+        bool,
+        typer.Option("--execute", help="实际更新并回读；默认只展示变更前后的配置。"),
+    ] = False,
+) -> None:
+    """读取并更新现有信任凭据，保留未指定的配置。"""
+    with connection(ctx) as client:
+        path = (
+            f"/tailnet/{quote(client.tailnet, safe='')}/keys/{quote(key_id, safe='')}"
+        )
+        before = credential_fields(client.request("GET", path).json())
+        payload = {**before, **read_credential(file)}
+        if (
+            before.get("keyType") not in {"client", "federated"}
+            or payload.get("keyType") != before.get("keyType")
+            or not payload.get("scopes")
+        ):
+            raise OperationError(
+                "仅支持更新 OAuth 或 OIDC 信任凭据，不能修改类型或清空 scopes。"
+            )
+        actual = before
+        if execute and payload != before:
+            client.request("PUT", path, json=payload)
+            actual = verify_credential(client, path, payload)
+        emit(
+            ctx.obj,
+            {
+                "applied": execute and payload != before,
+                "before": before,
+                "configuration": actual if execute else payload,
+            },
+        )
 
 
 def read_policy(path: Path) -> bytes:

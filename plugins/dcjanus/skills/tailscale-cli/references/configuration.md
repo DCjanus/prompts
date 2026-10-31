@@ -132,6 +132,43 @@ API token 可在后台 [Keys](https://console.tailscale.com/admin/settings/keys)
 `getAwsExternalId` 是 POST，也未纳入此入口。
 API 参数以 `api describe` 为准；接口目录来自 [官方 OpenAPI](https://api.tailscale.com/api/v2)。
 
+## 信任凭据管理
+
+`credential create-federated FILE` 只创建无长期 secret 的 OIDC 身份，文件示例：
+
+```json
+{
+  "description": "GitHub production deploy",
+  "scopes": ["auth_keys"],
+  "tags": ["tag:ci-deploy"],
+  "issuer": "https://token.actions.githubusercontent.com",
+  "subject": "repo:example/project:ref:refs/heads/main",
+  "customClaimRules": {
+    "workflow_ref": "example/project/.github/workflows/deploy.yml@refs/heads/main"
+  }
+}
+```
+
+默认只校验、预览，不读取凭据或联网；加 `--execute` 才创建并回读配置。
+不指定 audience 时由 Tailscale 生成。成功结果中的 `id` 和 `audience` 可作为
+GitHub Actions 的公开 Variables；CLI 不输出 API 响应中的 `key` 字段。
+
+`credential update KEY_ID FILE` 先读取现状，再合并 JSON 配置补丁。
+`scopes`、`tags` 数组和 `customClaimRules` 对象整体替换，其他未指定字段保留；
+默认输出前后配置，加 `--execute` 才以官方 Set key API 更新并回读。
+仅支持 OAuth 与 OIDC 凭据，不能修改凭据类型、清空 scopes 或写入 secret。
+API 不提供该操作的 ETag，并发修改同一凭据时须重新读取，避免覆盖。
+
+创建和更新 OIDC 身份需要 `federated_keys` 写权限；更新 OAuth 客户端需要
+`oauth_keys` 写权限。管理凭据还需要拥有将授予新身份的 scopes 与 tags：
+例如创建用于 GitHub Action 入网的身份时，管理凭据也需要 `auth_keys` 写权限，
+并允许使用目标 tag；只有 `auth_keys:read` 不够。目标 tag 需先存在于策略中。
+先保留现有 scopes，再按用途补齐写权限，不默认选择 All - Read & Write。
+
+现有 token 无法自行绕过权限限制。用户授权后，可在管理员后台编辑现有凭据的
+Custom scopes 与 tags；保存后下一次 CLI 调用会换取新令牌，无需重建凭据或更换
+1Password 中的 secret。后台修改后用 `api get getKey --param keyId=...` 回读确认。
+
 响应保留原始 JSON，包括分页字段；`api get` 每次只读取一页，
 不会自动访问响应里的 URL。日期范围按接口要求传入 RFC 3339 时间，
 数组筛选可重复传入同名 `--query`。查询返回非零时不要当作空列表处理。

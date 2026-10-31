@@ -1,6 +1,6 @@
 ---
 name: tailscale-cli
-description: 查询 Tailscale 管理后台的设备、用户、DNS、路由、服务、密钥元数据、OAuth apps、Webhook、设置和日志，以及修改 grants、ACL、SSH 权限、groups、tagOwners、校验策略和预览匹配规则。
+description: 查询 Tailscale 管理后台，管理访问策略与 SSH 权限，创建 GitHub Actions 等工作负载的 OIDC 联合身份，或更新 OAuth/OIDC 信任凭据的 scopes、tags 和信任规则。
 ---
 
 # Tailscale 管理
@@ -53,6 +53,19 @@ tailnet 使用全局配置。发现和查看接口不需要认证。
 只读调查不包含发布授权；创建本 skill 也不包含修改用户 tailnet 的授权。
 本机优先将凭据保存在 1Password，以 `op_item` 引用，按配置参考完成接入。
 凭据不写入仓库、PR、日志或回复；迁移时先验证保险库读回，再移除本机明文。
+
+## OIDC 与信任凭据
+
+使用 `credential create-federated FILE` 创建 OIDC 联合身份，使用
+`credential update KEY_ID FILE` 更新现有 OAuth/OIDC 凭据。文件为官方配置字段的
+JSON；默认只预览，检查后加 `--execute` 写入并回读，未指定字段保留。
+具体字段、scopes 和示例见 [配置与认证](references/configuration.md#信任凭据管理)。
+
+创建或修改需要用户授权。现有 OAuth 凭据不能绕过自身 scopes 与 tags 限制；
+权限不足时先说明缺少的权限。只有用户授权使用管理员页面补齐权限时才走该入口，
+不把 API 的 403 当作用户需要提供新的长期 secret。
+OIDC 的 Client ID 与 Audience 是公开配置；不要把普通 OAuth secret 或 auth key
+当作 OIDC 配置输出。写入失败或回读未确认时先查询实际状态，不自动重复创建。
 
 ## 官方资料
 

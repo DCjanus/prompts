@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
+import pty
 import subprocess
 import sys
 from pathlib import Path
@@ -104,6 +106,133 @@ def test_op_timeout_provides_local_authorization_steps(monkeypatch):
     assert "op signin" in str(error.value)
     assert "Integrate with 1Password CLI" in str(error.value)
     assert "private-secret" not in str(error.value)
+
+
+def test_op_preserves_parent_terminal_context(monkeypatch, tmp_path):
+    """条目读取继承授权终端的标准输入，不将交互上下文替换成空设备。"""
+    executable = tmp_path / "op"
+    executable.write_text(
+        f"#!{sys.executable}\n"
+        "import json, sys\n"
+        "if not sys.stdin.isatty(): sys.exit(7)\n"
+        "print(json.dumps({'fields':[{'label':'api_token','value':'fixture-token'}]}))\n"
+    )
+    executable.chmod(0o755)
+    monkeypatch.setenv("PATH", str(tmp_path) + os.pathsep + os.environ["PATH"])
+    master, slave = pty.openpty()
+    try:
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                (
+                    f"import runpy; m=runpy.run_path({str(SCRIPT)!r}); "
+                    "assert m['credentials_from_op']('fixture', None)['api_token']=='fixture-token'"
+                ),
+            ],
+            stdin=slave,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+    finally:
+        os.close(master)
+        os.close(slave)
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("execute", [False, True])
+def test_create_federated_preview_and_verified_creation(monkeypatch, tmp_path, execute):
+    """默认不联网，创建时只写一次并回读，不输出服务端附带的密钥。"""
+    payload = {
+        "keyType": "federated",
+        "issuer": "https://token.actions.githubusercontent.com",
+        "subject": "repo:example/repo:ref:refs/heads/main",
+        "scopes": ["auth_keys"],
+        "tags": ["tag:ci"],
+    }
+    config = tmp_path / "identity.json"
+    config.write_text(json.dumps(payload))
+
+    def respond(request):
+        if request.method == "POST":
+            assert json.loads(request.content) == payload
+            return httpx2.Response(
+                200, json={"id": "identity-1", "key": "private-secret"}
+            )
+        assert request.method == "GET" and request.url.path.endswith("/keys/identity-1")
+        return httpx2.Response(
+            200,
+            json={
+                "id": "identity-1",
+                "key": "private-secret",
+                "audience": "generated-audience",
+                **payload,
+            },
+        )
+
+    calls = mock_api(monkeypatch, respond)
+    result = CliRunner().invoke(
+        cli.app,
+        [
+            "--json",
+            "credential",
+            "create-federated",
+            str(config),
+            *(["--execute"] if execute else []),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert len(calls) == (2 if execute else 0)
+    assert json.loads(result.stdout)["applied"] is execute
+    assert "private-secret" not in result.output
+
+
+@pytest.mark.parametrize("execute", [False, True])
+def test_update_credential_preserves_unspecified_fields(monkeypatch, tmp_path, execute):
+    """更新 scopes 时保留描述与标签，预览不写入，执行后回读。"""
+    before = {
+        "keyType": "client",
+        "description": "fixture",
+        "scopes": ["policy_file"],
+        "tags": ["tag:admin"],
+    }
+    after = {**before, "scopes": ["policy_file", "federated_keys"]}
+    config = tmp_path / "update.json"
+    config.write_text(json.dumps({"scopes": after["scopes"]}))
+    reads = 0
+
+    def respond(request):
+        nonlocal reads
+        if request.method == "PUT":
+            assert json.loads(request.content) == after
+            return httpx2.Response(200, json={"key": "private-secret"})
+        reads += 1
+        return httpx2.Response(
+            200,
+            json={
+                "id": "fixture",
+                "key": "private-secret",
+                **(before if reads == 1 else after),
+            },
+        )
+
+    calls = mock_api(monkeypatch, respond)
+    result = CliRunner().invoke(
+        cli.app,
+        [
+            "--json",
+            "credential",
+            "update",
+            "fixture",
+            str(config),
+            *(["--execute"] if execute else []),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert [x.method for x in calls] == (["GET", "PUT", "GET"] if execute else ["GET"])
+    assert "private-secret" not in result.output
 
 
 @pytest.mark.parametrize(
@@ -708,9 +837,7 @@ def test_op_item_credentials_reach_api_without_writing_plaintext(
             "--",
             "Tailscale policy management",
         ]
-        assert (
-            kwargs["capture_output"] is True and kwargs["stdin"] == subprocess.DEVNULL
-        )
+        assert kwargs["capture_output"] is True and kwargs["stdin"] is None
         return subprocess.CompletedProcess(
             command,
             0,

@@ -1,3 +1,3 @@
 interface:
   display_name: "Tailscale 管理"
-  short_description: "查询 Tailscale 后台资源和日志，校验、预览及修改访问控制策略"
+  short_description: "管理 Tailscale 策略、SSH 权限及 OAuth/OIDC 工作负载信任凭据"
