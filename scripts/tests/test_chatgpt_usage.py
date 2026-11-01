@@ -8,6 +8,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from compression import zstd
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -886,6 +887,133 @@ class PricingCatalogTests(unittest.TestCase):
 
 
 class LocalUsageHistoryTests(unittest.TestCase):
+    def test_compressed_rollouts_and_representation_transitions(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            sessions = root / "sessions"
+            sessions.mkdir()
+            path = self._write_provider_rollout(
+                sessions,
+                thread_id="00000000-0000-0000-0000-000000000123",
+                provider="custom",
+                total_tokens=120,
+            )
+            compressed = path.with_suffix(".jsonl.zst")
+            raw = path.read_bytes()
+            # Codex 也支持串联帧以及没有 content size 的流式压缩。
+            encoder = zstd.ZstdCompressor()
+            compressed.write_bytes(
+                encoder.compress(raw[:100]) + encoder.flush() + zstd.compress(raw[100:])
+            )
+            now = datetime(2030, 1, 8, 12, tzinfo=UTC)
+            cache = root / "usage.duckdb"
+            for representation in ("both", "compressed", "plain"):
+                if representation == "compressed":
+                    path.unlink()
+                elif representation == "plain":
+                    path.write_bytes(raw)
+                    compressed.unlink()
+                history = chatgpt_usage.collect_usage_history(
+                    root, cache, now=now, provider="all"
+                )
+                self.assertEqual(history.total_tokens, 120, representation)
+                self.assertEqual(history.scan.total_files, 1)
+                self.assertEqual(history.providers[0].provider, "custom")
+                cached = chatgpt_usage.collect_usage_history(
+                    root, cache, now=now, provider="all"
+                )
+                self.assertEqual(cached.scan.cache_hits, 1, representation)
+                self.assertEqual(chatgpt_usage._observed_providers(root), {"custom": 1})
+
+    def test_response_usage_records_override_context_estimates_incrementally(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            sessions = root / "sessions"
+            sessions.mkdir()
+            path = self._write_provider_rollout(
+                sessions,
+                thread_id="00000000-0000-0000-0000-000000000123",
+                provider="openai",
+                total_tokens=120,
+            )
+            # 模拟旧版本升级后，实际响应计费先于 token_count 持久化。
+            record = {
+                "timestamp": "2030-01-08T11:00:00Z",
+                "type": "token_usage_record",
+                "payload": {
+                    "response_id": "response-1",
+                    "usage": {
+                        "input_tokens": 30,
+                        "output_tokens": 10,
+                        "total_tokens": 40,
+                    },
+                },
+            }
+            with path.open("a") as file:
+                file.write(json.dumps(record) + "\n")
+                file.write(
+                    self._token_count_line(
+                        "2030-01-08T11:00:00Z",
+                        ordinal=2,
+                        total=(150, 0, 10, 160),
+                        last=(30, 0, 10, 40),
+                    )
+                    + "\n"
+                )
+            now = datetime(2030, 1, 8, 12, tzinfo=UTC)
+            cache = root / "usage.duckdb"
+            os.utime(path, (now.timestamp(), now.timestamp()))
+            history = chatgpt_usage.collect_usage_history(root, cache, now=now)
+            self.assertEqual(history.total_tokens, 160)
+            with path.open("a") as file:
+                # 重复响应记录以及无真实请求的上下文估算不应额外计费。
+                file.write(json.dumps(record) + "\n")
+                file.write(
+                    self._token_count_line(
+                        "2030-01-08T11:01:00Z",
+                        ordinal=3,
+                        total=(900, 0, 0, 900),
+                        last=(750, 0, 0, 750),
+                    )
+                    + "\n"
+                )
+                record["payload"]["response_id"] = "response-2"
+                # 不完整响应可能只有计费记录，没有后续 token_count。
+                file.write(json.dumps(record) + "\n")
+            history = chatgpt_usage.collect_usage_history(root, cache, now=now)
+            self.assertEqual(history.total_tokens, 200)
+            self.assertEqual(history.scan.incremental_scans, 1)
+
+    def test_compressed_old_rollout_and_corruption_are_not_silently_ignored(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            sessions = root / "archived_sessions"
+            sessions.mkdir()
+            path = self._write_provider_rollout(
+                sessions,
+                thread_id="00000000-0000-0000-0000-000000000123",
+                provider="openai",
+                total_tokens=120,
+            )
+            # 文件名早于展示窗口，压缩文件必须走流式扫描而非 mmap。
+            compressed = sessions / path.name.replace(
+                "2030-01-08", "2029-12-01"
+            ).replace(".jsonl", ".jsonl.zst")
+            compressed.write_bytes(zstd.compress(path.read_bytes()))
+            path.unlink()
+            now = datetime(2030, 1, 8, 12, tzinfo=UTC)
+            os.utime(compressed, (now.timestamp(), now.timestamp()))
+            cache = root / "usage.duckdb"
+            history = chatgpt_usage.collect_usage_history(root, cache, now=now)
+            self.assertEqual(history.total_tokens, 120)
+            compressed.write_bytes(b"not a zstd stream")
+            with self.assertRaises(chatgpt_usage.UsageError):
+                chatgpt_usage.collect_usage_history(root, cache, now=now)
+
     @staticmethod
     def _turn_context_line(timestamp: str, model: str) -> str:
         return json.dumps(
@@ -986,6 +1114,58 @@ class LocalUsageHistoryTests(unittest.TestCase):
         now = datetime(2030, 1, 8, 12, tzinfo=UTC)
         os.utime(rollout, (now.timestamp(), now.timestamp()))
         return rollout
+
+    def test_copied_parent_usage_is_excluded_and_revert_keeps_logical_owner(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            sessions = root / "sessions"
+            sessions.mkdir()
+            path = (
+                sessions
+                / "rollout-2030-01-08T10-00-00-00000000-0000-0000-0000-000000000123.jsonl"
+            )
+            owner = "00000000-0000-0000-0000-000000000456"
+            lines = [
+                json.dumps({"type": "session_meta", "payload": {"id": owner}}),
+                self._turn_context_line("2030-01-08T10:00:00Z", "gpt-5.5"),
+            ]
+            for record_owner, response_id, tokens in (
+                ("parent", "parent-response", 1000),
+                (owner, "child-response", 40),
+            ):
+                lines.append(
+                    json.dumps(
+                        {
+                            "timestamp": "2030-01-08T10:00:00Z",
+                            "type": "token_usage_record",
+                            "payload": {
+                                "thread_id": record_owner,
+                                "response_id": response_id,
+                                "usage": {
+                                    "input_tokens": tokens,
+                                    "total_tokens": tokens,
+                                },
+                            },
+                        }
+                    )
+                )
+                lines.append(
+                    self._token_count_line(
+                        "2030-01-08T10:00:00Z",
+                        ordinal=tokens,
+                        total=(tokens, 0, 0, tokens),
+                        last=(tokens, 0, 0, tokens),
+                    )
+                )
+            path.write_text("\n".join(lines) + "\n")
+            now = datetime(2030, 1, 8, 12, tzinfo=UTC)
+            os.utime(path, (now.timestamp(), now.timestamp()))
+            history = chatgpt_usage.collect_usage_history(
+                root, root / "usage.duckdb", now=now
+            )
+            self.assertEqual(history.total_tokens, 40)
 
     def test_splits_local_usage_by_session_provider(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -1631,6 +1811,120 @@ class ProvidersCommandTests(unittest.TestCase):
 
 
 class AppServerTests(unittest.TestCase):
+    def test_reset_credit_retries_recover_from_proxy_timeouts_and_errors(self) -> None:
+        detailed = {
+            "rateLimitResetCredits": {
+                "availableCount": 1,
+                "credits": [
+                    {"status": "available", "expiresAt": 2_000_000_100},
+                ],
+            }
+        }
+        process = Mock()
+        process.stdout = io.StringIO("")
+        process.poll.return_value = None
+        with (
+            patch.object(chatgpt_usage.subprocess, "Popen", return_value=process),
+            patch.object(chatgpt_usage.time, "sleep") as sleep,
+            patch.object(chatgpt_usage.time, "monotonic", return_value=100),
+            patch.object(
+                chatgpt_usage,
+                "_read_response",
+                side_effect=[
+                    {"result": {}},
+                    chatgpt_usage.UsageError("timeout"),
+                    {"error": {"message": "proxy unavailable"}},
+                    {"result": detailed},
+                ],
+            ) as read,
+        ):
+            result = chatgpt_usage.fetch_rate_limits(Path("/fake/codex"), 30)
+        self.assertEqual(result, detailed)
+        self.assertEqual([call.args[0] for call in sleep.call_args_list], [1, 2])
+        self.assertEqual(
+            [call.args[2] for call in read.call_args_list], [106, 106, 106, 106]
+        )
+
+    def test_reset_credit_retry_respects_total_timeout_and_keeps_summary(self) -> None:
+        summary = {"rateLimitResetCredits": {"availableCount": 2, "credits": None}}
+        process = Mock()
+        process.stdout = io.StringIO("")
+        process.poll.return_value = 0
+        with (
+            patch.object(chatgpt_usage.subprocess, "Popen", return_value=process),
+            patch.object(chatgpt_usage.time, "sleep") as sleep,
+            patch.object(chatgpt_usage.time, "monotonic", return_value=100),
+            patch.object(
+                chatgpt_usage,
+                "_read_response",
+                side_effect=[{"result": {}}, {"result": summary}],
+            ) as read,
+        ):
+            result = chatgpt_usage.fetch_rate_limits(Path("/fake/codex"), 1)
+        self.assertEqual(result, summary)
+        sleep.assert_not_called()
+        self.assertEqual(read.call_args.args[2], 101)
+
+    def test_non_expiring_credits_are_not_reported_as_missing_details(self) -> None:
+        credits = chatgpt_usage.parse_reset_credits(
+            {
+                "rateLimitResetCredits": {
+                    "availableCount": 1,
+                    "credits": [{"status": "available", "expiresAt": None}],
+                }
+            }
+        )
+        self.assertIn("1 次永不过期", chatgpt_usage._reset_expirations_detail(credits))
+        self.assertNotIn("暂不可用", chatgpt_usage._reset_expirations_detail(credits))
+
+    def test_retries_summary_only_reset_credits_within_the_same_process(self) -> None:
+        summary = {"rateLimitResetCredits": {"availableCount": 2, "credits": None}}
+        detailed = {
+            "rateLimitResetCredits": {
+                "availableCount": 2,
+                "credits": [
+                    {"status": "available", "expiresAt": 2_000_000_100},
+                    {"status": "available", "expiresAt": 2_000_000_200},
+                ],
+            }
+        }
+        for responses, expected_reads in (
+            ([summary, detailed], 3),
+            ([summary, summary, summary, summary], 5),
+        ):
+            process = Mock()
+            process.stdout = io.StringIO("")
+            process.poll.return_value = 0
+            with (
+                patch.object(chatgpt_usage.subprocess, "Popen", return_value=process),
+                patch.object(chatgpt_usage.time, "sleep") as sleep,
+                patch.object(
+                    chatgpt_usage,
+                    "_read_response",
+                    side_effect=[
+                        {"result": {}},
+                        *({"result": item} for item in responses),
+                    ],
+                ) as read,
+            ):
+                result = chatgpt_usage.fetch_rate_limits(Path("/fake/codex"), 30)
+            self.assertEqual(read.call_count, expected_reads)
+            self.assertEqual(result, responses[-1])
+            self.assertEqual(
+                [call.args[0] for call in sleep.call_args_list],
+                [1, 2, 4][: len(responses) - 1],
+            )
+
+    def test_summary_only_reset_credits_explicitly_reports_missing_times(self) -> None:
+        credits = chatgpt_usage.ResetCredits(2, ())
+        output = io.StringIO()
+        with patch.object(chatgpt_usage, "console", Console(file=output)):
+            chatgpt_usage._render_reset_credits(credits)
+        self.assertIn("到期时间暂不可用", output.getvalue())
+        self.assertIn(
+            "到期时间暂不可用", chatgpt_usage._svg_reset_credits(credits, x=0, y=0)
+        )
+
     def test_fetches_limits_through_authenticated_codex_app_server(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             fake_codex = Path(directory) / "codex"

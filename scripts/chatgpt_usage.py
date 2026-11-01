@@ -29,6 +29,7 @@ import time
 import tomllib
 import urllib.request
 from collections.abc import Callable
+from compression import zstd
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -55,7 +56,7 @@ DEFAULT_IMAGE_WIDTH_RATIO = 1.0
 DEFAULT_HISTORY_DAYS = 7
 USAGE_EVENT_BATCH_SIZE = 2_048
 USAGE_SCAN_WORKERS = 4
-USAGE_CACHE_SCHEMA_VERSION = 7
+USAGE_CACHE_SCHEMA_VERSION = 8
 # Codex 内置官方 provider；缺失 model_provider 的旧 session 也归入这里。
 OFFICIAL_PROVIDER = "openai"
 ALL_PROVIDERS = "all"
@@ -66,7 +67,7 @@ PRICING_CACHE_TTL = timedelta(hours=24)
 UNKNOWN_MODEL_PRICING_CACHE_TTL = timedelta(hours=1)
 PRICING_FETCH_TIMEOUT = 5.0
 THREAD_ID_PATTERN = re.compile(
-    r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$",
+    r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl(?:\.zst)?$",
     re.IGNORECASE,
 )
 TIMESTAMP_PATTERN = re.compile(rb'"timestamp"\s*:\s*"([^"]+)"')
@@ -104,6 +105,7 @@ class ResetCredits:
 
     available_count: int
     next_expirations_at: tuple[int, ...]
+    non_expiring_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -305,6 +307,7 @@ class _RolloutState:
     last_total: tuple[int, int, int, int, int, int] | None
     last_model: str | None
     last_service_tier: str
+    usage_records: bool
 
 
 @dataclass(frozen=True)
@@ -419,20 +422,53 @@ def _fetch_rate_limits_process(
     try:
         messages = [json.loads(line) for line in _jsonrpc_input().splitlines()]
         _write_message(process, messages[0])
-        initialize = _read_response(lines, 1, deadline)
+        initialize = _read_response(lines, 1, min(deadline, time.monotonic() + 6))
         if "error" in initialize:
             raise UsageError(f"Codex app-server 初始化失败：{initialize['error']}")
 
         _write_message(process, messages[1])
-        _write_message(process, messages[2])
-        response = _read_response(lines, 2, deadline)
-        if "error" in response:
-            error = response["error"]
-            message = error.get("message") if isinstance(error, dict) else str(error)
-            raise UsageError(f"读取额度失败：{message}")
-        result = response.get("result")
-        if not isinstance(result, dict):
-            raise UsageError("Codex app-server 返回了无法识别的额度响应")
+        # app-server 的详情请求有独立的 5 秒超时，失败时仅返回可用次数。
+        # 每次最多等 6 秒，保留最近成功响应；三次退让重试共享总 deadline。
+        result = None
+        last_error = UsageError("等待 Codex app-server 响应超时")
+        for request_id, delay in enumerate((0, 1, 2, 4), start=2):
+            if deadline - time.monotonic() <= delay:
+                break
+            if delay:
+                time.sleep(delay)
+            _write_message(
+                process,
+                {
+                    "id": request_id,
+                    "method": "account/rateLimits/read",
+                    "params": {"excludeResetCreditDetails": False},
+                },
+            )
+            try:
+                response = _read_response(
+                    lines, request_id, min(deadline, time.monotonic() + 6)
+                )
+            except UsageError as error:
+                last_error = error
+                if process.poll() is not None:
+                    break
+                continue
+            if "error" in response:
+                last_error = UsageError(f"读取额度失败：{response['error']}")
+                continue
+            if not isinstance(response.get("result"), dict):
+                last_error = UsageError("Codex app-server 返回了无法识别的额度响应")
+                continue
+            result = response["result"]
+            credits = result.get("rateLimitResetCredits")
+            if (
+                not isinstance(credits, dict)
+                or credits.get("availableCount") == 0
+                or isinstance(credits.get("credits"), list)
+            ):
+                break
+        if result is None:
+            raise last_error
         return result
     except UsageError as error:
         stderr_file.flush()
@@ -536,6 +572,15 @@ def parse_reset_credits(result: dict[str, Any]) -> ResetCredits | None:
     return ResetCredits(
         available_count=max(0, available_count),
         next_expirations_at=tuple(expirations[:3]),
+        non_expiring_count=sum(
+            isinstance(credit, dict)
+            and credit.get("status") == "available"
+            and "expiresAt" in credit
+            and credit["expiresAt"] is None
+            for credit in credits
+        )
+        if isinstance(credits, list)
+        else 0,
     )
 
 
@@ -943,11 +988,16 @@ def _parse_session_provider(line: bytes) -> str | None:
 def _rollout_provider(path: Path) -> str:
     """读取 rollout 的 provider；缺失或不可解析时回退到官方 provider。"""
     try:
-        with path.open("rb") as file:
+        with _open_rollout(path) as file:
             first_line = file.readline()
     except OSError:
         return OFFICIAL_PROVIDER
     return _parse_session_provider(first_line) or OFFICIAL_PROVIDER
+
+
+def _open_rollout(path: Path):
+    """流式读取普通或 Zstandard rollout，不改写原文件。"""
+    return zstd.open(path, "rb") if path.suffix == ".zst" else path.open("rb")
 
 
 def _resolve_model_pricing(
@@ -1086,7 +1136,8 @@ def _create_usage_tables(connection: duckdb.DuckDBPyConnection) -> None:
             last_reasoning_output BIGINT,
             last_total BIGINT,
             last_model VARCHAR,
-            last_service_tier VARCHAR NOT NULL
+            last_service_tier VARCHAR NOT NULL,
+            usage_records BOOLEAN NOT NULL
         );
         CREATE TABLE IF NOT EXISTS token_usage_events (
             thread_id VARCHAR NOT NULL,
@@ -1166,7 +1217,7 @@ def _read_rollout_state(
         SELECT path, device, inode, size, mtime_ns, parsed_bytes,
                last_input, last_cached_input, last_cache_write_input,
                last_output, last_reasoning_output, last_total, last_model,
-               last_service_tier
+               last_service_tier, usage_records
         FROM rollout_files
         WHERE thread_id = ?
         """,
@@ -1185,6 +1236,7 @@ def _read_rollout_state(
         last_total=last_total,
         last_model=str(row[12]) if row[12] is not None else None,
         last_service_tier=_normalize_service_tier(str(row[13])),
+        usage_records=bool(row[14]),
     )
 
 
@@ -1197,12 +1249,13 @@ def _write_rollout_state(
     last_total: tuple[int, int, int, int, int, int] | None,
     last_model: str | None,
     last_service_tier: str,
+    usage_records: bool = False,
 ) -> None:
     """持久化单个 Thread 的解析位点。"""
     values: tuple[int | None, ...] = last_total or (None,) * 6
     connection.execute(
         """
-        INSERT INTO rollout_files VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO rollout_files VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (thread_id) DO UPDATE SET
             path = excluded.path,
             device = excluded.device,
@@ -1217,7 +1270,8 @@ def _write_rollout_state(
             last_reasoning_output = excluded.last_reasoning_output,
             last_total = excluded.last_total,
             last_model = excluded.last_model,
-            last_service_tier = excluded.last_service_tier
+            last_service_tier = excluded.last_service_tier,
+            usage_records = excluded.usage_records
         """,
         [
             thread_id,
@@ -1230,6 +1284,7 @@ def _write_rollout_state(
             *values,
             last_model,
             _normalize_service_tier(last_service_tier),
+            usage_records,
         ],
     )
 
@@ -1246,17 +1301,31 @@ def _parse_rollout_usage(
     first_day: date,
     timezone: Any,
     event_sink: Callable[[list[_UsageEvent]], None] | None = None,
+    usage_records: bool = False,
 ) -> tuple[
     list[_UsageEvent],
     int,
     tuple[int, int, int, int, int, int] | None,
     str | None,
     str,
+    bool,
 ]:
     """从指定字节位点解析 TokenCount 增量。"""
     events: list[_UsageEvent] = []
     parsed_bytes = start_offset
-    with path.open("rb") as file:
+    with _open_rollout(path) as file:
+        # revert 后文件名的 rollout ID 可能不同于稳定的 thread ID。
+        # 用 session_meta 识别归属，排除 fork 复制来的父线程计费记录。
+        try:
+            metadata = json.loads(file.readline())
+        except UnicodeDecodeError, json.JSONDecodeError:
+            metadata = None
+        payload = (
+            metadata.get("payload")
+            if isinstance(metadata, dict) and metadata.get("type") == "session_meta"
+            else None
+        )
+        owner = payload.get("id") if isinstance(payload, dict) else None
         file.seek(start_offset)
         while True:
             line_start = file.tell()
@@ -1273,7 +1342,50 @@ def _parse_rollout_usage(
                 current_service_tier = settings_tier or current_service_tier
             if b"turn_context" in line:
                 current_model = _parse_turn_context_model(line) or current_model
-            if b"token_count" not in line:
+            if b"token_usage_record" in line:
+                try:
+                    item = json.loads(line)
+                except UnicodeDecodeError, json.JSONDecodeError:
+                    continue
+                if isinstance(item, dict) and item.get("type") == "token_usage_record":
+                    payload = item.get("payload")
+                    if not isinstance(payload, dict):
+                        continue
+                    usage = _usage_tuple(payload.get("usage"))
+                    response_id = payload.get("response_id")
+                    if usage is None or not isinstance(response_id, str):
+                        continue
+                    usage_records = True
+                    if (
+                        isinstance(owner, str)
+                        and isinstance(payload.get("thread_id"), str)
+                        and payload["thread_id"] != owner
+                    ):
+                        continue
+                    timestamp = _parse_event_timestamp(item.get("timestamp"), timezone)
+                    if (
+                        timestamp is not None
+                        and timestamp.date() >= first_day
+                        and usage[-1] > 0
+                    ):
+                        events.append(
+                            _UsageEvent(
+                                thread_id=thread_id,
+                                event_key=f"response:{response_id}",
+                                day=timestamp.date(),
+                                provider=provider,
+                                model=_normalize_model(current_model),
+                                service_tier=_normalize_service_tier(
+                                    current_service_tier
+                                ),
+                                usage=usage,
+                            )
+                        )
+                    if event_sink is not None and len(events) >= USAGE_EVENT_BATCH_SIZE:
+                        event_sink(events)
+                        events = []
+                continue
+            if usage_records or b"token_count" not in line:
                 continue
             event, previous_total = _parse_usage_event(
                 line,
@@ -1300,6 +1412,7 @@ def _parse_rollout_usage(
         previous_total,
         current_model,
         _normalize_service_tier(current_service_tier),
+        usage_records,
     )
 
 
@@ -1410,14 +1523,16 @@ def _parse_rollout_usage_tail(
     tuple[int, int, int, int, int, int] | None,
     str | None,
     str,
+    bool,
 ]:
     """从文件尾部反向定位时间窗口，只解析窗口内的 TokenCount。"""
     scan_start = 0
     initial_model = None
     initial_service_tier = "standard"
+    initial_usage_records = False
     with path.open("rb") as file:
         if os.fstat(file.fileno()).st_size == 0:
-            return [], 0, None, None, "standard"
+            return [], 0, None, None, "standard", False
         with mmap.mmap(file.fileno(), 0, access=mmap.ACCESS_READ) as data:
             final_newline = data.rfind(b"\n")
             parsed_bytes = final_newline + 1
@@ -1438,6 +1553,16 @@ def _parse_rollout_usage_tail(
                             scan_start = line_end + 1
                         crossed_boundary = True
                 if crossed_boundary:
+                    if b'"token_usage_record"' in prefix:
+                        try:
+                            item = json.loads(data[line_start:line_end])
+                        except UnicodeDecodeError, json.JSONDecodeError:
+                            item = None
+                        if (
+                            isinstance(item, dict)
+                            and item.get("type") == "token_usage_record"
+                        ):
+                            initial_usage_records = True
                     if b"turn_context" in prefix and initial_model is None:
                         initial_model = _parse_turn_context_model(
                             bytes(data[line_start:line_end])
@@ -1461,6 +1586,7 @@ def _parse_rollout_usage_tail(
         first_day=first_day,
         timezone=timezone,
         event_sink=event_sink,
+        usage_records=initial_usage_records,
     )
 
 
@@ -1592,13 +1718,18 @@ def _index_rollout_job(
 
         event_sink = lambda batch: _commit_usage_events(local_connection, batch)
         try:
-            if job.can_append or _rollout_starts_within(job.path, first_day):
+            if (
+                job.can_append
+                or job.path.suffix == ".zst"
+                or _rollout_starts_within(job.path, first_day)
+            ):
                 (
                     _events,
                     parsed_bytes,
                     last_total,
                     last_model,
                     last_service_tier,
+                    usage_records,
                 ) = _parse_rollout_usage(
                     job.path,
                     thread_id=job.thread_id,
@@ -1610,6 +1741,9 @@ def _index_rollout_job(
                     first_day=first_day,
                     timezone=timezone,
                     event_sink=event_sink,
+                    usage_records=job.state.usage_records
+                    if job.can_append and job.state
+                    else False,
                 )
             else:
                 (
@@ -1618,6 +1752,7 @@ def _index_rollout_job(
                     last_total,
                     last_model,
                     last_service_tier,
+                    usage_records,
                 ) = _parse_rollout_usage_tail(
                     job.path,
                     thread_id=job.thread_id,
@@ -1638,6 +1773,7 @@ def _index_rollout_job(
             last_total,
             last_model,
             last_service_tier,
+            usage_records,
         )
     finally:
         local_connection.close()
@@ -1646,13 +1782,18 @@ def _index_rollout_job(
 def _rollout_paths(codex_home: Path) -> list[Path]:
     """同时发现活跃与已归档 rollout。"""
     roots = (codex_home / "sessions", codex_home / "archived_sessions")
-    return sorted(
+    paths = sorted(
         path
         for root in roots
         if root.is_dir()
-        for path in root.rglob("*.jsonl")
-        if path.is_file()
+        for path in root.rglob("*.jsonl*")
+        if THREAD_ID_PATTERN.search(path.name) and path.is_file()
     )
+    return [
+        path
+        for path in paths
+        if path.suffix != ".zst" or not path.with_suffix("").is_file()
+    ]
 
 
 def _configured_providers(codex_home: Path) -> tuple[dict[str, Any], str | None]:
@@ -1856,7 +1997,7 @@ def collect_usage_history(
                 and (
                     state.size == stat.st_size
                     and state.mtime_ns == stat.st_mtime_ns
-                    and state.parsed_bytes == stat.st_size
+                    and (path.suffix == ".zst" or state.parsed_bytes == stat.st_size)
                 )
             )
             if unchanged:
@@ -1871,6 +2012,7 @@ def collect_usage_history(
                         state.last_total,
                         state.last_model,
                         state.last_service_tier,
+                        state.usage_records,
                     )
                 continue
 
@@ -1889,7 +2031,8 @@ def collect_usage_history(
                 continue
 
             can_append = (
-                same_file
+                path.suffix != ".zst"
+                and same_file
                 and state is not None
                 and stat.st_size > state.parsed_bytes
                 and stat.st_size >= state.size
@@ -2247,11 +2390,7 @@ def _reset_expiration_text(expires_at: int) -> str:
 
 def _render_reset_credits(reset_credits: ResetCredits) -> None:
     """用低调的辅助文字展示 Bank Reset 信息。"""
-    expirations = " · ".join(
-        f"{index}: {_reset_expiration_text(expires_at)}"
-        for index, expires_at in enumerate(reset_credits.next_expirations_at, start=1)
-    )
-    detail = f" · 到期 {expirations}" if expirations else ""
+    detail = _reset_expirations_detail(reset_credits)
     line = Text()
     line.append("● ", style="bright_magenta")
     line.append("Bank Reset", style="bold")
@@ -2260,6 +2399,22 @@ def _render_reset_credits(reset_credits: ResetCredits) -> None:
         style="dim",
     )
     console.print(line)
+
+
+def _reset_expirations_detail(reset_credits: ResetCredits) -> str:
+    """统一文字与图片中的到期信息，明确标记服务端详情缺失。"""
+    expirations = " · ".join(
+        f"{index}: {_reset_expiration_text(expires_at)}"
+        for index, expires_at in enumerate(reset_credits.next_expirations_at, start=1)
+    )
+    detail = f" · 到期 {expirations}" if expirations else ""
+    if reset_credits.non_expiring_count:
+        detail += f" · {reset_credits.non_expiring_count} 次永不过期"
+    if len(reset_credits.next_expirations_at) + reset_credits.non_expiring_count < min(
+        reset_credits.available_count, 3
+    ):
+        detail += " · 部分到期时间暂不可用" if expirations else " · 到期时间暂不可用"
+    return detail
 
 
 def _render_usage_history(history: UsageHistory, *, verbose: bool) -> None:
@@ -2585,11 +2740,7 @@ def _svg_reset_credits(
     y: float,
 ) -> str:
     """生成位于看板底部的 Bank Reset 辅助文字。"""
-    expirations = " · ".join(
-        f"{index}: {_reset_expiration_text(expires_at)}"
-        for index, expires_at in enumerate(reset_credits.next_expirations_at, start=1)
-    )
-    detail = f" · 到期 {expirations}" if expirations else ""
+    detail = _reset_expirations_detail(reset_credits)
     return f'''<g data-role="reset-credits">
   <circle cx="{x + 6}" cy="{y + 13}" r="5" fill="#ff79c6" fill-opacity="0.8"/>
   <text x="{x + 20}" y="{y + 18}" fill="#aebaff" font-size="13" font-weight="700">Bank Reset</text>
@@ -3024,6 +3175,7 @@ def _json_report(
         "reset_credits": (
             {
                 "available_count": reset_credits.available_count,
+                "non_expiring_count": reset_credits.non_expiring_count,
                 "next_expirations_at": [
                     datetime.fromtimestamp(expires_at).astimezone().isoformat()
                     for expires_at in reset_credits.next_expirations_at
@@ -3052,7 +3204,11 @@ def main(
     ] = None,
     timeout: Annotated[
         float,
-        typer.Option("--timeout", min=1, help="等待 Codex app-server 的秒数。"),
+        typer.Option(
+            "--timeout",
+            min=1,
+            help="额度查询总超时秒数；单次最多 6 秒，失败时最多退让重试 3 次。",
+        ),
     ] = 30,
     codex_home: Annotated[
         Path | None,
