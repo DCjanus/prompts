@@ -81,7 +81,7 @@ Agent 调用时使用 `--json`，并把全局参数放在子命令前。
   --summary "最终结果的一句话摘要"
 ```
 
-所有输入字段按纯文本传入，不添加 HTML、Markdown 或 RichText 结构。脚本负责排版和 Codex 会话链接；`--json preview` 返回与发送一致的 `rich_message`，不读取配置、不联网。
+所有输入字段按纯文本传入，不添加 HTML、Markdown 或 RichText 结构。脚本负责排版，将有效的 Codex 根 session ID 显示为可复制的行内代码，不生成会话 URL；`--json preview` 返回与发送一致的 `rich_message`，不读取配置、不联网。
 
 ## 配置
 
@@ -106,4 +106,4 @@ Agent 调用时使用 `--json`，并把全局参数放在子命令前。
 
 ## 维护
 
-仅在修改消息排版或深链 bridge 时阅读 [implementation.md](references/implementation.md)。
+仅在修改消息排版或会话标识时阅读 [implementation.md](references/implementation.md)。
