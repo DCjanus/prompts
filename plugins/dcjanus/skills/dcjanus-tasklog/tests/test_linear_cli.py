@@ -34,6 +34,7 @@ def test_help_uses_progressive_resource_groups() -> None:
     assert "issue" in root.output
     assert "document" in root.output
     assert "workflow-state" in root.output
+    assert "template" in root.output
     assert "team-show" not in root.output
     assert "issue-get" not in root.output
 
@@ -2935,3 +2936,339 @@ def test_view_update_rejects_invalid_filter_before_write(
     )
     assert result.exit_code != 0
     assert "JSON object" in result.output
+
+
+def template_fixture(**overrides) -> dict:
+    """提供与真实 API 相同的 JSON 字符串模板数据。"""
+    return {
+        "id": "template-id",
+        "name": "Weekly review",
+        "type": "recurringIssue",
+        "archivedAt": None,
+        "team": {"id": "side-id", "key": "SD", "name": "Side"},
+        "templateData": json.dumps(
+            {
+                "title": "Weekly review",
+                "teamId": "side-id",
+                "schedule": {
+                    "startAt": "2026-11-02",
+                    "interval": 1,
+                    "type": "weeks",
+                    "lastRecurredAt": "2026-11-02",
+                },
+                "descriptionData": {"type": "doc", "content": []},
+            }
+        ),
+        **overrides,
+    }
+
+
+def test_template_list_scopes_team_workspace_and_native_type(document_client) -> None:
+    calls, replies = document_client
+    templates = [
+        template_fixture(),
+        template_fixture(id="plain-id", type="issue"),
+        template_fixture(id="shared-id", team=None),
+        template_fixture(id="other-id", team={"id": "other-team"}),
+    ]
+    replies.extend(
+        [
+            {"teams": {"nodes": [{"id": "side-id", "key": "SD", "name": "Side"}]}},
+            {"templates": templates},
+            {"templates": templates},
+        ]
+    )
+    runner = CliRunner()
+    result = runner.invoke(
+        linear_cli.app, ["template", "list", "--type", "recurringIssue"]
+    )
+    assert result.exit_code == 0, result.output
+    assert [item["id"] for item in json.loads(result.output)] == ["template-id"]
+    assert "schedule" in json.loads(result.output)[0]["templateData"]
+    assert calls[1].get("variables", {}) == {}
+
+    shared = runner.invoke(linear_cli.app, ["template", "list", "--workspace"])
+    assert shared.exit_code == 0, shared.output
+    assert [item["id"] for item in json.loads(shared.output)] == ["shared-id"]
+
+
+def test_template_create_previews_then_uses_native_input_and_readback(
+    document_client,
+    tmp_path: Path,
+) -> None:
+    calls, replies = document_client
+    data = json.loads(template_fixture()["templateData"])
+    path = tmp_path / "template.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    team = {"teams": {"nodes": [{"id": "side-id", "key": "SD", "name": "Side"}]}}
+    replies.extend(
+        [
+            team,
+            {"templates": []},
+            team,
+            {"templates": []},
+            {"templateCreate": {"success": True, "template": {"id": "template-id"}}},
+            {"template": template_fixture()},
+        ]
+    )
+    args = [
+        "template",
+        "create",
+        "--name",
+        "Weekly review",
+        "--type",
+        "recurringIssue",
+        "--template-data-file",
+        str(path),
+    ]
+    runner = CliRunner()
+    preview = runner.invoke(linear_cli.app, args)
+    assert preview.exit_code == 0, preview.output
+    assert json.loads(preview.output)["input"]["templateData"] == data
+    assert all("mutation" not in call["query"] for call in calls)
+    created = runner.invoke(linear_cli.app, [*args, "--yes"])
+    assert created.exit_code == 0, created.output
+    assert json.loads(created.output)["templateData"] == data
+    fields = calls[-2]["variables"]["input"]
+    assert fields["name"] == "Weekly review"
+    assert fields["type"] == "recurringIssue"
+    assert fields["teamId"] == "side-id"
+    assert json.loads(fields["templateData"]) == data
+    # 直接使用 Template API，由 Linear 生成实例，CLI 不追加 issueCreate。
+    assert "templateCreate" in calls[-2]["query"]
+    assert all("issueCreate" not in call["query"] for call in calls)
+    assert calls[-1]["variables"] == {"id": "template-id"}
+
+
+def test_template_create_rejects_duplicate_before_mutation(
+    document_client, tmp_path: Path
+) -> None:
+    calls, replies = document_client
+    path = tmp_path / "template.json"
+    path.write_text("{}", encoding="utf-8")
+    replies.extend(
+        [
+            {"teams": {"nodes": [{"id": "side-id", "key": "SD", "name": "Side"}]}},
+            {"templates": [template_fixture()]},
+        ]
+    )
+    result = CliRunner().invoke(
+        linear_cli.app,
+        [
+            "template",
+            "create",
+            "--name",
+            "Weekly review",
+            "--type",
+            "recurringIssue",
+            "--template-data-file",
+            str(path),
+            "--yes",
+        ],
+    )
+    assert isinstance(result.exception, linear_cli.LinearError)
+    assert "同名同类型" in str(result.exception)
+    assert len(calls) == 2
+
+
+def test_template_update_replaces_data_without_changing_native_fields(
+    document_client,
+    tmp_path: Path,
+) -> None:
+    calls, replies = document_client
+    before = template_fixture()
+    data = json.loads(before["templateData"])
+    data["schedule"]["interval"] = 2
+    data["futureField"] = {"keep": True}
+    path = tmp_path / "template.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    after = template_fixture(templateData=json.dumps(data))
+    replies.extend(
+        [
+            {"template": before},
+            {"template": before},
+            {"templateUpdate": {"success": True, "template": {"id": "template-id"}}},
+            {"template": after},
+            {"template": after},
+            {"templateUpdate": {"success": True, "template": {"id": "template-id"}}},
+            {"template": {**after, "name": "New name"}},
+        ]
+    )
+    args = ["template", "update", "template-id", "--template-data-file", str(path)]
+    runner = CliRunner()
+    preview = runner.invoke(linear_cli.app, args)
+    assert preview.exit_code == 0, preview.output
+    assert (
+        json.loads(preview.output)["before"]["templateData"]["schedule"]["interval"]
+        == 1
+    )
+    assert json.loads(preview.output)["input"]["templateData"] == data
+    updated = runner.invoke(linear_cli.app, [*args, "--yes"])
+    assert updated.exit_code == 0, updated.output
+    assert json.loads(calls[2]["variables"]["input"]["templateData"]) == data
+    assert (
+        json.loads(updated.output)["templateData"]["schedule"]["lastRecurredAt"]
+        == "2026-11-02"
+    )
+    assert "descriptionData" in json.loads(updated.output)["templateData"]
+
+    # 修改模板名不隐式改写实例标题、周期规则或其它 JSON 字段。
+    renamed = runner.invoke(
+        linear_cli.app,
+        ["template", "update", "template-id", "--name", "New name", "--yes"],
+    )
+    assert renamed.exit_code == 0, renamed.output
+    assert calls[-2]["variables"]["input"] == {"name": "New name"}
+
+
+def test_template_workspace_creation_and_explicit_empty_data(
+    document_client, tmp_path: Path
+) -> None:
+    calls, replies = document_client
+    path = tmp_path / "empty.json"
+    path.write_text("{}", encoding="utf-8")
+    replies.extend(
+        [
+            {"templates": []},
+            {"templateCreate": {"success": True, "template": {"id": "shared-id"}}},
+            {
+                "template": template_fixture(
+                    id="shared-id", team=None, type="issue", templateData="{}"
+                )
+            },
+        ]
+    )
+    result = CliRunner().invoke(
+        linear_cli.app,
+        [
+            "template",
+            "create",
+            "--workspace",
+            "--name",
+            "Issue form",
+            "--type",
+            "issue",
+            "--template-data-file",
+            str(path),
+            "--yes",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert "teamId" not in calls[1]["variables"]["input"]
+    assert calls[1]["variables"]["input"]["templateData"] == "{}"
+    assert json.loads(result.output)["templateData"] == {}
+
+
+@pytest.mark.parametrize("remaining", [False, True])
+def test_template_delete_previews_and_checks_actual_removal(
+    document_client, remaining: bool
+) -> None:
+    calls, replies = document_client
+    before = template_fixture()
+    replies.extend(
+        [
+            {"template": before},
+            {"template": before},
+            {"templateDelete": {"success": True}},
+            {"templates": [before] if remaining else []},
+        ]
+    )
+    args = ["template", "delete", "template-id"]
+    runner = CliRunner()
+    preview = runner.invoke(linear_cli.app, args)
+    assert preview.exit_code == 0, preview.output
+    assert len(calls) == 1
+    deleted = runner.invoke(linear_cli.app, [*args, "--yes"])
+    if remaining:
+        assert isinstance(deleted.exception, linear_cli.LinearError)
+        assert "仍可回读" in str(deleted.exception)
+    else:
+        assert deleted.exit_code == 0, deleted.output
+        assert json.loads(deleted.output) == {"id": "template-id", "deleted": True}
+    assert calls[2]["variables"] == {"id": "template-id"}
+    assert all("issueDelete" not in call["query"] for call in calls)
+
+
+@pytest.mark.parametrize("command", ["create", "update", "delete"])
+def test_template_mutation_failure_does_not_report_success(
+    document_client, tmp_path: Path, command: str
+) -> None:
+    calls, replies = document_client
+    path = tmp_path / "data.json"
+    path.write_text("{}", encoding="utf-8")
+    if command == "create":
+        args = [
+            "template",
+            command,
+            "--workspace",
+            "--name",
+            "X",
+            "--type",
+            "issue",
+            "--template-data-file",
+            str(path),
+            "--yes",
+        ]
+        replies.extend([{"templates": []}, {"templateCreate": {"success": False}}])
+    else:
+        args = ["template", command, "template-id", "--yes"]
+        if command == "update":
+            args += ["--name", "New name"]
+        replies.extend(
+            [
+                {"template": template_fixture()},
+                {f"template{command.title()}": {"success": False}},
+            ]
+        )
+    result = CliRunner().invoke(linear_cli.app, args)
+    assert isinstance(result.exception, linear_cli.LinearError)
+    assert "success=false" in str(result.exception)
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize("raw", ["[]", '"string"', "{bad"])
+def test_template_rejects_invalid_json_before_network(
+    document_client,
+    tmp_path: Path,
+    raw: str,
+) -> None:
+    calls, _ = document_client
+    path = tmp_path / "invalid.json"
+    path.write_text(raw, encoding="utf-8")
+    result = CliRunner().invoke(
+        linear_cli.app,
+        [
+            "template",
+            "create",
+            "--workspace",
+            "--name",
+            "X",
+            "--type",
+            "issue",
+            "--template-data-file",
+            str(path),
+        ],
+    )
+    assert result.exit_code == 2, result.output
+    assert not calls
+
+
+def test_template_help_and_invalid_option_combinations(document_client) -> None:
+    calls, _ = document_client
+    runner = CliRunner()
+    for command in ("list", "get", "create", "update", "delete"):
+        result = runner.invoke(linear_cli.app, ["template", command, "--help"])
+        assert result.exit_code == 0, result.output
+        plain = Text.from_ansi(result.output).plain
+        if command in ("create", "update"):
+            assert "--template-data-file" in plain
+            assert "JSON_FILE" in plain
+        if command in ("create", "update", "delete"):
+            assert "--yes" in plain
+    result = runner.invoke(
+        linear_cli.app, ["template", "list", "--workspace", "--team", "SD"]
+    )
+    assert result.exit_code == 2
+    result = runner.invoke(linear_cli.app, ["template", "update", "template-id"])
+    assert result.exit_code == 2
+    assert not calls

@@ -57,6 +57,8 @@ Linear OAuth 需要先注册 OAuth application，将 `http://127.0.0.1:45831/cal
 - 尚未封装的低频、一次性能力，在用户确认不需要补齐 CLI 后，可用 `api graphql QUERY_FILE --variables-file VARIABLES_JSON` 执行单个 GraphQL operation。query 可直接运行；mutation 必须同时提供 `--allow-mutation --yes`。GraphQL 和 variables 都从文件读取，不把复杂文档、变量或敏感内容拼进命令行。
 - CLI 不支持的能力只要可能重复使用、已经进入日常流程，或每次都需要现场构造相同 GraphQL，先提醒用户是否要扩展稳定的资源子命令及测试；不默认用 `api graphql`、浏览器操作，或把内容写入错误字段来绕过缺口。
 - Team 自动关闭与自动归档位于 `team automation`。周期单位为月；禁用设置使用对应的 `--disable-*`，自动关闭目标状态可传精确名称或 UUID。
+- 原生模板使用 `template list/get/create/update/delete`；普通 Issue、Project、Document 和周期 Issue 均沿用 Linear 的 Template 抽象。周期事项先用 `template list --team KEY --type recurringIssue` 查重，不要只搜索已生成的 Issue。Issue 的 `recurringIssueTemplate` 提供所属模板 ID，可用 `template get` 查看周期规则；无需浏览器或本机定时任务。
+- `template create/update --template-data-file JSON_FILE` 接受完整的 `templateData` JSON object；字段结构交给 Linear 校验。`update` 替换整个 `templateData`，不做合并：先 `template get ID`，保留未修改字段，尤其是周期模板的 `schedule.lastRecurredAt`、`startAt` 和已有富文本 `descriptionData`。模板 `name/description` 与 `templateData.title/description` 是不同字段，不会联动修改。删除周期模板会停止后续生成，已有 Issue 保留。
 - Workflow status 使用 `workflow-state list/create/update` 管理；创建前精确查重，写入默认预览并在完成后按 ID 回读。创建时的 `--type` 使用 Linear 原生类型，如 `backlog`、`unstarted` 或 `started`；更新支持名称、颜色、描述和位置，但 Linear 保留的 `Duplicate` 状态不可更新。
 - Issue 写入后自动回读。关系写入回读两端。
 - Document 从 `document --help` 逐级探索。查重使用 `document search TERM`，完整正文用 `document get` 读取；列举与搜索保留分页信息。创建时明确团队或项目，省略时使用默认 Team；同一容器内存在同名文档（含归档）时拒绝重复创建。正文通过 `--content-file` 从 UTF-8 Markdown 文件读取，更新会替换完整正文，先读取当前版本再准备预览；空文件明确表示清空正文。创建与更新默认预览，正式写入后回读，不将秘密写入文档。
@@ -75,6 +77,7 @@ Linear OAuth 需要先注册 OAuth application，将 `http://127.0.0.1:45831/cal
 ./scripts/linear_cli.py team get --team KEY
 ./scripts/linear_cli.py team automation --help
 ./scripts/linear_cli.py issue --help
+./scripts/linear_cli.py template --help
 ./scripts/linear_cli.py document --help
 ./scripts/linear_cli.py label --help
 ./scripts/linear_cli.py workflow-state --help
@@ -82,3 +85,27 @@ Linear OAuth 需要先注册 OAuth application，将 `http://127.0.0.1:45831/cal
 ```
 
 复杂 Issue 正文或过滤器应由调用方先在可审阅的临时文件中准备；Issue 正文使用 `--description-file`，内联 JSON 必须注意 shell 引号。Comment 正文只从 UTF-8 文件读取，避免多行内容进入 shell 参数。
+
+## 周期 Issue 模板
+
+使用官方 `templateCreate/Update/Delete` API，模板 `type` 为 `recurringIssue`，重复规则在 `templateData.schedule`。该 JSON 内部结构未被 GraphQL 强类型约束；修改现有计划优先以实际 `template get` 的结果为基准。
+
+例如每周一到期的模板数据（将日期、团队、状态和负责人替换为已核对的值）：
+
+```json
+{
+  "title": "每周复盘",
+  "description": "处理上一自然周的问题并记录遗留项。",
+  "teamId": "TEAM_UUID",
+  "stateId": "STATE_UUID",
+  "assigneeId": "USER_UUID",
+  "schedule": {"startAt": "2026-11-02", "interval": 1, "type": "weeks"}
+}
+```
+
+```bash
+./scripts/linear_cli.py template create --team KEY --name '每周复盘' \
+  --type recurringIssue --template-data-file /tmp/weekly-template.json
+```
+
+确认预览后加 `--yes`。`schedule.type` 使用 `days`、`weeks`、`months` 或 `years`；`startAt` 是团队时区下的首次到期日，周几由该日期决定。创建周期模板后，Linear 自动生成首期 Issue，后续按到期日生成；不要再手工创建首期。模板回读不代表已经验收下一期自动生成，必要时另行核对实际实例。官方行为见 [Recurring issues](https://linear.app/docs/creating-issues#create-recurring-issues)。

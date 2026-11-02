@@ -61,6 +61,7 @@ cycle { id name number startsAt endsAt }
 project { id name }
 parent { id identifier title }
 assignee { id name email }
+recurringIssueTemplate { id name }
 labels { nodes { id name } }
 relations { nodes { id type relatedIssue { id identifier title } } }
 inverseRelations { nodes { id type issue { id identifier title } } }
@@ -83,6 +84,7 @@ ISSUE_FIELD_SELECTIONS = {
     "project": "project { id name }",
     "parent": "parent { id identifier title }",
     "assignee": "assignee { id name email }",
+    "recurringIssueTemplate": "recurringIssueTemplate { id name }",
     "labels": "labels { nodes { id name } }",
     "relations": (
         "relations { nodes { id type relatedIssue { id identifier title } } }"
@@ -114,6 +116,11 @@ project { id name }
 """
 
 DOCUMENT_FIELDS = DOCUMENT_SUMMARY_FIELDS + "\ncontent"
+
+TEMPLATE_FIELDS = """
+id name type templateData archivedAt
+team { id key name }
+"""
 
 CODEX_RESUME_FOOTER_TEMPLATE = """---
 
@@ -693,6 +700,9 @@ workflow_state_app = typer.Typer(
 )
 issue_comment_app = typer.Typer(no_args_is_help=True, help="查询和管理 Issue 评论。")
 issue_relation_app = typer.Typer(no_args_is_help=True, help="管理 Issue 关系。")
+template_app = typer.Typer(
+    no_args_is_help=True, help="查询和管理原生 Template，包括周期 Issue 模板。"
+)
 view_app = typer.Typer(no_args_is_help=True, help="查询和管理 Custom View。")
 view_preferences_app = typer.Typer(
     no_args_is_help=True, help="查询和管理 Custom View 的个人展示偏好。"
@@ -708,6 +718,7 @@ app.add_typer(label_app, name="label")
 app.add_typer(workflow_state_app, name="workflow-state")
 issue_app.add_typer(issue_comment_app, name="comment")
 issue_app.add_typer(issue_relation_app, name="relation")
+app.add_typer(template_app, name="template")
 app.add_typer(view_app, name="view")
 view_app.add_typer(view_preferences_app, name="preferences")
 app.add_typer(api_app, name="api")
@@ -1994,6 +2005,267 @@ def resolve_create_assignee(
     if assignee_id is not None:
         return assignee_id
     return read_identity(client)["viewer"]["id"]
+
+
+def decode_template(template: dict[str, Any]) -> dict[str, Any]:
+    """把 API 的 JSON 字符串 templateData 解码，便于保存为输入文件。"""
+    data = template["templateData"]
+    if isinstance(data, str):
+        try:
+            data = json.loads(data)
+        except ValueError as error:
+            raise LinearError("Template templateData 不是有效 JSON") from error
+    return {**template, "templateData": data}
+
+
+def read_template(client: LinearClient, template_id: str) -> dict[str, Any]:
+    """按 UUID 回读 Template。"""
+    template = client.query(
+        f"query Template($id: String!) {{ template(id: $id) {{ {TEMPLATE_FIELDS} }} }}",
+        {"id": template_id},
+    ).get("template")
+    if not template:
+        raise LinearError(f"找不到 Linear Template {template_id}")
+    return decode_template(template)
+
+
+def list_templates(client: LinearClient) -> list[dict[str, Any]]:
+    """公开 templates 字段不接受分页或筛选参数。"""
+    return [
+        decode_template(item)
+        for item in client.query(
+            f"query Templates {{ templates {{ {TEMPLATE_FIELDS} }} }}"
+        )["templates"]
+    ]
+
+
+def template_data_from_file(path: Path) -> dict[str, Any]:
+    """读取完整 templateData；不解释或扩展目标实体的数据契约。"""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ValueError) as error:
+        raise typer.BadParameter(f"无法读取模板 JSON：{error}") from error
+    if not isinstance(data, dict):
+        raise typer.BadParameter("--template-data-file 必须包含 JSON object")
+    return data
+
+
+@template_app.command("list")
+def template_list(
+    team: Annotated[
+        str | None, typer.Option("--team", help="团队；省略时使用默认团队。")
+    ] = None,
+    workspace: Annotated[
+        bool,
+        typer.Option("--workspace", help="只列 workspace 共享模板；与 --team 互斥。"),
+    ] = False,
+    template_type: Annotated[
+        str | None,
+        typer.Option(
+            "--type", help="按原生 Template.type 精确筛选，例如 recurringIssue。"
+        ),
+    ] = None,
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+) -> None:
+    """列出目标容器的模板；API 返回全量结果，由 CLI 按团队和类型筛选。"""
+    if team is not None and workspace:
+        raise typer.BadParameter("--team 与 --workspace 不能同时使用")
+    client = get_client(endpoint)
+    team_id = None if workspace else resolve_team(client, select_team(team))["id"]
+    emit(
+        [
+            item
+            for item in list_templates(client)
+            if (item.get("team") or {}).get("id") == team_id
+            and (template_type is None or item["type"] == template_type)
+        ]
+    )
+
+
+@template_app.command("get")
+def template_get(
+    template_id: Annotated[
+        str, typer.Argument(metavar="TEMPLATE_ID", help="模板 UUID。")
+    ],
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+) -> None:
+    """回读模板及已解码的 templateData。"""
+    emit(read_template(get_client(endpoint), template_id))
+
+
+@template_app.command("create")
+def template_create(
+    name: Annotated[
+        str, typer.Option(help="Template.name，不自动改写 templateData.title。")
+    ],
+    template_type: Annotated[
+        str,
+        typer.Option(
+            "--type",
+            help="原生 Template.type，例如 issue、project、document、recurringIssue。",
+        ),
+    ],
+    template_data_file: Annotated[
+        Path,
+        typer.Option(
+            "--template-data-file",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+            metavar="JSON_FILE",
+            help="完整 templateData JSON object；结构由 Linear 校验。",
+        ),
+    ],
+    team: Annotated[
+        str | None, typer.Option("--team", help="团队；省略时使用默认团队。")
+    ] = None,
+    workspace: Annotated[
+        bool,
+        typer.Option("--workspace", help="创建 workspace 共享模板；与 --team 互斥。"),
+    ] = False,
+    description: Annotated[
+        str | None,
+        typer.Option(help="模板说明（Template.description），不是生成 Issue 的正文。"),
+    ] = None,
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+    yes: Annotated[
+        bool, typer.Option("--yes", help="执行写入；省略时只预览。")
+    ] = False,
+) -> None:
+    """创建原生 Template；不额外创建 Issue，周期实例由 Linear 生成。"""
+    if team is not None and workspace:
+        raise typer.BadParameter("--team 与 --workspace 不能同时使用")
+    data = template_data_from_file(template_data_file)
+    client = get_client(endpoint)
+    team_id = None if workspace else resolve_team(client, select_team(team))["id"]
+    if any(
+        item["name"] == name
+        and item["type"] == template_type
+        and (item.get("team") or {}).get("id") == team_id
+        for item in list_templates(client)
+    ):
+        raise LinearError("目标容器已存在同名同类型模板，请使用 template get/update")
+    fields = compact_input(
+        {
+            "name": name,
+            "type": template_type,
+            "teamId": team_id,
+            "description": description,
+            "templateData": json.dumps(data, ensure_ascii=False),
+        }
+    )
+    if not yes:
+        emit(
+            {
+                "action": "templateCreate",
+                "input": {**fields, "templateData": data},
+                "preview": True,
+            }
+        )
+        return
+    result = client.query(
+        """mutation CreateTemplate($input: TemplateCreateInput!) {
+          templateCreate(input: $input) { success template { id } }
+        }""",
+        {"input": fields},
+    )["templateCreate"]
+    if not result["success"]:
+        raise LinearError("templateCreate 返回 success=false")
+    emit(read_template(client, result["template"]["id"]))
+
+
+@template_app.command("update")
+def template_update(
+    template_id: Annotated[str, typer.Argument(metavar="TEMPLATE_ID")],
+    name: Annotated[
+        str | None, typer.Option(help="Template.name，不自动改写 templateData.title。")
+    ] = None,
+    description: Annotated[
+        str | None, typer.Option(help="替换模板说明；空字符串清空。")
+    ] = None,
+    template_data_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--template-data-file",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+            metavar="JSON_FILE",
+            help="完整替换 templateData，不合并；先 get 并保留需要的原字段。",
+        ),
+    ] = None,
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+    yes: Annotated[
+        bool, typer.Option("--yes", help="执行写入；省略时只预览。")
+    ] = False,
+) -> None:
+    """更新原生模板字段；未提供的字段保持不变，不修改已生成的实例。"""
+    data = (
+        template_data_from_file(template_data_file)
+        if template_data_file is not None
+        else None
+    )
+    fields = compact_input(
+        {
+            "name": name,
+            "description": description,
+            "templateData": json.dumps(data, ensure_ascii=False)
+            if data is not None
+            else None,
+        }
+    )
+    if not fields:
+        raise typer.BadParameter("至少提供一个修改字段")
+    client = get_client(endpoint)
+    before = read_template(client, template_id)
+    if not yes:
+        emit(
+            {
+                "action": "templateUpdate",
+                "id": before["id"],
+                "before": before,
+                "input": {
+                    **fields,
+                    **({"templateData": data} if data is not None else {}),
+                },
+                "preview": True,
+            }
+        )
+        return
+    result = client.query(
+        """mutation UpdateTemplate($id: String!, $input: TemplateUpdateInput!) {
+          templateUpdate(id: $id, input: $input) { success template { id } }
+        }""",
+        {"id": before["id"], "input": fields},
+    )["templateUpdate"]
+    if not result["success"]:
+        raise LinearError("templateUpdate 返回 success=false")
+    emit(read_template(client, before["id"]))
+
+
+@template_app.command("delete")
+def template_delete(
+    template_id: Annotated[str, typer.Argument(metavar="TEMPLATE_ID")],
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+    yes: Annotated[
+        bool, typer.Option("--yes", help="执行删除；省略时只预览。")
+    ] = False,
+) -> None:
+    """删除模板；周期模板停止后续生成，已生成的 Issue 保留。"""
+    client = get_client(endpoint)
+    before = read_template(client, template_id)
+    if not yes:
+        emit({"action": "templateDelete", "before": before, "preview": True})
+        return
+    result = client.query(
+        "mutation DeleteTemplate($id: String!) { templateDelete(id: $id) { success } }",
+        {"id": before["id"]},
+    )["templateDelete"]
+    if not result["success"]:
+        raise LinearError("templateDelete 返回 success=false")
+    if any(item["id"] == before["id"] for item in list_templates(client)):
+        raise LinearError("模板删除后仍可回读，请先核对，不要直接重试")
+    emit({"id": before["id"], "deleted": True})
 
 
 @issue_app.command("create")
