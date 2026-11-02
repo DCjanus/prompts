@@ -32,9 +32,6 @@ from rich.table import Table
 
 CONFIG_ENV = "NOTIFY_VIA_TELEGRAM_CONFIG"
 CODEX_SESSION_ID_ENV = "CODEX_SESSION_ID"
-CODEX_THREAD_BRIDGE_URL_PREFIX = (
-    "https://codex-thread-bridge.dcjanus.workers.dev/codex/open-thread/"
-)
 DEFAULT_TIMEOUT_SECONDS = 10.0
 TELEGRAM_API_BASE = "https://api.telegram.org"
 
@@ -87,7 +84,7 @@ class Notification(BaseModel):
     verification: str | None = Field(default=None, min_length=1, max_length=200)
     action: str | None = Field(default=None, min_length=1, max_length=200)
     context: str | None = Field(default=None, min_length=1, max_length=80)
-    codex_thread_url: str | None = None
+    codex_session_id: str | None = None
 
     @field_validator(
         "title", "summary", "verification", "action", "context", mode="before"
@@ -126,7 +123,7 @@ def notification_from_options(
             verification=verification,
             action=action,
             context=context,
-            codex_thread_url=current_codex_root_thread_url(),
+            codex_session_id=current_codex_root_session_id(),
         )
     except ValidationError as exc:
         if state.json_output:
@@ -149,8 +146,8 @@ def notification_from_options(
         abort(f"通知内容无效：{details}")
 
 
-def current_codex_root_thread_url() -> str | None:
-    """从 Codex 根 session ID 构造 Telegram 可点击的 HTTPS bridge 链接。"""
+def current_codex_root_session_id() -> str | None:
+    """读取并规范化 Codex 根 session ID。"""
 
     thread_id = os.environ.get(CODEX_SESSION_ID_ENV, "").strip()
     if not thread_id:
@@ -162,7 +159,7 @@ def current_codex_root_thread_url() -> str | None:
         return None
     if canonical_thread_id != thread_id.lower():
         return None
-    return f"{CODEX_THREAD_BRIDGE_URL_PREFIX}{canonical_thread_id}"
+    return canonical_thread_id
 
 
 def render_notification_blocks(notification: Notification) -> list[dict[str, Any]]:
@@ -198,15 +195,15 @@ def render_notification_blocks(notification: Notification) -> list[dict[str, Any
     if notification.context:
         footer.extend([" · ", notification.context])
     blocks.append({"type": "footer", "text": footer})
-    if notification.codex_thread_url:
+    if notification.codex_session_id:
         blocks.append({"type": "paragraph", "text": "\u00a0"})
         blocks.append(
             {
                 "type": "paragraph",
                 "text": [
-                    {"type": "bold", "text": "↗ 打开 Codex 会话"},
+                    {"type": "bold", "text": "Codex session ID"},
                     "\n",
-                    notification.codex_thread_url,
+                    {"type": "code", "text": notification.codex_session_id},
                 ],
             }
         )
@@ -231,8 +228,8 @@ def render_notification_plain(notification: Notification) -> str:
     if notification.context:
         footer.append(notification.context)
     lines.extend(["", " · ".join(footer)])
-    if notification.codex_thread_url:
-        lines.extend(["", "↗ 打开 Codex 会话", notification.codex_thread_url])
+    if notification.codex_session_id:
+        lines.extend(["", "Codex session ID", notification.codex_session_id])
     return "\n".join(lines)
 
 

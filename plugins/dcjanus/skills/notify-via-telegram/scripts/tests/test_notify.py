@@ -81,7 +81,7 @@ def test_render_notification_blocks_create_clear_visual_hierarchy() -> None:
     ]
 
 
-def test_json_preview_links_subagent_notification_to_root_thread(monkeypatch) -> None:
+def test_json_preview_shows_root_session_id_as_inline_code(monkeypatch) -> None:
     root_thread_id = "01a06b36-0123-7850-9299-04b3f86609d8"
     child_thread_id = "01a06b65-a6b1-7672-8959-961d8d130f66"
     monkeypatch.setenv("CODEX_SESSION_ID", root_thread_id)
@@ -115,18 +115,15 @@ def test_json_preview_links_subagent_notification_to_root_thread(monkeypatch) ->
         {
             "type": "paragraph",
             "text": [
-                {"type": "bold", "text": "↗ 打开 Codex 会话"},
+                {"type": "bold", "text": "Codex session ID"},
                 "\n",
-                (
-                    "https://codex-thread-bridge.dcjanus.workers.dev/"
-                    f"codex/open-thread/{root_thread_id}"
-                ),
+                {"type": "code", "text": root_thread_id},
             ],
         },
     ]
 
 
-def test_plain_preview_links_fork_to_its_new_root_thread(monkeypatch) -> None:
+def test_plain_preview_shows_fork_session_id(monkeypatch) -> None:
     forked_thread_id = "01a06c1a-a61c-7c84-a701-2b5c2aca2225"
     monkeypatch.setenv("CODEX_SESSION_ID", forked_thread_id)
     monkeypatch.setenv("CODEX_THREAD_ID", forked_thread_id)
@@ -145,16 +142,14 @@ def test_plain_preview_links_fork_to_its_new_root_thread(monkeypatch) -> None:
     )
 
     assert result.exit_code == 0, result.output
-    assert result.output.endswith(
-        "https://codex-thread-bridge.dcjanus.workers.dev/codex/open-thread/"
-        f"{forked_thread_id}\n"
-    )
+    assert result.output.endswith(f"Codex session ID\n{forked_thread_id}\n")
 
 
 @pytest.mark.parametrize("session_id", [None, "", "not-a-thread-id"])
-def test_plain_preview_omits_codex_link_without_valid_session_id(
+def test_plain_preview_omits_session_id_without_valid_root_session(
     monkeypatch, session_id: str | None
 ) -> None:
+    monkeypatch.setenv("CODEX_THREAD_ID", "01a06b65-a6b1-7672-8959-961d8d130f66")
     if session_id is None:
         monkeypatch.delenv("CODEX_SESSION_ID", raising=False)
     else:
@@ -174,10 +169,7 @@ def test_plain_preview_omits_codex_link_without_valid_session_id(
     )
 
     assert result.exit_code == 0, result.output
-    assert (
-        "codex-thread-bridge.dcjanus.workers.dev/codex/open-thread/"
-        not in result.output
-    )
+    assert "Codex session ID" not in result.output
 
 
 def test_send_uses_structured_rich_message_payload(monkeypatch, tmp_path: Path) -> None:
