@@ -1,111 +1,41 @@
 ---
 name: dcjanus-tasklog
-description: 当需要使用 DCjanus 的个人任务模型查询或管理 Linear Issue、Document、Comment、Team、Workflow status、原生关系或 Custom View，或将长期参考资料与运维记录保存为 Linear 文档时使用。
+description: 查询或管理 DCjanus 的 Linear 事项、长期文档、模板（含周期事项）、视图或团队配置，以及按个人任务模型整理目标、进展和关联时使用。
 ---
 
 # DCjanus Tasklog
 
-把 Linear 作为 DCjanus 的个人任务、注意力与参考资料索引，并使用 [linear_cli.py](scripts/linear_cli.py) 调用 Linear 官方 GraphQL API。本 Skill 负责个人 Linear 任务模型与平台操作。
+把 Linear 作为个人目标、注意力与长期参考资料的索引。使用 [linear_cli.py](scripts/linear_cli.py) 操作 Linear 原生资源；一个 Issue 承载可独立判断结果的目标，长期资料放 Document。
 
-## 任务模型
+## 共同约定
 
-- 一个 Issue 表达一个值得再次投入注意力、能够独立判断结果的目标，不把临时步骤或纯信息机械地建成 Issue。
-- 长期参考资料、运维手册与设备配置差异使用原生 Document。跨项目的共享记录放在 Team 文档，项目专属资料放在 Project 文档；需要推进的后续目标另建 Issue 并引用文档。
-- Description 保存稳定的任务背景、目标、范围、注意事项、完成条件和初始来源。只有这些稳定信息变化或需要修正事实错误时才改写 Description。
-- Issue 间的父子、阻塞、被阻塞、相关及重复关系使用 Linear 对应的原生关联维护，不在 Description 中另建关系清单或重复列出关联 Issue 的编号、链接、标题、状态及逐项目标。父 Issue 正文只保留整体目标、共同验收条件和必要的跨事项约束；子 Issue 正文只描述自身任务。只有前置事项未满足就无法继续或验收时才建立阻塞关系，普通关联使用 Related。正文或 Comment 可按需解释阻塞原因、恢复条件和具体决策并引用相关 Issue；外部审批、权限或反馈等没有对应 Linear Issue 的阻塞直接记录实际对象与证据，不为建立关系虚构 Issue。
-- Comment 按时间记录进展、阶段结论、决策、等待对象、恢复条件、下一步变化、交付证据以及完成或取消原因；不把命令流水账或完整外部记录复制进 Linear。
-- Linear Issue 是个人参考与注意力索引。关联公开 PR、MR、Issue 或其它交付物时，由 Linear Comment 单向记录其链接、进展和等待关系；除非用户明确要求公开关联，否则不在公开工件的标题、正文、评论、commit message 或其它 reviewer-facing 内容中写入个人 Linear 的标识或 URL。任务可以依赖公开交付物，公开交付物不反向依赖个人任务记录。
-- 创建或写入前读取当前对象并查重，让用户审阅预览；写入后回读实际改变的字段。不把预览、HTTP 200 或 mutation 的初步返回当成最终成功。
+- 查询、查重和草拟直接执行；外部写入需要用户授权。写前读取当前对象、核对目标并展示具体预览；已有授权无需重复确认。创建前在目标容器查重，不能只比较标题。
+- 写操作默认预览，获授权后加 `--yes`。写后核对实际改变的字段；多步操作分别报告结果。响应不明或回读失败时先查实际状态，不把请求失败解释成未写入，也不盲目重试。
+- 团队以显式 `--team` 或已配置的默认值为准；都没有时先确定目标，不猜业务团队。不要输出凭据或从浏览器提取登录凭据。
+- 个人 Linear 与外部交付物默认单向关联：在个人记录中引用外部证据；除非用户明确要求公开关联，不在公开 PR/MR、Issue、commit 或评论中写入个人 Linear 标识或 URL。
 
-## 认证
+## 从当前需求进入
 
-默认配置位于 `~/.config/linear-cli/config.toml`，文件权限固定为 `0600`。个人 API key 由用户本人在 Linear 创建，再通过隐藏的交互输入验证并保存；CLI 会先检查公开的 `lin_api_` 前缀与空白字符，再请求 Linear，验证失败不会覆盖已有配置。不要让 agent 接触 key，也不要把 key 放入命令行、剪贴板管道或日志：
+只读当前场景需要的文档；简单查询无需预先加载其它 reference。
 
-```bash
-./scripts/linear_cli.py auth login-api-key
-./scripts/linear_cli.py config set-default-team SD
-./scripts/linear_cli.py config show
-./scripts/linear_cli.py doctor
-```
+| 当前需求 | 入口与按需阅读 |
+| --- | --- |
+| 查找或查看 Issue、进展、关联 | `issue search/get/list`、`issue comment`、`issue relation`；用下方查询约定与 CLI 帮助 |
+| 创建、编辑、拆分、关联、收尾 Issue，或记录进展 | 先读 [事项与进展](references/issues.md) |
+| 保存、搜索或更新长期资料 | 读 [长期文档](references/documents.md)，使用 `document` |
+| 创建或调整模板、周期事项、每周提醒 | 读 [模板与周期事项](references/templates.md)，使用 `template` |
+| 查看或调整视图、标签、工作流状态、团队自动化 | 读 [视图与团队设置](references/settings.md) |
+| 首次接入、认证失败、配置默认团队 | 读 [认证与本地配置](references/authentication.md) |
+| CLI 未覆盖能力，需要核对或扩展 API 支持 | 读 [API 能力与扩展](references/api.md) |
 
-默认 Team 是可选配置。设置后，所有原本接受 `--team` 的命令都可省略该参数；命令行显式传入的 Team 始终优先。需要恢复每次显式指定时，运行 `config clear-default-team`。设置命令会先调用 Linear 精确验证 Team key，并与已有认证配置合并保存，不会覆盖 token。
+## 查询与命令发现
 
-若已经保存 key 但服务端拒绝认证，使用 `auth repair` 复用现有凭据测试 API-key 与 Bearer 两种 header；命令只保存通过验证的模式，不显示 token，也不要求重新输入：
-
-```bash
-./scripts/linear_cli.py auth repair
-```
-
-Linear OAuth 需要先注册 OAuth application，将 `http://127.0.0.1:45831/callback` 加入 redirect URI，然后使用 client ID 执行 PKCE 登录。CLI 会校验 `state`、保存 refresh token，并在 access token 过期后自动刷新：
-
-```bash
-./scripts/linear_cli.py auth login --client-id CLIENT_ID
-```
-
-不内置共享 OAuth client 或 client secret；每个使用方显式选择自己的 OAuth app 和授权范围。已有 OAuth access token 时，也可用 `config set --auth-type oauth --prompt-token` 导入，但没有 refresh token 时无法自动刷新。
-
-环境变量优先于配置文件，适合 CI 和临时调用：`LINEAR_ACCESS_TOKEN`、`LINEAR_API_KEY`、`LINEAR_CONFIG`。OAuth token 使用 Bearer header，API key 直接作为 Authorization header。
-
-## 调用约定
-
-- CLI 按资源分组；从 `./scripts/linear_cli.py --help` 开始，再对 `team`、`issue`、`document`、`view` 等逐级使用 `--help`，不要依赖本文件穷举命令。
-- 读操作直接执行；写操作默认输出 JSON 预览，明确授权后才加 `--yes`。
-- 不知道 Team key 时先用 `team list` 查询 workspace 的 Team；若 `pageInfo.hasNextPage` 为 true，用 `--after` 传入 `pageInfo.endCursor` 继续翻页。`team list` 不受默认 Team 限制。
-- Team 优先取命令显式提供的 `--team`；省略时读取配置中的可选 `default_team`。两者都没有时直接报错，不猜测业务 Team。使用 `config set-default-team KEY` 设置，使用 `config clear-default-team` 清除；可用 `doctor --team KEY` 或 `team get --team KEY` 精确验证。
-- 需要按标题、描述或评论查找 Issue 时，使用 `issue search TERM [--team KEY]`，不要先批量导出再在本地过滤。搜索默认包含评论；需要查找归档事项时增加 `--include-archived`，根据返回的 `pageInfo.endCursor` 用 `--after` 继续翻页。
-- 批量读取只需部分字段时，使用 `issue list --fields identifier,title,state,...` 传入逗号分隔的字段白名单，让 GraphQL 只返回所需字段；省略时保持完整默认输出。先用 `issue list --help` 查看支持的字段。
-- 尚未封装的低频、一次性能力，在用户确认不需要补齐 CLI 后，可用 `api graphql QUERY_FILE --variables-file VARIABLES_JSON` 执行单个 GraphQL operation。query 可直接运行；mutation 必须同时提供 `--allow-mutation --yes`。GraphQL 和 variables 都从文件读取，不把复杂文档、变量或敏感内容拼进命令行。
-- CLI 不支持的能力只要可能重复使用、已经进入日常流程，或每次都需要现场构造相同 GraphQL，先提醒用户是否要扩展稳定的资源子命令及测试；不默认用 `api graphql`、浏览器操作，或把内容写入错误字段来绕过缺口。
-- Team 自动关闭与自动归档位于 `team automation`。周期单位为月；禁用设置使用对应的 `--disable-*`，自动关闭目标状态可传精确名称或 UUID。
-- 原生模板使用 `template list/get/create/update/delete`；普通 Issue、Project、Document 和周期 Issue 均沿用 Linear 的 Template 抽象。周期事项先用 `template list --team KEY --type recurringIssue` 查重，不要只搜索已生成的 Issue。Issue 的 `recurringIssueTemplate` 提供所属模板 ID，可用 `template get` 查看周期规则；无需浏览器或本机定时任务。
-- `template create/update --template-data-file JSON_FILE` 接受完整的 `templateData` JSON object；字段结构交给 Linear 校验。`update` 替换整个 `templateData`，不做合并：先 `template get ID`，保留未修改字段，尤其是周期模板的 `schedule.lastRecurredAt`、`startAt` 和已有富文本 `descriptionData`。模板 `name/description` 与 `templateData.title/description` 是不同字段，不会联动修改。删除周期模板会停止后续生成，已有 Issue 保留。
-- Workflow status 使用 `workflow-state list/create/update` 管理；创建前精确查重，写入默认预览并在完成后按 ID 回读。创建时的 `--type` 使用 Linear 原生类型，如 `backlog`、`unstarted` 或 `started`；更新支持名称、颜色、描述和位置，但 Linear 保留的 `Duplicate` 状态不可更新。
-- Issue 写入后自动回读。关系写入回读两端。
-- Document 从 `document --help` 逐级探索。查重使用 `document search TERM`，完整正文用 `document get` 读取；列举与搜索保留分页信息。创建时明确团队或项目，省略时使用默认 Team；同一容器内存在同名文档（含归档）时拒绝重复创建。正文通过 `--content-file` 从 UTF-8 Markdown 文件读取，更新会替换完整正文，先读取当前版本再准备预览；空文件明确表示清空正文。创建与更新默认预览，正式写入后回读，不将秘密写入文档。
-- 复杂 Issue 描述通过 `issue create/update --description-file FILE` 从 UTF-8 Markdown 文件读取；短描述可继续使用 `--description`，两者不能同时指定。
-- Issue Label 使用 `label list/get/create/update/delete` 管理；创建、更新和删除默认预览，正式写入后回读。创建默认作用于目标 Team，使用 `label create --workspace` 创建所有 Team 可用的 workspace Label；更新支持名称、颜色和描述，删除会移除已有 Issue 关联。
-- Issue 生命周期操作位于 `issue archive/restore/delete`；`delete` 默认进入可恢复 30 天的 Recently deleted，只有管理员明确授权不可恢复删除时才使用 `--permanent --yes`。
-- Comment 写入必须通过 `--body-file` 传入正文，默认预览，正式写入后按 Comment ID 回读。`issue comment create` 默认在存在非空 `CODEX_THREAD_ID` 时，在正文末尾附上标题为“在 Codex 中继续”的折叠恢复入口；非 Codex 环境不附加。只在明确不需要恢复入口时传入 `--no-codex-resume`，调用方不要自行拼接。删除 Comment 使用 `issue comment delete COMMENT_ID`，默认预览待删内容，正式删除后确认该 Comment 不可回读。
-- Custom View 使用官方 `customViews`、`customViewCreate` 和 `customViewUpdate` GraphQL 字段。`--filter-json` 接受官方 `IssueFilter` JSON object，不自行发明过滤语法。个人展示偏好通过 `view preferences get/update` 管理；`update` 用可重复的 `--set KEY=JSON_VALUE` 或 `--patch-file` 合并现有显式值，JSON `null` 删除对应覆盖，不为每个 preference 增加独立参数。
-
-## 入口
+入口是本 skill 目录的 `scripts/linear_cli.py`。从任意工作目录都可用其绝对路径执行；以下命令相对本 skill 目录：
 
 ```bash
 ./scripts/linear_cli.py --help
-./scripts/linear_cli.py team --help
-./scripts/linear_cli.py team list
-./scripts/linear_cli.py team get --team KEY
-./scripts/linear_cli.py team automation --help
 ./scripts/linear_cli.py issue --help
-./scripts/linear_cli.py template --help
-./scripts/linear_cli.py document --help
-./scripts/linear_cli.py label --help
-./scripts/linear_cli.py workflow-state --help
-./scripts/linear_cli.py view preferences --help
+./scripts/linear_cli.py issue create --help
 ```
 
-复杂 Issue 正文或过滤器应由调用方先在可审阅的临时文件中准备；Issue 正文使用 `--description-file`，内联 JSON 必须注意 shell 引号。Comment 正文只从 UTF-8 文件读取，避免多行内容进入 shell 参数。
-
-## 周期 Issue 模板
-
-使用官方 `templateCreate/Update/Delete` API，模板 `type` 为 `recurringIssue`，重复规则在 `templateData.schedule`。该 JSON 内部结构未被 GraphQL 强类型约束；修改现有计划优先以实际 `template get` 的结果为基准。
-
-例如每周一到期的模板数据（将日期、团队、状态和负责人替换为已核对的值）：
-
-```json
-{
-  "title": "每周复盘",
-  "description": "处理上一自然周的问题并记录遗留项。",
-  "teamId": "TEAM_UUID",
-  "stateId": "STATE_UUID",
-  "assigneeId": "USER_UUID",
-  "schedule": {"startAt": "2026-11-02", "interval": 1, "type": "weeks"}
-}
-```
-
-```bash
-./scripts/linear_cli.py template create --team KEY --name '每周复盘' \
-  --type recurringIssue --template-data-file /tmp/weekly-template.json
-```
-
-确认预览后加 `--yes`。`schedule.type` 使用 `days`、`weeks`、`months` 或 `years`；`startAt` 是团队时区下的首次到期日，周几由该日期决定。创建周期模板后，Linear 自动生成首期 Issue，后续按到期日生成；不要再手工创建首期。模板回读不代表已经验收下一期自动生成，必要时另行核对实际实例。官方行为见 [Recurring issues](https://linear.app/docs/creating-issues#create-recurring-issues)。
+按标题、描述或评论查找事项用 `issue search`，不先导出全部 Issue 再过滤。需要历史事项时包含归档；分页结果尚有下一页时继续翻页，不用首页下全量结论。批量读取只需部分字段时用 `issue list --fields`。参数、默认值和互斥规则以对应子命令帮助为准。
