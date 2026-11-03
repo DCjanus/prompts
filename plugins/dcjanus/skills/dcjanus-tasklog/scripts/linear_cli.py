@@ -27,7 +27,7 @@ import tomllib
 import urllib.parse
 import webbrowser
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -135,6 +135,19 @@ codex resume {thread_id}
 
 class LinearError(RuntimeError):
     """Linear 请求或响应错误。"""
+
+
+def parse_reminder_at(value: str) -> datetime:
+    """解析带时区的未来提醒时间，避免把本地时间误当作 UTC。"""
+    try:
+        at = datetime.fromisoformat(value)
+    except ValueError as error:
+        raise typer.BadParameter("提醒时间须为 RFC3339 时间戳") from error
+    if at.tzinfo is None or at.utcoffset() is None:
+        raise typer.BadParameter("提醒时间必须包含时区，如 2030-01-02T16:40:00+08:00")
+    if at <= datetime.now(UTC):
+        raise typer.BadParameter("提醒时间必须晚于当前时间")
+    return at.astimezone(UTC)
 
 
 def select_issue_fields(fields: str | None) -> str:
@@ -700,6 +713,9 @@ workflow_state_app = typer.Typer(
 )
 issue_comment_app = typer.Typer(no_args_is_help=True, help="查询和管理 Issue 评论。")
 issue_relation_app = typer.Typer(no_args_is_help=True, help="管理 Issue 关系。")
+issue_reminder_app = typer.Typer(
+    no_args_is_help=True, help="查询和设置自己的 Issue 提醒。"
+)
 template_app = typer.Typer(
     no_args_is_help=True, help="查询和管理原生 Template，包括周期 Issue 模板。"
 )
@@ -718,6 +734,7 @@ app.add_typer(label_app, name="label")
 app.add_typer(workflow_state_app, name="workflow-state")
 issue_app.add_typer(issue_comment_app, name="comment")
 issue_app.add_typer(issue_relation_app, name="relation")
+issue_app.add_typer(issue_reminder_app, name="reminder")
 app.add_typer(template_app, name="template")
 app.add_typer(view_app, name="view")
 view_app.add_typer(view_preferences_app, name="preferences")
@@ -1024,6 +1041,43 @@ def read_issue(client: LinearClient, issue_id: str) -> dict[str, Any]:
     if not issue:
         raise LinearError(f"找不到 Linear Issue {issue_id}")
     return issue
+
+
+def read_issue_reminders(client: LinearClient, issue_id: str) -> list[dict[str, Any]]:
+    """分页读取当前用户的提醒，仅返回目标 Issue 未归档的未来提醒。"""
+    reminders: list[dict[str, Any]] = []
+    now = datetime.now(UTC)
+    after = None
+    while True:
+        data = client.query(
+            """
+            query IssueReminderNotifications($after: String) {
+              notifications(first: 100, after: $after, filter: {type: {eq: "issueReminder"}}) {
+                nodes {
+                  id type snoozedUntilAt archivedAt url inboxUrl
+                  ... on IssueNotification { issue { id identifier } }
+                }
+                pageInfo { hasNextPage endCursor }
+              }
+            }
+            """,
+            {"after": after},
+        )["notifications"]
+        reminders.extend(
+            node
+            for node in data["nodes"]
+            if node.get("issue", {}).get("id") == issue_id
+            and not node.get("archivedAt")
+            and node.get("snoozedUntilAt") is not None
+            and datetime.fromisoformat(node["snoozedUntilAt"]) > now
+        )
+        page_info = data["pageInfo"]
+        if not page_info["hasNextPage"]:
+            return reminders
+        cursor = page_info["endCursor"]
+        if not cursor or cursor == after:
+            raise LinearError("提醒通知分页游标未推进，不能确认完整结果")
+        after = cursor
 
 
 def read_comment(client: LinearClient, comment_id: str) -> dict[str, Any]:
@@ -1802,6 +1856,80 @@ def issue_search(
         },
     )
     emit(data["searchIssues"])
+
+
+@issue_reminder_app.command("list")
+def reminder_list(
+    issue_id: Annotated[
+        str, typer.Argument(metavar="ISSUE_ID", help="Issue UUID 或 identifier。")
+    ],
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+) -> None:
+    """列出当前用户为目标 Issue 设置的未来提醒。"""
+    client = get_client(endpoint)
+    issue = read_issue(client, issue_id)
+    emit(
+        {
+            "issue": {key: issue[key] for key in ("id", "identifier", "title")},
+            "reminders": read_issue_reminders(client, issue["id"]),
+        }
+    )
+
+
+@issue_reminder_app.command("set")
+def reminder_set(
+    issue_id: Annotated[
+        str, typer.Argument(metavar="ISSUE_ID", help="Issue UUID 或 identifier。")
+    ],
+    at: Annotated[
+        datetime,
+        typer.Option(
+            "--at",
+            parser=parse_reminder_at,
+            metavar="RFC3339",
+            help="带时区的未来时间，如 2030-01-02T16:40:00+08:00。",
+        ),
+    ],
+    endpoint: Annotated[str, typer.Option()] = DEFAULT_ENDPOINT,
+    yes: Annotated[bool, typer.Option("--yes", help="执行写入；默认仅预览。")] = False,
+) -> None:
+    """预览或设置原生 Issue 提醒，按通知记录回读提醒时刻。"""
+    client = get_client(endpoint)
+    issue = read_issue(client, issue_id)
+    summary = {key: issue[key] for key in ("id", "identifier", "title")}
+    fields = {"id": issue["id"], "reminderAt": at.isoformat(timespec="milliseconds")}
+    expected_at = datetime.fromisoformat(fields["reminderAt"])
+    reminders = read_issue_reminders(client, issue["id"])
+    if not yes:
+        emit(
+            {
+                "action": "issueReminder",
+                "issue": summary,
+                "input": fields,
+                "existingReminders": reminders,
+                "preview": True,
+            }
+        )
+        return
+    for reminder in reminders:
+        if datetime.fromisoformat(reminder["snoozedUntilAt"]) == expected_at:
+            emit({"issue": summary, "reminder": reminder, "unchanged": True})
+            return
+    result = client.query(
+        """mutation SetIssueReminder($id: String!, $reminderAt: DateTime!) {
+          issueReminder(id: $id, reminderAt: $reminderAt) { success issue { id } }
+        }""",
+        fields,
+    )["issueReminder"]
+    if not result["success"]:
+        raise LinearError("issueReminder 返回 success=false")
+    for reminder in read_issue_reminders(client, issue["id"]):
+        if datetime.fromisoformat(reminder["snoozedUntilAt"]) == expected_at:
+            emit({"issue": summary, "reminder": reminder})
+            return
+    raise LinearError(
+        "issueReminder 已执行，但提醒时刻未通过回读核验；请先用 reminder list 核对，不要直接重试"
+    )
 
 
 @issue_comment_app.command("list")

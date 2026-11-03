@@ -1,6 +1,6 @@
 ---
 name: dcjanus-tasklog
-description: 查询或管理 DCjanus 的 Linear 事项、长期文档、模板（含周期事项）、视图或团队配置，以及按个人任务模型整理目标、进展和关联时使用。
+description: 查询或管理 DCjanus 的 Linear 事项、提醒、长期文档、模板（含周期事项）、视图或团队配置，以及按个人任务模型整理目标、进展和关联时使用。
 ---
 
 # DCjanus Tasklog
@@ -22,6 +22,7 @@ description: 查询或管理 DCjanus 的 Linear 事项、长期文档、模板�
 | --- | --- |
 | 查找或查看 Issue、进展、关联 | `issue search/get/list`、`issue comment`、`issue relation`；用下方查询约定与 CLI 帮助 |
 | 创建、编辑、拆分、关联、收尾 Issue，或记录进展 | 先读 [事项与进展](references/issues.md) |
+| 查询或设置 Issue 的精确时间提醒 | `issue reminder list/set`；读 [事项与进展](references/issues.md#精确时间提醒) |
 | 保存、搜索或更新长期资料 | 读 [长期文档](references/documents.md)，使用 `document` |
 | 创建或调整模板、周期事项、每周提醒 | 读 [模板与周期事项](references/templates.md)，使用 `template` |
 | 查看或调整视图、标签、工作流状态、团队自动化 | 读 [视图与团队设置](references/settings.md) |

@@ -18,6 +18,22 @@
 - 只有前置未满足就无法继续或验收时才设阻塞；普通关联用 Related。可以用 Comment 解释原因；外部审批或反馈没有对应 Issue 时，直接记录真实对象与证据，不为建立关系虚构 Issue。
 - Priority、Due date、状态和负责人使用原生字段，不用正文代替。日期与承诺从用户或来源取得，不虚构期限；创建时显式选择到期日或无到期日，默认状态和负责人可从 `issue create --help` 确认。
 
+## 精确时间提醒
+
+截止日期 `dueDate` 与提醒时刻分开管理。需要在几小时或几分钟后复查时，使用原生 Issue reminder，不修改截止日期，也不创建周期 Issue 或本机定时任务。
+
+```bash
+./scripts/linear_cli.py issue reminder list SD-123
+./scripts/linear_cli.py issue reminder set SD-123 --at '2030-01-02T16:40:00+08:00'
+./scripts/linear_cli.py issue reminder set SD-123 --at '2030-01-02T16:40:00+08:00' --yes
+```
+
+`--at` 必须是带时区的未来 RFC3339 时间戳；用户说“两小时后”时，先读取当前时间，换算并报告具体日期、时间和时区。默认预览，获授权后加 `--yes`。命令使用 `issueReminder(id, reminderAt)` 写入当前认证用户的提醒，再从通知记录回读目标 Issue 和时刻；已有相同时刻的提醒时不重复写入。列表会分页读取未来提醒，排除其它 Issue、已归档及提醒时刻已过的记录。
+
+`issueReminder` 返回的 Issue 不含提醒时刻，因此仅 `success=true` 不足以完成核验。回读失败或响应不明时先用 `issue reminder list` 核对，不直接重试写入。
+
+这是到时进入 Linear Inbox 的通知，不会自动唤醒 Codex 或执行检查。需要稍后继续同一工作时，在 Comment 写清复查内容；`issue comment create` 默认附带当前 Codex thread 的恢复命令，不用把 thread ID 混入提醒时间或 Issue 标题。
+
 ## 写入与收尾
 
 复杂正文使用 `--description-file`，Comment 使用 `--body-file`；正文先保存在可审阅的 UTF-8 文件中。写前按入口的授权和预览约定执行，写后核对字段；关系操作核对两端。

@@ -54,6 +54,7 @@ def test_help_uses_progressive_resource_groups() -> None:
     assert issue.exit_code == 0, issue.output
     assert "comment" in issue.output
     assert "relation" in issue.output
+    assert "reminder" in issue.output
 
     label = runner.invoke(linear_cli.app, ["label", "--help"])
     assert label.exit_code == 0, label.output
