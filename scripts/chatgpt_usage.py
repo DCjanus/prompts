@@ -1000,6 +1000,15 @@ def _open_rollout(path: Path):
     return zstd.open(path, "rb") if path.suffix == ".zst" else path.open("rb")
 
 
+def _is_free_auto_review(provider: str, model: str) -> bool:
+    """识别官方 ChatGPT 自动审批；API Key 默认记录具体审查模型名。"""
+    # ChatGPT 登录下的自动审批免费且不消耗套餐额度：
+    # https://x.com/thsottiaux/status/2107368734981517634
+    return (
+        provider == OFFICIAL_PROVIDER and _normalize_model(model) == "codex-auto-review"
+    )
+
+
 def _resolve_model_pricing(
     model: str, prices: dict[str, ModelPricing]
 ) -> ModelPricing | None:
@@ -2114,8 +2123,11 @@ def collect_usage_history(
             {
                 str(row[2])
                 for row in rows
-                if selected_provider == ALL_PROVIDERS
-                or str(row[1]) == selected_provider
+                if (
+                    selected_provider == ALL_PROVIDERS
+                    or str(row[1]) == selected_provider
+                )
+                and not _is_free_auto_review(str(row[1]), str(row[2]))
             }
         )
     resolved_pricing = pricing_catalog or PricingCatalog(
@@ -2145,14 +2157,18 @@ def collect_usage_history(
         tier_tokens = tier_tokens_by_model.setdefault(key, [0, 0])
         tier_index = 0 if _normalize_service_tier(str(row[3])) == "fast" else 1
         tier_tokens[tier_index] += usage[-1]
-        cost = estimate_api_cost(
-            str(row[2]),
-            input_tokens=usage[0],
-            cached_input_tokens=usage[1],
-            cache_write_input_tokens=usage[2],
-            output_tokens=usage[3],
-            service_tier=str(row[3]),
-            prices=resolved_pricing.prices,
+        cost = (
+            0.0
+            if _is_free_auto_review(row_provider, str(row[2]))
+            else estimate_api_cost(
+                str(row[2]),
+                input_tokens=usage[0],
+                cached_input_tokens=usage[1],
+                cache_write_input_tokens=usage[2],
+                output_tokens=usage[3],
+                service_tier=str(row[3]),
+                prices=resolved_pricing.prices,
+            )
         )
         previous_cost = costs_by_model.get(key, 0.0)
         costs_by_model[key] = (

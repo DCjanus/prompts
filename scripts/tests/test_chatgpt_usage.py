@@ -1497,6 +1497,63 @@ class LocalUsageHistoryTests(unittest.TestCase):
             self.assertNotIn("estimated_cost_usd", columns)
             self.assertEqual(version, str(chatgpt_usage.USAGE_CACHE_SCHEMA_VERSION))
 
+    def test_auto_review_is_free_only_for_official_provider(self) -> None:
+        now = datetime(2030, 1, 8, 12, tzinfo=UTC)
+        for provider, model, has_price, expected_cost in (
+            ("openai", "codex-auto-review", False, 0.0),
+            ("openai", "openai/codex-auto-review", True, 0.0),
+            ("custom", "codex-auto-review", False, None),
+            ("custom", "codex-auto-review", True, 2.0),
+        ):
+            with (
+                self.subTest(provider=provider, model=model, has_price=has_price),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                root = Path(directory)
+                home = root / "codex"
+                active = home / "sessions"
+                active.mkdir(parents=True)
+                rollout = self._write_provider_rollout(
+                    active,
+                    thread_id="00000000-0000-0000-0000-000000000456",
+                    provider=provider,
+                    total_tokens=1_000_000,
+                )
+                rollout.write_text(
+                    rollout.read_text().replace("gpt-5.5", model),
+                    encoding="utf-8",
+                )
+                os.utime(rollout, (now.timestamp(), now.timestamp()))
+                loader = Mock(
+                    return_value=chatgpt_usage.PricingCatalog(
+                        prices={
+                            "codex-auto-review": chatgpt_usage.ModelPricing(2, None, 10)
+                        }
+                        if has_price
+                        else {},
+                        metadata=chatgpt_usage.PricingMetadata("test", now, False),
+                    )
+                )
+                history = chatgpt_usage.collect_usage_history(
+                    home,
+                    root / "usage.duckdb",
+                    now=now,
+                    provider="all",
+                    pricing_loader=loader,
+                )
+                self.assertEqual(history.total_tokens, 1_000_000)
+                self.assertEqual(history.estimated_cost_usd, expected_cost)
+                self.assertEqual(
+                    history.unpriced_tokens,
+                    1_000_000 if expected_cost is None else 0,
+                )
+                loader.assert_called_once_with(
+                    set() if provider == "openai" else {model}
+                )
+                report = chatgpt_usage._json_report([], now, history)["local_usage"]
+                self.assertEqual(report["estimated_cost_usd"], expected_cost)
+                self.assertEqual(report["total_tokens"], 1_000_000)
+
     def test_reprices_cached_usage_without_rescanning_rollouts(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
