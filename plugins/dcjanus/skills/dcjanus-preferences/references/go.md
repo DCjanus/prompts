@@ -8,6 +8,8 @@
 
 ## Charmbracelet：终端体验与相关能力
 
+日常交流中简称 `charm`，指 Charmbracelet 及其生态；用户提到 `charm` 时按本节理解。
+
 Go CLI/TUI 开发默认优先选用 [Charmbracelet](https://github.com/charmbracelet) 生态中适合需求的库，复用其交互组件与视觉设计能力，提升软件的信息层次、布局一致性、操作反馈和整体完成度；不要只以功能可用为目标，也不要重复手写已有的通用终端组件。
 
 - TUI 优先组合 [Bubble Tea](https://github.com/charmbracelet/bubbletea)（交互与状态管理）、[Bubbles](https://github.com/charmbracelet/bubbles)（列表、输入框、进度条等组件）与 [Lip Gloss](https://github.com/charmbracelet/lipgloss)（样式与布局）；简单表单、选择和确认优先使用 [Huh](https://github.com/charmbracelet/huh)。终端 Markdown 渲染优先使用 [Glamour](https://github.com/charmbracelet/glamour)，需要弹簧动画时评估 [Harmonica](https://github.com/charmbracelet/harmonica)。
