@@ -3112,7 +3112,7 @@ def image_environment_hint(environment: dict[str, str] | None = None) -> bool:
         or values.get("GHOSTTY_RESOURCES_DIR")
         or "kitty" in term
         or "ghostty" in term
-        or term_program in {"ghostty", "wezterm"}
+        or term_program in {"ghostty", "wezterm", "rex"}
     )
 
 

@@ -2053,6 +2053,17 @@ class CliTests(unittest.TestCase):
         )
         self.assertFalse(chatgpt_usage.image_environment_hint({}))
 
+    @patch.dict(
+        os.environ, {"TERM": "xterm-256color", "TERM_PROGRAM": "rex"}, clear=True
+    )
+    def test_rex_automatically_uses_images_only_for_a_tty(self) -> None:
+        stream = Mock()
+        stream.isatty.return_value = True
+        self.assertTrue(chatgpt_usage.supports_image_output(stream))
+
+        stream.isatty.return_value = False
+        self.assertFalse(chatgpt_usage.supports_image_output(stream))
+
     @patch.object(
         chatgpt_usage,
         "fetch_rate_limits",
