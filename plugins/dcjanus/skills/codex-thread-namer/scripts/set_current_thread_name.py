@@ -2,7 +2,7 @@
 # /// script
 # requires-python = ">=3.15"
 # dependencies = [
-#     "openai-codex>=0.163.0",
+#     "openai-codex>=0.167.0",
 # ]
 # [tool.uv]
 # prerelease = "allow"
