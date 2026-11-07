@@ -5,7 +5,7 @@
 # dependencies = [
 #     "gql[httpx2]>=4.4.0",
 #     "tomli-w>=1.2.0",
-#     "typer>=0.27.3",
+#     "typer>=0.28.0",
 # ]
 # ///
 

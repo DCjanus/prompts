@@ -6,7 +6,7 @@
 #     "pydantic>=2.14.3",
 #     "rich>=15.0.0",
 #     "tomli-w>=1.2.0",
-#     "typer>=0.27.3",
+#     "typer>=0.28.0",
 # ]
 # ///
 """Controlled Jira Server/Data Center command-line client."""
