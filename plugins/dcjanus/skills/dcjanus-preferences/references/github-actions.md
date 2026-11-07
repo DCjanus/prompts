@@ -29,12 +29,20 @@ Dependabot 为已接入的 workflow 提出 action 版本更新时会一并更新
 
 该功能仍在公开预览，目标 GitHub 实例、仓库及 runner 的支持条件需实际确认。参考 [GitHub lockfile 文档](https://docs.github.com/en/actions/how-tos/secure-your-work/lock-workflow-dependencies)、[官方扩展](https://github.com/github/gh-actions-lock)及 [`--no-narrow` 说明](https://github.com/github/gh-actions-lock/blob/main/cmd/gh-actions-lock/root.go)。
 
+## CI 触发与必需检查
+
+- 以同一仓库内分支开发为主时，验证默认只监听 `push`，按需保留 `workflow_dispatch`；分支提交和合入默认分支后都会验证，创建 PR 不再重复启动检查。需要接收外部 fork PR 或验证与目标分支的模拟合并结果时，再使用 `pull_request`，并调整触发范围，避免同一提交同时因 push 和 PR 事件运行两轮；不以启动后取消重复运行代替消除重复触发。
+- 仅在默认分支或发布入口运行的任务放入独立 workflow，在事件和分支过滤层决定是否触发，不把它们放入 PR 验证 workflow 后用 job 级 `if` 跳过；不适用的检查应不出现在 PR checks 列表中，也不设为 PR 必需检查。
+- 优先用一个稳定命名的汇总 job（如 `CI required`）作为 required check，而不是把测试矩阵的每个 job 分别设为 required。汇总 job 通过 `needs` 依赖所有必需前置检查，并使用 `if: always()` 显式检查结果：只有全部为 `success` 才通过，`failure`、`cancelled` 和 `skipped` 均不能放行。
+- 在已授权配置分支规则的范围内，将汇总 check 设为 required，并绑定 GitHub Actions 来源；回读默认分支规则和 PR 的 required checks，确认规则实际生效。不能仅凭 job 名称含有 `required` 就视为已配置分支保护，也不能只完成 workflow 修改后声称 required 已生效。
+
 ## CI 组织与构建缓存
 
 - 接入校验工具时优先使用其默认规则集；为落实规则而补充有明确用途的任务超时、checkout 凭据持久化及并发控制参数可以接受，取值按项目实际行为确定。个别规则与明确偏好冲突时针对该规则设置例外，不整体降级规则集；发布冷却期遵循 [Dependabot 偏好](repository-maintenance.md#dependabot)。
 - 将格式、静态检查、测试、构建与发布的依赖关系写清楚；有实际跨平台契约时使用 matrix。重生成资产通过重跑生成器后检查零 diff 验证，避免只测生成脚本能否退出。
-- 常规 PR 或同一分支的新提交可取消过时验证；耗时手动实验与正式发布分别组织并发队列，避免实验阻塞或误触发发布。
+- 同一仓库、同一完整引用的新提交可取消过时验证，分支和标签保持隔离；耗时手动实验与正式发布分别组织并发队列，避免实验阻塞或误触发发布。
 - workflow 默认只读权限，发布等需要写入的 job 单独声明权限；发布仅在约定的默认分支或明确发布入口触发，并依赖对应验证通过。
+- 私有仓库启用 Actions 后，按实际使用需求裁剪 OS 和架构矩阵，合理复用依赖与编译缓存，避免重复测试、构建和中间 artifact 传输。纯 Go 等支持交叉编译的程序优先评估在单个 Linux runner 构建多个目标；有原生工具链或运行验证需求时再使用对应平台 runner，不将交叉编译通过当作跨平台运行验收。
 - Rust 的 CI 编译缓存优先使用 sccache，减少重复构建开销；这项偏好仅用于 CI，本地构建沿用本地工具与项目约定。通过 CI 环境中的 `RUSTC_WRAPPER=sccache` 接入，并在该环境设置 `CARGO_INCREMENTAL=0`；不修改本机全局 Cargo 配置或增量编译设置。Cargo registry / Git 下载缓存与编译结果分别维护，平台及工具链约束由项目配置定义。
 - 接入后用 `sccache --show-stats` 核实 CI 的实际命中，不能把设置了 wrapper 当作缓存生效。接入方式与可缓存范围见 [sccache 使用说明](https://github.com/mozilla/sccache#usage)和 [Rust 缓存限制](https://github.com/mozilla/sccache/blob/main/docs/Rust.md)。
 - 构建收益用冷、热缓存对比、Cargo timings 和必要的 linker timing 判断；同时记录 sccache 的命中、不可缓存原因及读写错误。结构化明细放在 artifact，摘要放 job summary，便于复查，避免把原始数据长期刷到日志。
