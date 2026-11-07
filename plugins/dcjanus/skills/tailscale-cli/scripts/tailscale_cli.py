@@ -4,7 +4,7 @@
 # requires-python = ">=3.15"
 # dependencies = [
 #     "httpx2>=2.16.0",
-#     "typer>=0.27.3",
+#     "typer>=0.28.0",
 # ]
 # ///
 
