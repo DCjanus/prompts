@@ -192,7 +192,7 @@ def test_git_marketplace_installs_complete_plugin_and_updates_same_version(tmp_p
         "uv",
         "run",
         "--script",
-        str(cache / "skills/uv-scripts/scripts/init_cli.py"),
+        str(cache / "skills/uv-scripts/scripts/init_script.py"),
         "--help",
     )
 

@@ -17,14 +17,12 @@ description: 编写、运行或维护由 uv 管理的独立 Python 脚本与单�
 
 - 用目标执行环境的临时目录保存脚本和中间文件，默认不写入目标仓库。
 - 采用 PEP 723，将 Python 要求和依赖声明保存在脚本头部，使用 `uv run --script <脚本路径> ...`。不通过运行时 `--with` 参数补充依赖，方便之后直接复用脚本。
-- 一次性脚本可以直接生成或修改 PEP 723 头部，依赖只写包名（如 `"httpx"`），默认不写版本约束、不生成锁文件，也不预先查询最新版本号；只用标准库时写 `dependencies = []`。无需先运行 `uv init` 或 `uv add`。
+- 使用 [init_script.py](scripts/init_script.py) 的 `--temporary` 模式生成 PEP 723、shebang 和执行权限，随后编写业务逻辑。依赖默认只传包名，确有兼容性需要时传入版本约束；无需手写固定文件头。
 - 无版本约束时，由 uv 按运行环境和依赖关系解析可用版本，默认优先最新版本；缓存或已有环境可能被复用，不要求每次运行都刷新。确有兼容性需求时再添加必要的版本约束。
 - 执行结束且不再需要时，清理自己创建的临时文件。保留用户文件、交付物和仍需复用的诊断材料。
 
-```python
-# /// script
-# dependencies = ["httpx"]
-# ///
+```bash
+scripts/init_script.py <临时脚本路径> --temporary --dependency httpx
 ```
 
 依赖字符串遵循 [Python 依赖声明规范](https://packaging.python.org/en/latest/specifications/dependency-specifiers/)；不限制版本时省略版本部分，不写 `=*` 或 `==*`。
@@ -34,13 +32,13 @@ description: 编写、运行或维护由 uv 管理的独立 Python 脚本与单�
 - 放在项目或 skill 的正式维护位置，沿用已有入口；为 skill 创建的入口放在该 skill 的 `scripts/` 目录下。
 - 依赖通过 `uv add --script` / `uv remove --script` 管理，不手工编辑依赖块；版本选择遵循 [依赖管理](../dependency-management/SKILL.md)。
 - 长期保留本身不要求引入 CLI 框架。需要向用户或自动化提供稳定参数、帮助和输出时，读取 [CLI 设计](references/cli-design.md)。
-- 新建可直接执行的入口使用 [init_cli.py](scripts/init_cli.py)：
+- 新建可直接执行的入口使用 [init_script.py](scripts/init_script.py)：
 
 ```bash
-scripts/init_cli.py <目标路径> [--dependency <依赖>] [--python <版本或解释器>]
+scripts/init_script.py <目标路径> [--dependency <依赖>] [--python <版本或解释器>]
 ```
 
-以上路径相对于本 skill 目录。该入口正常情况下直接调用，无需用 `python`、`python3` 或额外的 `uv run --with typer` 包裹。
+示例中的初始化器路径均相对于本 skill 目录。该入口正常情况下直接调用，无需用 `python`、`python3` 或额外的 `uv run --with typer` 包裹。
 
 `--dependency` 可重复；`--python` 指定 Python 版本。未指定版本时沿用 uv 的解释器发现规则，不额外筛选最新版。初始化器设置 PEP 723、shebang 和执行权限，拒绝覆盖已有文件；初始化后编写业务逻辑。
 
