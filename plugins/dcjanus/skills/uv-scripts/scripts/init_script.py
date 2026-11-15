@@ -3,11 +3,11 @@
 # /// script
 # requires-python = ">=3.15"
 # dependencies = [
-#     "typer>=0.28.0",
+#     "typer>=0.29.1",
 # ]
 # ///
 
-"""初始化带 PEP 723 依赖和可执行入口的单文件 Python CLI。"""
+"""初始化带 PEP 723 依赖和可执行入口的独立 Python 脚本。"""
 
 from __future__ import annotations
 
@@ -25,7 +25,9 @@ app = typer.Typer(add_completion=False, pretty_exceptions_enable=False)
 SHEBANG = "#!/usr/bin/env -S uv run --script\n#\n"
 
 
-def initialize_cli(target: Path, dependencies: list[str], python: str | None) -> Path:
+def initialize_script(
+    target: Path, dependencies: list[str], python: str | None
+) -> Path:
     """通过 uv 创建脚本，成功后写入目标路径且不覆盖已有文件。"""
     target = target.expanduser().absolute()
     if target.exists() or target.is_symlink():
@@ -75,7 +77,7 @@ def main(
 ) -> None:
     """初始化新脚本，自动添加依赖、shebang 和执行权限。"""
     try:
-        target = initialize_cli(path, dependency or [], python)
+        target = initialize_script(path, dependency or [], python)
     except (OSError, subprocess.CalledProcessError) as exc:
         message = (
             exc.stderr.strip()

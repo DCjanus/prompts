@@ -3,10 +3,10 @@
 # requires-python = ">=3.15"
 # dependencies = [
 #     "httpxyz>=0.42.1",
-#     "markdown-it-py>=4.2.0",
+#     "markdown-it-py>=4.3.0",
 #     "pydantic>=2.14.3",
 #     "rich>=15.0.0",
-#     "typer>=0.28.0",
+#     "typer>=0.29.1",
 # ]
 # ///
 """Confluence CLI 工具入口。"""

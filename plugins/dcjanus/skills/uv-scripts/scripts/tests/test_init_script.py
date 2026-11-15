@@ -15,8 +15,8 @@ import pytest
 from rich.text import Text
 from typer.testing import CliRunner
 
-SCRIPT = Path(__file__).parents[1] / "init_cli.py"
-SPEC = importlib.util.spec_from_file_location("uv_cli_initializer", SCRIPT)
+SCRIPT = Path(__file__).parents[1] / "init_script.py"
+SPEC = importlib.util.spec_from_file_location("uv_script_initializer", SCRIPT)
 assert SPEC is not None and SPEC.loader is not None
 initializer = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(initializer)

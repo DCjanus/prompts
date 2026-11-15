@@ -192,12 +192,12 @@ def test_git_marketplace_installs_complete_plugin_and_updates_same_version(tmp_p
         "uv",
         "run",
         "--script",
-        str(cache / "skills/uv-cli-creator/scripts/init_cli.py"),
+        str(cache / "skills/uv-scripts/scripts/init_script.py"),
         "--help",
     )
 
     # 仅修改内容、不变更 manifest 版本，仍须更新已安装副本。
-    changed = Path("uv-cli-creator/SKILL.md")
+    changed = Path("uv-scripts/SKILL.md")
     with (packaged_skills / changed).open("a") as stream:
         stream.write("\nPlugin update integration marker.\n")
     shutil.rmtree(retired_skill)
