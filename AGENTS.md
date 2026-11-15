@@ -48,5 +48,5 @@
 
 - Git 提交、协作交付与仓库文档编写整理：repository-workflow；GitHub/GitLab 交互：对应平台 skill。
 - Linear 个人任务管理与平台操作：dcjanus-tasklog。
-- 临时 Python、执行环境与 Python 检查：python-execution；可复用单文件 CLI：uv-cli-creator。
+- 独立 Python 脚本、单文件 CLI、相关执行环境与检查：uv-scripts。
 - 依赖或项目版本变更：dependency-management；技术选型：dcjanus-preferences。
