@@ -107,22 +107,3 @@ def test_invalid_dependency_leaves_no_partial_script(tmp_path):
     assert result.exit_code == 1
     assert "error" in json.loads(result.stderr)
     assert list(tmp_path.iterdir()) == []
-
-
-@pytest.mark.parametrize("dependencies", [[], ["httpx", "rich"]])
-def test_temporary_dependencies_remain_unbounded(tmp_path, dependencies):
-    """临时脚本离线生成声明，不查询版本或生成锁文件。"""
-    target = tmp_path / "temporary.py"
-    args = [str(target), "--temporary", "--python", sys.executable]
-    for dependency in dependencies:
-        args.extend(["--dependency", dependency])
-    result = runner.invoke(initializer.app, args)
-    assert result.exit_code == 0, result.output
-    content = target.read_text()
-    assert content.startswith("#!/usr/bin/env -S uv run --script\n")
-    metadata = content.split("# /// script\n", 1)[1].split("# ///", 1)[0]
-    declaration = tomllib.loads("\n".join(line[2:] for line in metadata.splitlines()))
-    assert declaration["dependencies"] == dependencies
-    assert "requires-python" in declaration
-    assert list(tmp_path.iterdir()) == [target]
-    assert os.access(target, os.X_OK)

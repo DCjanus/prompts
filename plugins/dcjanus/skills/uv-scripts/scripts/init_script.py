@@ -26,7 +26,7 @@ SHEBANG = "#!/usr/bin/env -S uv run --script\n#\n"
 
 
 def initialize_script(
-    target: Path, dependencies: list[str], python: str | None, temporary: bool = False
+    target: Path, dependencies: list[str], python: str | None
 ) -> Path:
     """通过 uv 创建脚本，成功后写入目标路径且不覆盖已有文件。"""
     target = target.expanduser().absolute()
@@ -45,15 +45,7 @@ def initialize_script(
         subprocess.run(
             command, cwd=target.parent, check=True, capture_output=True, text=True
         )
-        if temporary:
-            content = staged.read_text(encoding="utf-8")
-            content = content.replace(
-                "# dependencies = []",
-                "# dependencies = " + json.dumps(dependencies, ensure_ascii=False),
-                1,
-            )
-            staged.write_text(content, encoding="utf-8")
-        elif dependencies:
+        if dependencies:
             subprocess.run(
                 [uv, "add", "--script", str(staged), "--", *dependencies],
                 cwd=target.parent,
@@ -79,19 +71,13 @@ def main(
         str | None,
         typer.Option("--python", help="交给 uv 选择的 Python 版本或解释器路径"),
     ] = None,
-    temporary: Annotated[
-        bool,
-        typer.Option(
-            "--temporary", help="临时脚本：原样写入依赖声明，不查询版本或生成锁文件"
-        ),
-    ] = False,
     json_output: Annotated[
         bool, typer.Option("--json", help="以 JSON 输出创建结果")
     ] = False,
 ) -> None:
     """初始化新脚本，自动添加依赖、shebang 和执行权限。"""
     try:
-        target = initialize_script(path, dependency or [], python, temporary)
+        target = initialize_script(path, dependency or [], python)
     except (OSError, subprocess.CalledProcessError) as exc:
         message = (
             exc.stderr.strip()
