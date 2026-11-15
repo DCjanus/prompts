@@ -1,6 +1,6 @@
 # mbx 与 Cargo
 
-mbx 为 Rust 构建提供跨项目、跨 worktree 的共享缓存，并管理构建产物的磁盘占用。日常继续输入 `cargo build`、`cargo test` 和 `cargo clippy`；mbx 的 Cargo shim 转交命令给 mbx，再由 Cargo 执行原有工作。缓存管理使用 `mbx stats`、`mbx tui`、`mbx gc --dry-run` 等命令。项目已指定构建入口时遵循项目约定。
+Rust 本地构建默认优先使用 mbx 包装 Cargo。mbx 为 Rust 构建提供跨项目、跨 worktree 的共享缓存，并管理构建产物的磁盘占用。日常继续输入 `cargo build`、`cargo test` 和 `cargo clippy`；mbx 的 Cargo shim 转交命令给 mbx，再由 Cargo 执行原有工作。缓存管理使用 `mbx stats`、`mbx tui`、`mbx gc --dry-run` 等命令。项目已指定构建入口时遵循项目约定。
 
 ## 安装与接入
 

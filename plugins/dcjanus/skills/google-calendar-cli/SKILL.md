@@ -15,7 +15,7 @@ description: 使用 Python CLI 与 Google Calendar API 交互以查看日历和�
 
 ## 认证
 
-先运行：
+首次接入或遇到认证、scope、API 启用及 Workspace 策略错误时运行；正常操作无需预检：
 
 ```bash
 ./scripts/google_calendar_cli.py --json auth doctor
@@ -25,7 +25,9 @@ CLI 可以复用现有 Google Workspace / Sheets Desktop OAuth Client，但 Cale
 
 ## 安全边界
 
-- 创建、更新、删除事件前，先展示目标 calendar ID、事件 ID（如有）、主要字段、参会人、重复规则和通知范围；得到明确授权后分别添加 `--confirm-create`、`--confirm-update`、`--confirm-delete`。
+已有授权明确覆盖目标、内容和影响时直接执行；仅对新增或不明确的范围询问。`--confirm-*` 是执行保护参数，不要求新增一轮审批。
+
+- 创建、更新、删除事件前核对目标 calendar ID、事件 ID（如有）、主要字段、参会人、重复规则和通知范围；授权不足时展示待确认内容，获得授权后分别添加 `--confirm-create`、`--confirm-update`、`--confirm-delete`。
 - `--send-updates` 默认 `none`，不会主动发参会人邮件。只有用户明确要求通知时才使用 `all` 或 `externalOnly`；即使选择 `none`，Google 仍可能在部分场景发送必要通知。
 - 修改或删除重复日程前，先区分事件系列 ID 和具体 instance ID。修改单个实例会创建 exception；不要用逐实例修改代替整个系列更新。
 - `events patch` 是局部更新，但 JSON 数组字段会整体替换。更新 attendees、recurrence、reminders 等数组前先 `events get` 并保留需要的元素。
@@ -33,80 +35,14 @@ CLI 可以复用现有 Google Workspace / Sheets Desktop OAuth Client，但 Cale
 - 不申请完整 `calendar` scope，不提供修改 ACL、共享设置、清空主日历或删除整个日历的能力。
 - 不要输出 OAuth client secret、access token、refresh token，或把这些文件带入 Agent 上下文。
 
-## 常用命令
+## 命令与时间语义
 
-命令族：
+从 `./scripts/google_calendar_cli.py --help` 和目标子命令帮助探索。资源组为 `calendars`、`events`、`freebusy` 与 `auth`；全局 `--json` 放在子命令前。
 
-- `auth login|doctor|logout|paths`
-- `calendars list|get`
-- `events list|get|instances|create|patch|delete`
-- `freebusy query`
-
-列出日历与事件：
-
-```bash
-./scripts/google_calendar_cli.py --json calendars list
-./scripts/google_calendar_cli.py --json events list \
-  --calendar-id primary \
-  --time-min '2026-09-04T00:00:00+08:00' \
-  --time-max '2026-09-11T00:00:00+08:00' \
-  --query '项目同步'
-```
-
-查询多人空闲时间：
-
-```bash
-./scripts/google_calendar_cli.py --json freebusy query \
-  --calendar-id 'first@example.com' \
-  --calendar-id 'second@example.com' \
-  --time-min '2026-09-04T09:00:00+08:00' \
-  --time-max '2026-09-04T18:00:00+08:00' \
-  --time-zone 'Asia/Shanghai'
-```
-
-创建普通事件。`start.dateTime` / `end.dateTime` 应包含 RFC3339 时区偏移；不带偏移时必须在对应对象内提供 IANA `timeZone`。全天事件改用 `date`，且 `end.date` 是不包含在事件内的结束日期：
-
-```bash
-./scripts/google_calendar_cli.py --json events create \
-  --calendar-id primary \
-  --event-json '{"summary":"项目同步","start":{"dateTime":"2026-09-05T10:00:00+08:00"},"end":{"dateTime":"2026-09-05T10:30:00+08:00"}}' \
-  --confirm-create
-```
-
-带参会人与重复规则的复杂事件优先使用临时 JSON 文件：
-
-```bash
-./scripts/google_calendar_cli.py --json events create \
-  --calendar-id primary \
-  --event-json @/tmp/calendar-event.json \
-  --send-updates all \
-  --confirm-create \
-  && rm -- /tmp/calendar-event.json
-```
-
-只有当 JSON 文件由 Agent 为本次操作临时创建、写入成功后不再需要验证或回滚时，才能按上例用 `&& rm -- <明确路径>` 清理。失败时保留文件；不要使用 `;`、变量、通配符或目录作为清理目标，也不要删除用户提供的文件。
-
-更新前先读取事件，再传递局部 patch：
-
-```bash
-./scripts/google_calendar_cli.py --json events get \
-  --calendar-id primary --event-id <event-id>
-./scripts/google_calendar_cli.py --json events patch \
-  --calendar-id primary \
-  --event-id <event-id> \
-  --event-json '{"summary":"新的标题"}' \
-  --confirm-update
-```
-
-查看重复事件实例：
-
-```bash
-./scripts/google_calendar_cli.py --json events instances \
-  --calendar-id primary \
-  --event-id <recurring-event-id> \
-  --time-min '2026-09-01T00:00:00+08:00' \
-  --time-max '2026-10-01T00:00:00+08:00'
-```
+- 查询限定日历和时间范围；重复日程实例使用 `events instances`。
+- `start.dateTime` / `end.dateTime` 使用 RFC3339 时区偏移；不带偏移时必须在对应对象提供 IANA `timeZone`。全天事件用 `date`，且 `end.date` 不包含在事件内。
+- 复杂事件用 `--event-json @<path>` 传入。更新前读取事件，再传局部 patch；数组替换规则见上文。
+- 仅当 JSON 文件为本次临时创建、写入成功且不再验证或回滚时，用同次 shell 的 `&& rm -- <明确文件路径>` 清理；失败保留，不用变量、通配符或目录作为目标，不删除用户文件。
 
 ## 权限范围
 
