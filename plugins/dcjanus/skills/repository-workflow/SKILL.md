@@ -1,74 +1,39 @@
 ---
 name: repository-workflow
-description: 处理从本地 Git 变更到 GitHub/GitLab 协作发布的完整工作流；适用于仓库文档编写与整理、创建或更新分支、语义化 commit message、commit、push、Issue/PR/MR 文案、inline review reply、Breaking Change 与提交范围核对。纯只读的平台查询不使用本 skill。
+description: 仓库文档、分支、commit、push，以及 Issue/PR/MR 文案与 review reply 的协作交付。纯只读的平台查询使用对应平台 skill。
 ---
 
 # Repository Workflow
 
-统一管理仓库变更的准备、记录和发布，优先使用非交互命令。GitHub/GitLab 的资源读取与平台写入仍交给 [SKILL.md](../github-cli/SKILL.md) / [SKILL.md](../gitlab-cli/SKILL.md)。
+按当前任务读取参考，已读且未变化的不重复加载。平台资源读取与写入使用 [GitHub](../github-cli/SKILL.md) 或 [GitLab](../gitlab-cli/SKILL.md)。
 
-## 路由
+| 任务 | 参考 |
+| --- | --- |
+| 编写或整理仓库文档 | [文档边界](references/documentation.md) |
+| 创建 commit、编写 commit message 或 PR/MR 标题、处理平台合并消息 | [提交约定](references/commit-messages.md) |
+| Issue/PR/MR 文案或 inline review reply | [协作文案](references/change-requests.md) |
+| 确保 PR/MR 达到可合并状态 | [合入门禁](references/merge-readiness.md)及平台对应规则 |
+| 分支、push 与历史管理 | 本文件 |
 
-- 编写、修改或整理 README、贡献指南、发布手册等仓库文档时，读取 [文档边界](references/documentation.md)；只提交或推送代码时无需加载。
-- 涉及 commit 或 commit message 时，先完整读取 [commit-messages.md](references/commit-messages.md)。
-- 涉及 Issue、PR/MR 标题或正文、Breaking Change 展示、inline review reply 时，先完整读取 [change-requests.md](references/change-requests.md)。PR/MR 标题还要读取 [commit-messages.md](references/commit-messages.md)。
-- 只涉及 branch、push 或历史管理时，使用本文件即可。
-- 执行平台 squash merge 时，同时读取 [commit-messages.md 的平台合并提交约定](references/commit-messages.md#平台合并提交)。
-- 只读查看、搜索、状态检查或 CI 日志不使用本 skill，直接使用对应平台或 CI skill。
+## 授权与范围
 
-## 授权边界
-
-- 修改或实现代码只授权工作区文件变更，不自动授权 commit、push 或平台写入。
-- commit、push、创建或更新 Issue/PR/MR、发送 inline reply、resolve thread 都需要用户明确授权。
-- 用户一次明确要求连续动作（如“提交并推送”）时，可连续完成，无需逐步重复确认。
-- 草拟文案不等于授权发送。
-- PR/MR 默认创建为正式状态；只有用户明确要求时才创建 draft。
-
-## 工作区与提交范围
-
-1. 先运行 `git status -sb`，确认当前分支、上游关系和 dirty worktree。
-2. 区分当前任务改动与用户已有改动，只处理当前任务负责的路径。
-3. 不要为了当前任务 stash、restore、reset 或清理无关改动。
-4. 如果同一文件混有无法安全分离的改动，停止提交并说明情况。
-5. 通过提交 YAML 的 `paths` 精确限定提交范围，不要提前修改 index；每一项按仓库相对的 Git pathspec 解释，支持字面路径、目录、通配符和 `:(glob)` magic。脚本会自动处理匹配到的未跟踪文件。
+- 修改代码不自动授权 commit、push 或平台写入；发布、发送回复、resolve 和合并按用户当前授权及适用项目约定执行，已有授权无需重复确认。草拟不等于发送。
+- PR/MR 默认创建为正式状态；用户要求 draft 时创建 draft。
+- 先用 `git status -sb` 核对分支、上游与改动，区分本次任务和用户已有内容；不为任务 stash、restore、reset 或清理无关改动。同文件混有无法安全分离的改动时停止提交并说明。
 
 ## 创建 commit
 
-1. 完整读取 [commit-messages.md](references/commit-messages.md)，并根据最终待提交内容生成 message。
-2. 把结构化提交描述写入仓库外的临时 YAML 文件。默认只写 `subject` 和 `paths`；仅当标题与 diff 无法充分解释必要的动机、约束或影响时才添加 `body`，不要机械生成提交正文。需要正文时也不要在 shell 参数中拼接多行文本。YAML 格式与正文判断标准见 [commit-messages.md](references/commit-messages.md)。
-3. 使用提交脚本并显式传入目标仓库。提交成功后不再需要临时 YAML
-   时，在同一次 shell 调用中用 `&& rm -- <明确路径>` 清理；提交失败时保留文件，
-   不要使用 `;` 无条件删除，也不要用变量、通配符或目录作为清理目标：
+- 按提交约定生成仓库外的临时 YAML，默认仅写 `subject` 与精确的 `paths`；无需预先 stage。正文、trailer、breaking change 与 pathspec 规则只在提交约定中维护。
+- 使用 `scripts/commit_from_yaml.py`，显式指定目标仓库：
 
 ```bash
 ./scripts/commit_from_yaml.py /tmp/commit.yaml --repo /path/to/repository \
   && rm -- /tmp/commit.yaml
 ```
 
-脚本默认根据宿主注入的会话变量识别当前 Agent，并从其会话记录解析模型，生成 `Assisted-by: <agent>:<model>`：Codex（`CODEX_THREAD_ID`）为 `codex:<model>`，Claude Code（`CLAUDE_CODE_SESSION_ID`）为 `claude-code:<model>`。需要覆盖默认行为时，把 `assisted_by` 写进提交 YAML，而不是改用命令行参数，便于审查：
-
-```yaml
-# 在 opencode 等无法自动探测的 Agent 下显式指定 Agent 与模型
-assisted_by:
-  agent: opencode
-  model: deepseek-v4.1-flash
-```
-
-- `assisted_by.agent` 覆盖 Agent 前缀（默认取探测到的 Agent，无法探测时为 `codex`；不能为空）。
-- `assisted_by.model` 指定模型并跳过模型探测；缺省时从当前 Codex thread 或 Claude Code 会话记录读取，不得猜测。
-- 其它运行环境下自动探测会失败，此时应显式询问用户所用模型并写入 `assisted_by.model`。
-- `assisted_by: false` 跳过探测且不添加 `Assisted-by` trailer，只用于确实无法获得模型信息的场景。
-
-4. YAML 的 `paths` 非空时，脚本会把每一项原样作为 Git pathspec 传给 Git，自动让匹配到的未跟踪文件进入 intent-to-add 状态，再使用 `git commit --only` 限定提交范围；调用方无需预先 stage。通配符由 Git 而不是 shell 展开，YAML 中应使用引号；需要让 `*` 不跨越目录分隔符时，使用 `:(glob)` 与 `**` 明确表达层级。若提交失败，脚本会清理自己创建的 intent-to-add 条目。`paths` 为空时提交当前 index，也可用于已经解决冲突的 merge commit。
-5. 脚本会在提交前后校验正文、breaking 标记和 trailer；任何字段中的字面量 `\\n` 都会失败。提交后仍需回读范围与工作区：
-
-```bash
-git show --name-status --oneline --no-renames HEAD
-git show -s --format=%B HEAD | git interpret-trailers --parse
-git status -sb
-```
-
-提交脚本失败时停止后续操作；默认不得自行 amend，按“分支、推送与历史”的授权规则处理。
+- 仅在成功且不再复用时，用同次 shell 的 `&& rm -- <明确文件路径>` 清理自己创建的临时文件；失败保留，不用变量、通配符或目录作为清理目标，不删除用户文件。
+- `Assisted-by` 自动探测当前 Agent/模型；无法识别时使用已确认的信息填写 YAML 的 `assisted_by`，不得猜测。没有可靠信息时询问用户；确实无法获得时才用 `assisted_by: false`。
+- 脚本已校验 message 和 trailer；成功后核对 `git show --name-status --oneline HEAD` 与 `git status -sb`，确认范围和剩余改动。失败时停止后续发布，默认不自行 amend。
 
 ## 分支、推送与历史
 
@@ -80,25 +45,8 @@ git status -sb
 - 更新已有 PR/MR 分支时，默认 merge target/base 到 source/head，并追加修正 commit。
 - 默认不 amend、rebase、squash 或 force push。只有用户明确要求，或仓库明确要求线性历史时才改写历史；执行前先确认本地与远端目标。
 
-## Issue、PR/MR 与 review reply
+## 平台交付
 
-1. 完整读取 [change-requests.md](references/change-requests.md)；PR/MR 标题同时读取 [commit-messages.md](references/commit-messages.md)。
-2. 根据平台同时使用 `github-cli` 或 `gitlab-cli` 完成模板检查、资源读取和实际写入。
-3. 创建或更新前核对平台当前内容与最终本地状态；独立 Issue 按 reference 中的例外处理。
-4. 起草 PR/MR 正文时默认不添加 `Validation`。它不是测试清单：只有 reviewer 无法从最终 diff 和平台 CI/checks 直接获得、且会实质影响风险判断的最终行为证据才能保留。普通检查命令、测试数量和 CI 状态只在任务交付回复中汇报。具体筛选规则和正反例见 [change-requests.md](references/change-requests.md)。
-5. 多行正文先写入临时 Markdown 文件，再通过平台命令的 file 参数提交，不在 shell 中拼接。
-6. 写入平台前重新通读完整正文并按最终净变化复核；删除实现过程、普通验证流水账和其它不符合 reference 的内容。若 `Validation` 没有合格证据，删除整个章节。PR/MR 正文中的所有 Markdown 章节标题须为英文，保留正文内容原有语言。
-7. 写入后回读标题、正文、状态和必要的元数据，确认平台结果与预期一致。
-
-## 最终可合并门禁
-
-当用户要求“确保 PR/MR 可以合并”“准备好合入”或同等结果时，目标不是仅消除代码冲突或等待 CI，而是满足目标仓库当前的全部合入策略。
-
-1. 通过对应平台 skill 读取目标 repository/project 的合并方式、线性历史或 fast-forward 要求、source/head 必须包含最新 target/base 的要求、必需 checks/pipeline、审批、讨论和分支保护规则。
-2. `git fetch` 后检查 base/target 与 head/source 的提交关系。无冲突、CI 成功或平台返回笼统的 `can_be_merged`，都不能替代“目标分支同步要求已满足”的检查。
-3. 若目标分支尚未包含在源分支历史中，根据仓库策略和分支用途选择同步方式：
-   - 平台允许 merge commit 时，沿用本 skill 的默认策略，把 target/base merge 到 source/head 并追加提交。
-   - 共享或长期分支默认避免 rebase；不要仅因平台按钮提示而改写其他协作者正在使用的历史。
-   - 仓库强制线性历史且只能 rebase 时，先确认源分支共享情况、需要改写的提交和推送方式，再按授权边界执行。
-4. 更新源分支后，旧 pipeline/check 与旧合并状态全部视为过期；等待新提交对应的检查完成，并重新读取平台的冲突、同步、审批、讨论、权限与最终合并状态。
-5. 只有平台策略和上述门禁全部满足时才报告“可以合并”。如果仍需 rebase、更新分支、审批、权限或人工操作，应明确报告剩余条件，不能把“理论上可无冲突合并”表述成“已可合并”。
+- 按平台 skill 检查模板、目标分支和当前资源内容，以相对 base/target 的最终净变化起草文案；独立 Issue 不要求本地存在代码改动。
+- 多行正文通过文件参数提交。写入前通读完整文案，遵循协作文案中的语言、章节与证据规则。
+- 写入后确认标题、正文、状态与必要元数据；复用脚本已经完成的回读验证，仅补查未覆盖信息。验证失败但已有资源 URL 时先处理该资源，不重复创建。

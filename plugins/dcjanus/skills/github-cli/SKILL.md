@@ -1,28 +1,41 @@
 ---
 name: github-cli
-description: 使用 GitHub CLI 与 GitHub 资源交互；适用于 repo、issue、PR、comment、release、workflow 等查看、更新或创建场景。创建任何 GitHub Issue 时，统一使用本 skill 的 github_issue.py，保留模板 labels/assignees 并在创建后回读验证。
+description: 使用 gh 查看或管理 GitHub 的 repo、Issue、PR、comment、release 和 workflow。
 ---
 
-# GitHub CLI Skill
+# GitHub CLI
 
-一句话说明：当任务核心是“和 GitHub 打交道”时，优先使用 `gh`，而不是把范围局限在 Issue/PR。
+平台资源读取与操作使用本 skill；标题、正文和 review reply 使用 [repository-workflow](../repository-workflow/SKILL.md)。
 
-本 skill 只负责 GitHub 资源读取与平台操作，不定义标题、正文或 inline review reply 的文案。
+## 入口
 
-## 临时输入文件清理
+- 常规操作优先使用 `gh`，不确定能力时从对应命令的 `--help` 查询；机器可读输出使用 `--json`。
+- 持续等待 workflow、job 或 PR checks 时读取 [Actions 等待](references/actions-wait.md)，使用统一脚本，不自行轮询。
+- 用户明确要求个人合并策略时使用 [dcjanus-merge-policy](../dcjanus-merge-policy/SKILL.md)。
 
-- 如果输入文件由 Agent 为当前单次操作临时创建，且成功后不再复用，在同一次 shell
-  调用中把最终写操作与 `rm -- <明确路径>` 用 `&&` 串行执行。写操作失败时保留文件，
-  不要使用 `;` 无条件删除，也不要用变量、通配符或目录作为清理目标。
-- dry-run 后仍要用于正式创建的正文不能提前删除；把清理命令串在正式创建之后。
-- 用户提供的文件、仓库文件，以及后续更新或校验仍需复用的文件不得自动清理。
+## 创建与更新前
 
-## 常用场景
+- 创建 Issue/PR 前运行 `scripts/github_preflight.py --mode issue|pr --repo <目标仓库绝对路径>`；根据结果读取适用模板、必填字段和 workflow，不重复检查脚本已覆盖的项目。
+- Issue 模板还需通过 `scripts/github_issue.py inspect` 核对远端默认分支版本，保留模板 labels/assignees。
+- 更新标题或正文前先读取当前内容与状态。独立 Issue 不要求本地有提交或干净工作区。
+- PR 的本次交付改动须已提交并推送，远端 head 与拟交付版本一致；保留并排除用户无关未提交改动。验证结果应对应交付提交。
+- 多行正文先写入 Markdown 文件，通过 `--body-file` 传入；短标题可用 `--title`，不在 shell 中拼多行正文。
 
-- 仓库、Issue、PR、评论、release、workflow 等资源，优先先用 `gh <group> --help` 确认是否有现成子命令，再执行。
-- 需要机器可读输出时，优先使用 `--json`，必要时再配合 `jq` 整理字段。
-- 用户明确要求采用 DCjanus 的个人合并策略时，使用 [dcjanus-merge-policy](../dcjanus-merge-policy/SKILL.md)。
-- 当 Agent 需要持续等待 workflow run、单个 job 或 PR checks 时，不要手写 shell 轮询或反复调用 `gh api`；先完整读取 [actions-wait.md](references/actions-wait.md)，再使用统一脚本。人工临时查看仍可直接使用 `gh run watch`。
+## Issue
+
+创建统一使用 `scripts/github_issue.py create`，参数从 `--help` 查询。
+
+- 正式创建前，用相同参数运行 `--dry-run`；确认结果且已获得创建授权后去掉该参数执行。
+- 有模板时用 `--template <文件名>`，不再传 `--label` / `--assignee`；无模板时可用这两个参数。
+- 脚本会回读模板元数据；缺失 labels/assignees 时返回非零并保留资源 URL，须处理已有 Issue，不报告成功或重复创建。
+- 只有脚本明确不支持当前平台能力且无法安全扩展时，才回退网页表单并说明原因。
+
+## PR
+
+- 创建统一使用 `scripts/github_pr.py create`；更新正文使用 `scripts/github_pr.py update <number|url> --repo owner/repo --body-file <path>`。其它参数从 `--help` 查询，两入口均支持 `--dry-run`。
+- 创建默认允许维护者修改；脚本自动回读核验正文和适用权限。复用脚本已完成的验证，仅补查状态、CI 和未覆盖元数据；验证失败但已有 URL 时处理现有资源，不重复创建。
+
+成功后输出完整资源 URL。仅在成功且不再复用时，用同次 shell 的 `&& rm -- <明确文件路径>` 清理本次临时输入；失败保留，不用变量、通配符或目录作为清理目标，不删除用户文件、仓库文件或待验证材料。
 
 ## PR Review
 
@@ -31,87 +44,3 @@ description: 使用 GitHub CLI 与 GitHub 资源交互；适用于 repo、issue�
 - 当用户要求整理 PR 审查意见时，按严重程度从高到低排列，数字编号，方便用户回复。
 - 每次最多展示 10 条；若还有更多，在末尾提示“还剩 N 条未展示”。
 - 当用户要求回复 inline review comment 时，优先直接在线程里回复，不要把具体回复散落到总评论。
-
-## 快速查看
-
-- 仓库概览：`gh repo view [owner/repo]`
-- Issue 概览：`gh issue view <id|url>`
-- PR 概览：`gh pr view <id|url>`
-- Release 列表：`gh release list`
-- Workflow 列表：`gh workflow list`
-
-## 创建前检查
-
-在创建 Issue 或 PR 前，先检查对应的 GitHub 模板、表单和当前资源状态。
-
-1. 优先运行本 skill 的创建前扫描脚本，输出中文摘要和“已检查”清单：
-   - Issue：`./scripts/github_preflight.py --mode issue --repo <目标仓库绝对路径>`
-   - PR：`./scripts/github_preflight.py --mode pr --repo <目标仓库绝对路径>`
-2. 根据脚本输出读取候选模板和 workflow；脚本已检查的项目不要重复机械检查，除非输出显示有候选 enforcement 或你需要确认细节。
-3. 对 Issue Form 模板，注意 `labels:`、必填字段和 checkbox；再用 `./scripts/github_issue.py inspect` 读取远端默认分支上的实际模板，避免本地 checkout 过期。
-4. 在正式创建前检查当前代码、分支与提交状态是否和准备提交到平台上的内容一致，避免创建出与现状不符的 Issue 或 PR。
-
-## 创建 Issue（统一入口）
-
-以下规范建立在“创建前检查”已完成的前提上。
-
-1. **创建任何 Issue 都必须使用 `./scripts/github_issue.py create`。** 默认不要直接调用 `gh issue create`、`gh api`、REST/GraphQL 请求或网页表单。
-2. 正文必须先写到本地 Markdown 文件，草稿优先放 `/tmp/*.md`。
-3. 有模板时先检查远端模板：
-
-```bash
-./scripts/github_issue.py inspect \
-  --repo owner/repo \
-  --template bug.yml
-```
-
-4. 正式创建前，必须先用完全相同的参数运行 `--dry-run`：
-
-```bash
-./scripts/github_issue.py create \
-  --repo owner/repo \
-  --template bug.yml \
-  --title "..." \
-  --body-file /tmp/issue-body.md \
-  --dry-run
-```
-
-5. dry-run 确认无误且用户已授权创建后，移除 `--dry-run` 正式执行。需要机器可读输出时加 `--json`。
-6. 无模板的普通 Issue 仍使用同一入口，只是不传 `--template`；此时可用可重复的 `--label` / `--assignee`。脚本会在权限不足时提前失败，避免 GitHub REST 静默丢弃元数据。
-7. Markdown template 与 YAML Issue Form 都通过 `--template <文件名>` 指定。模板场景不要再传 `--label` / `--assignee`；脚本会让 GitHub 服务端应用模板预设元数据，并在创建后回读验证。
-8. 脚本优先读取 `GH_TOKEN` / `GITHUB_TOKEN`（GitHub Enterprise 对应变量），仅在环境变量不可用时调用 `gh auth token`。除鉴权兜底外，脚本直接调用 GitHub REST/GraphQL API。
-9. 创建后若模板 labels/assignees 缺失，脚本会返回非 0 并保留已创建 Issue URL 供处理；不要把这种结果报告为成功。
-10. 只有脚本明确报告不支持当前平台能力、且无法安全扩展时，才回退网页表单；回复中要说明回退原因。
-11. 创建成功并验证通过后，输出完整 Issue URL。
-
-正式创建并清理单次临时正文的示例：
-
-```bash
-./scripts/github_issue.py create \
-  --repo owner/repo \
-  --template bug.yml \
-  --title "..." \
-  --body-file /tmp/issue-body.md \
-  && rm -- /tmp/issue-body.md
-```
-
-## 创建 PR
-
-以下规范建立在“创建前检查”已完成的前提上。
-
-1. 先完成“创建前检查”。
-2. 只有在确认仓库要求与本地代码/提交状态都满足后，才创建 PR；若发现不满足，应先修正，再创建。
-3. `git status` 必须干净，且当前分支已推送到远端。
-4. PR 正文默认先写到本地 Markdown 文件；草稿优先放 `/tmp/*.md`，不要在 shell 里拼多行字符串，也不要依赖交互式编辑。标题通常较短，可直接用 `--title` 传入。
-5. 创建 PR 统一使用 `./scripts/github_pr.py create`，先通过 `--help` 查看参数；脚本按提供的正文创建，允许维护者修改，并回读核验正文和适用的权限。
-6. 更新正文使用 `./scripts/github_pr.py update <number|url> --repo owner/repo --body-file <path>`。两入口都支持 `--dry-run` 预览；其它参数从 `--help` 探索。核验失败时按返回的 URL 处理，不重复创建。
-
-## 更新 Issue/PR 标题或描述（前置要求）
-
-在更新 Issue 或 PR 的标题/描述之前，必须先读取当前标题/正文（即将被修改的内容），再进行修改。
-
-## 冷门参数怎么查
-
-- `gh --help`
-- `gh <group> --help`
-- `gh <group> <subcommand> --help`

@@ -42,50 +42,13 @@ git diff --name-status <base-or-target>...HEAD
 - 最终净变化确实会导致既有用法、接口或行为失效时，在语义化标题中添加 `!`，并增加独立的 `## BREAKING CHANGE` 章节，分别说明影响范围与迁移方式；普通变化不要添加这些标记。
 - 仅在确有额外信息时添加 `## Risks`、`## Notes` 或其它简短英文标题的章节，如 `## Compatibility`、`## Rollout`。
 
-## Validation Gate
-
-`Validation` 不是测试清单。起草 PR/MR 时默认从没有 `## Validation` 的正文开始；不确定是否需要时也省略。只有同时满足以下条件的证据才能加入：
-
-1. 证据不在 final diff、平台 CI/checks、pipeline 或标准合入门槛中自然可见。
-2. 证据会改变 reviewer 对风险的判断，而不是证明执行过测试。
-3. 证据描述最终交付行为，而不是探索过程或临时调试。
-4. 证据可以用行为结果表达，而不是命令流水账。
-
-发送前逐项筛除 `Validation` 中的内容：
-
-1. final diff、CI/checks 或 pipeline 已经能直接展示的证据，删除。
-2. 只用于证明“执行过检查”的 lint、fmt、typecheck、build、普通测试、coverage、CI 状态、命令和测试数量，删除。
-3. 记录启动服务、打开工具、调试步骤或失败尝试等过程的内容，删除；如果其中存在有价值的最终行为证据，只保留可观察结果。
-4. 不会改变 reviewer 风险判断的结果，删除。
-
-筛选后没有合格证据时，删除整个章节。允许保留的内容包括 CI 无法覆盖的真实环境行为、迁移 dry-run 结果、性能数据、兼容性矩阵、安全边界或刻意构造的 red/green 回归结果。用户笼统要求“包含验证”时仍应用本门禁；普通检查在任务交付回复中完整汇报，除非用户明确要求将具体命令写入 reviewer-facing 正文。
-
-错误示例：把常规检查结果写成命令清单；这些信息应由 CI 或任务交付回复承载。
-
-```markdown
 ## Validation
 
-- `npm run type-check`
-- `npm run lint`
-- `npm run test:unit`：1486 条用例通过
-- Pipeline passed
-```
+默认省略此章节。仅保留最终 diff 和平台 CI/checks 无法展示、且会改变 reviewer 风险判断的最终行为证据，如真实环境行为、迁移 dry-run、性能或兼容性数据，以及刻意构造的 red/green 回归证据。
 
-错误示例：只描述操作过程和笼统结论，reviewer 无法判断实际验证了什么行为。
+常规 lint、fmt、build、测试数量、coverage、CI 状态和命令清单在任务交付回复中汇报；不把调试过程、启动服务或“未发现问题”当作行为证据。没有合格内容就省略整个章节。用户笼统要求“包含验证”时仍按此筛选，明确要求具体命令时遵循其要求；仓库模板优先。
 
-```markdown
-## Validation
-
-- 本地启动 dev server，并使用 Chrome 简单验收，未发现问题。
-```
-
-正确示例：CI 无法覆盖的 test 环境行为会直接降低本次筛选规则变更的风险。
-
-```markdown
-## Validation
-
-- test 环境的逻辑集群列表中，`cluster:infra_platform` 可以命中名称包含 `infra-platform` 的集群，URL 仍保留用户输入的原始筛选值。
-```
+例如：test 环境中，`cluster:infra_platform` 可以命中名称含 `infra-platform` 的集群，URL 仍保留原始筛选值。
 
 ## Inline review reply
 
