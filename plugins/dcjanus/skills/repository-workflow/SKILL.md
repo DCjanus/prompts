@@ -5,7 +5,7 @@ description: 仓库文档、分支、commit、push，以及 Issue/PR/MR 文案�
 
 # Repository Workflow
 
-按当前任务读取参考，已读且未变化的不重复加载。平台资源读取与写入使用 [GitHub](../github-cli/SKILL.md) 或 [GitLab](../gitlab-cli/SKILL.md)。
+起草或修改工件前，先读取下表中对应参考；同一任务中已读且未变化的内容无需重复加载。平台资源读取与写入使用 [GitHub](../github-cli/SKILL.md) 或 [GitLab](../gitlab-cli/SKILL.md)。
 
 | 任务 | 参考 |
 | --- | --- |
@@ -48,5 +48,6 @@ description: 仓库文档、分支、commit、push，以及 Issue/PR/MR 文案�
 ## 平台交付
 
 - 按平台 skill 检查模板、目标分支和当前资源内容，以相对 base/target 的最终净变化起草文案；独立 Issue 不要求本地存在代码改动。
+- 创建或更新 PR/MR 正文前，核对项目模板及协作文案要求；无项目模板或用户指定格式时，正文包含 `## Why` 和 `## What`。任务简单或改动为空不省略这两个章节。
 - 多行正文通过文件参数提交。写入前通读完整文案，遵循协作文案中的语言、章节与证据规则。
 - 写入后确认标题、正文、状态与必要元数据；复用脚本已经完成的回读验证，仅补查未覆盖信息。验证失败但已有资源 URL 时先处理该资源，不重复创建。
