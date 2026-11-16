@@ -5,13 +5,14 @@ description: 仓库文档、分支、commit、push，以及 Issue/PR/MR 文案�
 
 # Repository Workflow
 
-按当前任务读取参考，已读且未变化的不重复加载。平台资源读取与写入使用 [GitHub](../github-cli/SKILL.md) 或 [GitLab](../gitlab-cli/SKILL.md)。
+按本次交付涉及的内容读取对应参考；同一任务可涉及多项，已读且未变化的内容不重复加载。参考中的个人默认服从用户当前要求和项目约定。平台资源读取与写入使用 [GitHub](../github-cli/SKILL.md) 或 [GitLab](../gitlab-cli/SKILL.md)。
 
 | 任务 | 参考 |
 | --- | --- |
 | 编写或整理仓库文档 | [文档边界](references/documentation.md) |
-| 创建 commit、编写 commit message 或 PR/MR 标题、处理平台合并消息 | [提交约定](references/commit-messages.md) |
-| Issue/PR/MR 文案或 inline review reply | [协作文案](references/change-requests.md) |
+| 创建 commit、编写 commit message、处理平台合并消息 | [提交约定](references/commit-messages.md) |
+| 编写或修改 PR/MR 标题、正文 | [协作文案](references/change-requests.md)；标题同时读取[提交约定](references/commit-messages.md) |
+| Issue 文案或 inline review reply | [协作文案](references/change-requests.md) |
 | 确保 PR/MR 达到可合并状态 | [合入门禁](references/merge-readiness.md)及平台对应规则 |
 | 分支、push 与历史管理 | 本文件 |
 
@@ -47,6 +48,6 @@ description: 仓库文档、分支、commit、push，以及 Issue/PR/MR 文案�
 
 ## 平台交付
 
-- 按平台 skill 检查模板、目标分支和当前资源内容，以相对 base/target 的最终净变化起草文案；独立 Issue 不要求本地存在代码改动。
-- 多行正文通过文件参数提交。写入前通读完整文案，遵循协作文案中的语言、章节与证据规则。
+- 按平台 skill 检查模板、目标分支和当前资源内容，结合[协作文案](references/change-requests.md)起草；PR/MR 以相对 base/target 的最终净变化为依据，独立 Issue 不要求本地存在代码改动。
+- 多行正文通过文件参数提交。写入前通读完整文案，核对适用的用户要求、项目约定与协作文案偏好。
 - 写入后确认标题、正文、状态与必要元数据；复用脚本已经完成的回读验证，仅补查未覆盖信息。验证失败但已有资源 URL 时先处理该资源，不重复创建。
