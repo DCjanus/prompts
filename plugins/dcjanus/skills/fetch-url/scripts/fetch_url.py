@@ -6,7 +6,7 @@
 #     "playwright>=1.65.2",
 #     "rich>=15.0.0",
 #     "trafilatura>=2.3.1",
-#     "typer>=0.29.1",
+#     "typer>=0.29.2",
 # ]
 # ///
 

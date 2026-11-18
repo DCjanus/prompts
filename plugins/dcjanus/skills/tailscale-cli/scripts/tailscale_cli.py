@@ -3,8 +3,8 @@
 # /// script
 # requires-python = ">=3.15"
 # dependencies = [
-#     "httpx2>=2.16.0",
-#     "typer>=0.29.1",
+#     "httpx2>=2.16.2",
+#     "typer>=0.29.2",
 # ]
 # ///
 
