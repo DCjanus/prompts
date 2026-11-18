@@ -1,11 +1,11 @@
 ---
 name: domain-modeling
-description: 构建并持续校准项目的领域模型。适用于讨论代码库术语、编写或编辑 GLOSSARY.md，或记录或编辑 ADR 的场景。
+description: 为项目厘清有歧义的领域术语与边界，或编写、修订 GLOSSARY.md 和架构决策记录（ADR）。
 ---
 
 # 领域建模
 
-在设计过程中主动构建并校准项目的领域模型：质疑术语、构造边界场景，并在词汇和决策明确时立即记录下来。仅仅读取 `GLOSSARY.md` 以沿用词汇不属于此 skill；只有需要改变模型时才使用它。
+在设计过程中主动构建并校准项目的领域模型：质疑术语、构造边界场景。只讨论方案时，在回复中记录已确认的定义和仍有分歧的术语。仅仅读取 `GLOSSARY.md` 以沿用词汇不属于此 skill；只有需要改变模型时才使用它。
 
 ## 文件结构
 
@@ -59,7 +59,7 @@ description: 构建并持续校准项目的领域模型。适用于讨论代码�
 
 ### 即时更新 GLOSSARY.md
 
-术语一旦确认，立即更新 `GLOSSARY.md`，不要集中到最后处理。格式遵循 [GLOSSARY-FORMAT.md](GLOSSARY-FORMAT.md)。
+任务包含文档修改时，术语一经确认就更新 `GLOSSARY.md`，不要集中到最后处理。格式遵循 [GLOSSARY-FORMAT.md](GLOSSARY-FORMAT.md)。
 
 `GLOSSARY.md` 只能包含词汇定义，不能包含实现细节；不要把它当作规格、草稿或实现决策仓库。
 

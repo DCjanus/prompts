@@ -1,47 +1,18 @@
 ---
 name: fetch-url
-description: 获取并提取链接正文（默认 Markdown）；内置 X/Twitter URL 处理，提升受限页面的抓取成功率。
+description: 提取网页或 X/Twitter 帖子正文，可输出 Markdown 或渲染后的 HTML。GitHub 仓库、Issue 与 PR 优先使用 github-cli。
 ---
 
-## 工具选择
+# 网页正文提取
 
-- GitHub repo、issue、PR、comment、release、workflow 等资源 URL 优先使用 `github-cli`。
-- 如果 `gh` 或 GitHub API 能取得任务所需内容，不要同时调用 `fetch-url`。
-- 仅当 `github-cli` 无法取得所需页面内容，或目标并非其支持的 GitHub 资源时，才使用本 skill 回退。
+使用 [fetch_url.py](scripts/fetch_url.py) 读取 HTTP(S) URL，默认输出 Markdown 到 stdout。若 `github-cli` 已取得所需的 GitHub 资源内容，直接使用该结果。
 
-URL 仅支持 `http` / `https`。
-
-默认自动探测本地 Chromium 系浏览器路径；未探测到时需安装 Playwright 浏览器：
-
-```bash
-uv run playwright install chromium
+```sh
+./scripts/fetch_url.py https://example.com --output page.md
 ```
 
-参数：
-- `--output`：将输出写入文件（默认 stdout）。
-- `--timeout-ms`：Playwright 导航超时（毫秒，默认 60000）。
-- `--browser-path`：指定本地 Chromium 系浏览器路径（默认自动探测）。
-- `--output-format`：输出格式（默认 `markdown`），支持 `csv`、`html`、`json`、`markdown`、`raw-html`、`txt`、`xml`、`xmltei`；`raw-html` 直接输出渲染后的 HTML（不经 trafilatura）。
-- `--fetch-strategy`：仅 `markdown` 可用，支持 `auto`、`agent`、`jina`、`browser`。默认 `auto`。
+按 URL 的可见范围选择 Markdown 的 `--fetch-strategy`：
 
-`--fetch-strategy` 常用值：
-- `auto`：默认选择。
-- `agent`：优先用原站 Markdown 协商。
-- `jina`：优先用 Jina Reader。
-- `browser`：直接用本地 Playwright。
-
-环境变量：
-- 可设置 `JINA_API_KEY` 提升 Jina Reader 限流：`JINA_API_KEY=your-token ./scripts/fetch_url.py ...`
-
-示例：
-
-```bash
-./scripts/fetch_url.py https://example.com --output ./page.md --timeout-ms 60000
-./scripts/fetch_url.py https://example.com --fetch-strategy jina
-JINA_API_KEY=your-token ./scripts/fetch_url.py https://example.com --fetch-strategy jina
-./scripts/fetch_url.py https://example.com --fetch-strategy browser
-./scripts/fetch_url.py https://x.com/jack/status/20 --output-format markdown
-./scripts/fetch_url.py https://x.com/jack/status/20 --output-format markdown --fetch-strategy browser
-```
-
-Reference：[`scripts/fetch_url.py`](scripts/fetch_url.py)
+- 公开链接可用默认的 `auto`。X/Twitter 帖子按 ID 查询 FxTwitter；其他页面先向原站请求 Markdown，失败时将完整 URL 交给 Jina Reader，再按需使用本地浏览器。
+- 内网、带签名或其他不宜交给第三方的链接，选 `agent` 只向原站协商 Markdown，或选 `browser` 在本地渲染。显式选 `jina` 时直接请求 Jina Reader，可通过环境变量 `JINA_API_KEY` 使用已有凭据。
+- 需要原始渲染结果时用 `--output-format raw-html`。浏览器路径默认自动探测，也可用 `--browser-path` 指定；需要渲染且没有可用 Chromium 时，按 Playwright 的安装流程准备浏览器。其他格式、超时及输出参数见 `--help`。

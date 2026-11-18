@@ -1,51 +1,16 @@
 ---
 name: confluence-cli
-description: 查询、检索与阅读 Confluence 文档/页面。
+description: 搜索和阅读 Confluence 页面、下载附件、重命名页面或发布 Markdown 到指定父页面。
 ---
 
-1) 常用子命令（覆盖日常场景）
-- `space`
-  - `list [--start --limit --expand]`
-  - `get --space-key [--expand]`
-- `page`
-  - `get --page-id [--body-format --expand --fresh]`
-  - `by-title --space-key --title [--body-format --expand]`
-  - `children --page-id [--start --limit --expand]`
-  - `rename --page-id --title`
-  - `publish-markdown --parent-id --title --markdown-path [--update-if-exists --body-format --expand]`
-- `attachment`
-  - `list --page-id [--start --limit --expand]`
-  - `download --page-id [--output-dir --name --filter --all --start --limit --expand]`
-- `search`
-  - `--cql [--start --limit --body-format --expand]`
+# Confluence CLI
 
-2) 输出格式
-- 所有调用统一在脚本后、子命令前加 `--json`（示例：`./scripts/confluence_cli.py --json page get --page-id ...`）
+使用 [confluence_cli.py](scripts/confluence_cli.py)。全局 `--json` 放在子命令前；从 `--help` 和目标子命令帮助查询参数。
 
-3) 冷门参数/字段怎么查
-- 运行 `./scripts/confluence_cli.py <command> --help` 查看该命令的参数
-- 需要更深入的 Confluence API 字段时，可扩展脚本中的 `expand` 参数
+- 按标题和空间查页面用 `page by-title`，跨页面检索用 `search --cql`。读正文可用 `page get` 的 `--body-format` 和 `--expand`。
+- 下载附件用 `attachment download`。重复 `--name` 指定文件；`--all` 自动分页，可配合 `--filter` 按正则筛选。
+- 重命名前核对目标 page ID。发布 Markdown 用 `page publish-markdown --parent-id … --title … --markdown-path …`，默认更新该父页下的同名子页面。仅授权新建时先检查是否重名；有重名时保留原页。
+- 写后验证正文时，使用 `page get --page-id … --body-format storage --expand body.storage,version --fresh` 绕过缓存。
+- 发布成功后，仅用同次 shell 的 `&& rm -- <明确文件路径>` 清理自己为本次发布创建且不再需要的临时 Markdown。失败保留文件，用户文档、仓库文件与图片均保留。
 
-4) 注意事项
-- `page get` 默认保持普通缓存读；刚更新页面后需要校验正文时，使用 `--fresh` 绕过 Confluence 或代理缓存，例如：`./scripts/confluence_cli.py --json page get --page-id ... --body-format storage --expand body.storage,version --fresh`
-- 如果 Markdown 文件由 Agent 为当前单次发布临时创建，且成功后不再复用，在同一次
-  shell 调用中把发布命令与 `rm -- <明确路径>` 用 `&&` 串行执行。发布失败时保留文件，
-  不要使用 `;` 无条件删除，也不要用变量、通配符或目录作为清理目标。用户提供的源文档、
-  仓库文件和本地图片不得随 Markdown 临时文件自动删除。
-
-5) 附件下载示例
-- 下载指定附件（可重复传入 `--name`）：`./scripts/confluence_cli.py attachment download --page-id 3060336952 --output-dir ./attachments --name a.png --name b.png`
-- 下载全部附件（自动分页）：`./scripts/confluence_cli.py attachment download --page-id 3060336952 --all --output-dir ./attachments`
-- 过滤下载（正则）：`./scripts/confluence_cli.py attachment download --page-id 3060336952 --filter 'image2026-1-19_.*\\.png' --all --output-dir ./attachments`
-
-6) 发布 Markdown 示例
-- 发布到父页面（同名则更新）：`./scripts/confluence_cli.py --json page publish-markdown --parent-id 3061931928 --title "批量重置 Offset 功能测试" --markdown-path /path/to/doc.md`
-- 发布单次临时 Markdown 并在成功后清理：`./scripts/confluence_cli.py --json page publish-markdown --parent-id 3061931928 --title "批量重置 Offset 功能测试" --markdown-path /tmp/confluence-page.md && rm -- /tmp/confluence-page.md`
-- Markdown 表格支持 `:---`、`:---:`、`---:` 这类左对齐、居中、右对齐语法，会转换为 Confluence storage 的 table cell `text-align` 样式。
-- 本地图片发布时会按最大展示框自动生成单个 Confluence 尺寸属性：默认最大宽度 `1000`、最大高度 `800`，可用 `--image-max-width` / `--image-max-height` 覆盖；只写触发缩放的 `ac:width` 或 `ac:height`，不修改附件原图。
-- 如需覆盖单张图片展示尺寸，可使用 Markdown title：`![图](./a.png "confluence-width=1200")`、`![图](./a.png "confluence-height=600")`、`![图](./a.png "confluence-size=original")`。
-
-## 资源
-
-- [confluence_cli.py](scripts/confluence_cli.py)：主 CLI 入口，负责读取配置并发起 API 调用。
-- [confluence_api_client.py](scripts/confluence_api_client.py)：SDK 封装层，收敛常用 API 调用。
+发布支持 Markdown 表格对齐。本地图片的默认展示框为 1000 × 800，原图保留。全篇调整用 `--image-max-width` / `--image-max-height`；单图可用 Markdown title 指定 `confluence-width=1200`、`confluence-height=600` 或 `confluence-size=original`。
