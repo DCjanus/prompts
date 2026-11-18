@@ -1,6 +1,6 @@
 ---
 name: ticktick-cli
-description: 使用 Python CLI 与 Dida365 Open API 交互以管理滴答清单任务/项目，适用于需要通过脚本或命令行调用滴答清单接口的场景（如项目/任务的查询、创建、更新、完成、删除）。
+description: 管理滴答清单（Dida365）或国际版 TickTick 的任务、项目、习惯打卡与专注记录。
 ---
 
 # ticktick-cli
@@ -38,22 +38,7 @@ description: 使用 Python CLI 与 Dida365 Open API 交互以管理滴答清单�
 
 ## 日常操作
 
-常用命令族：
-
-- `auth login|doctor|logout`
-- `project list|get|data|create|update|delete`
-- `task get|create|update|complete|delete|move|completed|filter`
-- `focus get|list|delete`
-- `habit list|get|create|update|checkin|checkins`
-
-常见入口：
-
-```bash
-./scripts/ticktick_cli.py --json project list
-./scripts/ticktick_cli.py --json project data --project-id <project-id>
-./scripts/ticktick_cli.py --json task get --project-id <project-id> --task-id <task-id>
-./scripts/ticktick_cli.py --json task filter --project-id <project-id> --status 0
-```
+从 `./scripts/ticktick_cli.py --help` 选择 `project`、`task`、`habit` 或 `focus`。项目聚合详情用 `project data`，包含项目、未完成任务和看板列；精确读取一条任务时，向 `task get` 同时提供 project ID 和 task ID。
 
 创建或更新 checklist 子任务：
 
@@ -74,16 +59,6 @@ description: 使用 Python CLI 与 Dida365 Open API 交互以管理滴答清单�
   --item-json @/tmp/ticktick-items.json \
   && rm -- /tmp/ticktick-items.json
 ```
-
-## 数据模型
-
-- Project：任务容器，支持 list / kanban / timeline 等视图。
-- Task：隶属于 Project，可包含时间、提醒、优先级、重复规则、标签与子任务。
-- ChecklistItem：Task 下的子任务项。
-- Column：看板列，仅在 kanban 场景常用。
-- ProjectData：项目详情聚合，包含项目、未完成任务和列信息。
-- Focus：专注/番茄钟记录。
-- Habit：习惯与打卡记录。
 
 ## 参考
 

@@ -1,6 +1,6 @@
 ---
 name: golang-lo
-description: Go >= 1.18 项目中希望用 samber/lo（Lodash 风格泛型库）简化集合/映射/字符串、错误处理、重试/节流/防抖、通道并发或指针空值场景时使用。
+description: 在 Go 1.18 及以上项目中使用 samber/lo 简化集合操作、错误处理、重试、并发或指针处理。
 ---
 
 # lo Go 工具库速用指南

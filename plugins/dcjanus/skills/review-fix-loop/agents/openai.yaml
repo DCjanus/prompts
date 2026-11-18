@@ -1,7 +1,7 @@
 interface:
   display_name: "Review Fix Loop"
   short_description: "Run clean subagent review/fix cycles"
-  default_prompt: "Use $dcjanus:review-fix-loop to review this PR with fresh subagents until three clean rounds."
+  default_prompt: "Use $dcjanus:review-fix-loop to review this PR with fresh subagents until one batch of three reviewers has no actionable findings after triage."
 
 policy:
   allow_implicit_invocation: false

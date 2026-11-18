@@ -1,6 +1,6 @@
 ---
 name: notify-via-telegram
-description: 在用户明确要求后，通过本地安全配置发送当前长任务的 Telegram 结果通知；适用于用户希望离开终端，并在任务最终成功、最终失败或等待其处理时收到消息的场景。不得仅因任务耗时较长或一般任务完成而发送。
+description: 用户在当前任务显式调用本 skill 并要求 Telegram 通知时，发送最终结果或需要用户处理的事项。
 ---
 
 # Notify via Telegram
@@ -41,45 +41,7 @@ Agent 调用时使用 `--json`，并把全局参数放在子命令前。
 
 `title` 和 `summary` 必填；`verification`、`action`、`context` 可选。保持内容简洁，不发送完整日志、堆栈、凭据或冗长本地路径。
 
-发送成功结果：
-
-```bash
-./scripts/notify.py --json send \
-  --status success \
-  --title "任务标题" \
-  --summary "最终结果的一句话摘要" \
-  --verification "关键验证结果" \
-  --context "仓库或任务上下文"
-```
-
-发送失败结果：
-
-```bash
-./scripts/notify.py --json send \
-  --status failed \
-  --title "任务标题" \
-  --summary "无法完成的直接原因" \
-  --action "建议的下一步"
-```
-
-等待用户处理：
-
-```bash
-./scripts/notify.py --json send \
-  --status action-required \
-  --title "任务标题" \
-  --summary "当前状态" \
-  --action "需要用户决定或提供的内容"
-```
-
-在不读取配置、不访问 Telegram 的情况下预览同样的结构化参数：
-
-```bash
-./scripts/notify.py --json preview \
-  --status success \
-  --title "任务标题" \
-  --summary "最终结果的一句话摘要"
-```
+使用同一组参数先 `preview` 再 `send`。失败通知说明最终阻塞，等待处理的通知用 `action` 写清需要用户决定或提供什么。
 
 所有输入字段按纯文本传入，不添加 HTML、Markdown 或 RichText 结构。脚本负责排版，将有效的 Codex 根 session ID 显示为可复制的行内代码，不生成会话 URL；`--json preview` 返回与发送一致的 `rich_message`，不读取配置、不联网。
 

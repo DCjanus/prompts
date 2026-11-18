@@ -1,118 +1,14 @@
 ---
 name: google-sheets-cli
-description: 使用 Python CLI 与 Google Sheets API 交互以新建、读取、更新、批量写入、追加或清空 Google Sheets 在线表格；适用于需要通过 OAuth 授权操作 Google Workspace 表格的场景。
+description: 新建 Google Sheets 在线表格，按范围读取、更新、追加或清空单元格，维护表格格式和富文本链接。
 ---
 
-# google-sheets-cli
+# Google Sheets CLI
 
-通过本 skill 调用 Google Sheets API。适合新建、读取和编辑 Google Sheets 在线文档。
+使用 [gsheets_cli.py](scripts/gsheets_cli.py)。全局 `--json` 放在子命令前，按 `--help` 逐层查询参数。首次配置或认证失败时运行 `--json auth doctor`，按 [Workspace OAuth 指南](references/google-workspace-oauth.md) 处理凭据、scope 和管理员限制。
 
-## 执行约定
-
-- 给 Agent 解析的输出一律加 `--json`，并且全局参数必须放在子命令前。
-- 写操作会真实修改在线表格；范围不确定时先读目标 range。
-
-## 认证
-
-OAuth 通常只需要配置一次；日常任务不要把认证细节加载进上下文。
-
-- 查看当前凭据路径与认证状态：`./scripts/gsheets_cli.py --json auth doctor`。
-- 缺少 client secret、token 失效、Workspace 策略阻止等认证问题，按 [google-workspace-oauth.md](references/google-workspace-oauth.md) 处理。
-
-## 日常操作
-
-常用命令族：
-
-- `auth import-client|login|doctor|logout|paths`
-- `spreadsheet create|get`
-- `values get|update|batch-update|append|clear|update-rich-text`
-
-示例：
-
-```bash
-./scripts/gsheets_cli.py --json spreadsheet create \
-  --title "审计结果" --sheet-title "问题" --sheet-title "说明" \
-  --frozen-row-count 1
-./scripts/gsheets_cli.py --json spreadsheet get --spreadsheet-id <spreadsheet-id>
-./scripts/gsheets_cli.py --json values get --spreadsheet-id <spreadsheet-id> --range "Sheet1!A1:D20"
-./scripts/gsheets_cli.py --json values update --spreadsheet-id <spreadsheet-id> --range "Sheet1!B2" --values-json '[["DONE"]]'
-./scripts/gsheets_cli.py --json values append --spreadsheet-id <spreadsheet-id> --range "Sheet1!A:D" --values-json '[["a","b","c","d"]]'
-```
-
-`values update|batch-update|append` 的每个单元格必须是 JSON 标量：string、number、boolean 或 null。Mongo Extended JSON 等对象值需先转换为字符串或拆成独立列；CLI 会在请求前报告具体的行列位置，避免收到难以定位的 Google API 400。
-
-批量写入：
-
-```bash
-./scripts/gsheets_cli.py --json values batch-update \
-  --spreadsheet-id <spreadsheet-id> \
-  --updates-json '[{"range":"Sheet1!B2","values":[["DONE"]]},{"range":"Sheet1!C2","values":[["ok"]]}]'
-```
-
-复杂 JSON 可以使用 `@path` 从文件读取：
-
-```bash
-./scripts/gsheets_cli.py --json values batch-update \
-  --spreadsheet-id <spreadsheet-id> \
-  --updates-json @/tmp/sheets-updates.json \
-  && rm -- /tmp/sheets-updates.json
-```
-
-如果 JSON 文件由 Agent 为当前单次写操作临时创建，且成功后不再复用，在同一次 shell
-调用中把写操作与 `rm -- <明确路径>` 用 `&&` 串行执行。写操作失败时保留文件，不要
-使用 `;` 无条件删除，也不要用变量、通配符或目录作为清理目标。用户提供的 JSON、
-写入前的范围备份，以及后续验证或回滚仍需复用的文件不得自动清理。
-
-## 读取格式与 table 元数据
-
-`spreadsheet get` 默认只返回 metadata，可查看 sheet id、标题、filter、banded ranges 和 table 列定义；只读单元格内容用 `values get --range`。
-
-需要单元格格式、下拉校验、列宽或行高时，通过 `--range`（可重复）和 `--fields` 限定返回内容，避免拉取大型 workbook 的全量 grid data：
-
-```bash
-./scripts/gsheets_cli.py --json spreadsheet get \
-  --spreadsheet-id <spreadsheet-id> \
-  --range "'Sheet1'!A1:H5" \
-  --fields 'sheets(properties(sheetId,title),data(columnMetadata,rowMetadata,rowData(values(formattedValue,effectiveFormat,dataValidation))))'
-```
-
-`--fields` 使用 [Sheets API 字段掩码](https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets/get)，指定后由掩码决定是否返回 grid data，`--include-grid-data` 不再生效。
-
-## 更新 table / dropdown 的注意事项
-
-- 写线上表格前，先用 `values get` 备份目标范围到 `/tmp/...json`，并把所有写操作限定到目标 sheet/range；不要误动其它 tab。
-- `values update` 只改值，不会自动扩展 Google Sheets table 的范围、列名、filter、banded range 或 dropdown metadata。新增列后，如果要保持 table 结构，需要用 Sheets API `spreadsheets.batchUpdate` 调 `updateTable`、`updateBanding`、`setBasicFilter`、`updateDimensionProperties` 等请求，并使用目标 sheet 的 `sheetId` 限定范围。
-- Google Sheets API 当前的 `TableColumnDataValidationRule` 只能表达 dropdown 的 `ONE_OF_LIST` 选项，不能表达 Google Sheets UI 里的 dropdown chip 背景色、选项颜色、display style 或 multi-select 等 UI metadata。用 `updateTable` 重写 `columnProperties` 时，原 UI 选项颜色可能丢失。
-- 不要尝试用 API 自动“修复” dropdown chip 颜色。已验证 `copyPaste` + `PASTE_DATA_VALIDATION` 不可靠，条件格式也不等价：设置背景色会把整个单元格染色，只设置文字色也只是灰色 chip 内的文字变色，都会偏离原生 chip 视觉。遇到这类需求时，应明确告知这是 Google Sheets API 缺口，保留现状、回退写入，或让用户在 UI/模板中手工维护。
-- table dropdown 列不要再对同一范围叠加普通 `setDataValidation`；Google Sheets 会报错类似 `无法对指定类型的列中的单元格进行此操作`。应通过 `updateTable.columnProperties[].dataValidationRule` 维护 table dropdown 选项。
-
-## 链接写入
-
-- Google Sheets 不支持 Markdown 的 `[text](url)` 链接语法；不要把 Markdown 链接直接写进单元格并期待 UI 渲染成链接。
-- 只需要整格都是同一个链接时，可用 `values update --value-input-option USER_ENTERED` 写入 `=HYPERLINK("https://example.com", "显示文本")`。注意：这种方式会让整个单元格显示文本都成为同一个链接。
-- 只想让单元格中的一小段文字带链接时，不要现场写 Python；优先用 `values update-rich-text`。该命令会用 Sheets API `updateCells` 写 `userEnteredValue.stringValue` 和 `textFormatRuns[].format.link.uri`。
-
-示例：只让备注里的 `knots-frontend !96` 这段文字带链接：
-
-```bash
-./scripts/gsheets_cli.py --json values update-rich-text \
-  --spreadsheet-id <spreadsheet-id> \
-  --range "Sheet1!I10" \
-  --text "延期到 7/9：Backup AZ 约束仍在 knots-frontend !96 中。" \
-  --links-json '[{"text":"knots-frontend !96","url":"https://git.example.com/group/project/-/merge_requests/96"}]'
-```
-
-如果同一段显示文字在单元格中出现多次，改用 `start` / `end` 明确字符位置：`[{"start":18,"end":36,"url":"https://..."}]`。
-
-## 权限范围
-
-CLI 使用 Google Sheets scope：`https://www.googleapis.com/auth/spreadsheets`。
-
-该 scope 可读取和修改用户有权限访问的 Google Sheets。若公司 Workspace 阻止该 OAuth client 访问，需由 Workspace 管理员允许对应 OAuth Client ID。
-
-## 参考
-
-- [gsheets_cli.py](scripts/gsheets_cli.py)
-- [google-workspace-oauth.md](references/google-workspace-oauth.md)
-- [Google Sheets API](https://developers.google.com/workspace/sheets/api/reference/rest)
-- [Read & write cell values](https://developers.google.com/workspace/sheets/api/guides/values)
+- 新建表格用 `spreadsheet create`；定位 tab、sheetId 和表结构用 `spreadsheet get`。读取单元格用 `values get --spreadsheet-id … --range …`。
+- 写前核对目标 tab 与 A1 范围，并备份将受影响的数据。普通 `values get` 返回显示值。需要恢复公式或富文本时，用 `spreadsheet get --range … --fields …` 保存目标范围的 `userEnteredValue`、`textFormatRuns` 等写入会覆盖的字段；表结构调整还需保留相应元数据。
+- 更新、批量更新或追加时，每个值必须是 JSON 标量。对象先转为字符串或拆成多列；复杂输入用 `@path`。仅用同次 shell 的 `&& rm -- <明确文件路径>` 清理成功后不再需要的单次临时输入；失败、用户文件、备份及验证材料都保留。
+- 读取格式、调整 table、列宽或 dropdown 时，先看 [表结构、字段掩码与下拉选项](references/table-and-format.md)，尤其留意重写列定义对原生 chip 颜色的影响。
+- 写入整格或局部链接时按 [单元格链接](references/cell-links.md) 选择 `HYPERLINK` 或 `values update-rich-text`。

@@ -3,7 +3,7 @@
 # /// script
 # requires-python = ">=3.15"
 # dependencies = [
-#     "typer>=0.29.1",
+#     "typer>=0.29.2",
 # ]
 # ///
 

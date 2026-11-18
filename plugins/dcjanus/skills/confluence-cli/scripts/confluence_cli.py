@@ -6,7 +6,7 @@
 #     "markdown-it-py>=4.3.0",
 #     "pydantic>=2.14.3",
 #     "rich>=15.0.0",
-#     "typer>=0.29.1",
+#     "typer>=0.29.2",
 # ]
 # ///
 """Confluence CLI 工具入口。"""
