@@ -4,7 +4,7 @@
 # requires-python = ">=3.15"
 # dependencies = [
 #     "blake3>=1.0.11",
-#     "duckdb>=2.0.0",
+#     "duckdb>=2.0.1",
 #     "fonttools>=4.68.0",
 #     "google-api-python-client>=2.202.0",
 #     "google-auth-httplib2>=0.4.4",
@@ -14,10 +14,10 @@
 #     "httpxyz>=0.42.1",
 #     "kittytgp>=0.0.3",
 #     "markdown-it-py>=4.3.0",
-#     "openai-codex>=0.170.0",
-#     "pydantic>=2.14.3",
+#     "openai-codex>=0.171.0",
+#     "pydantic>=2.14.4",
 #     "pytest>=9.2.0",
-#     "pyyaml>=6.0.3",
+#     "pyyaml>=6.0.4",
 #     "resvg-py>=0.5.0",
 #     "rich>=15.0.0",
 #     "tomli-w>=1.2.0",
