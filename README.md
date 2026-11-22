@@ -1,12 +1,14 @@
 # prompts
 
-一组我日常使用的 Codex skills，把开发协作、工具操作和个人偏好整理成可以重复使用的工作流。
+一组可在 Codex 和 Antigravity CLI 中使用的 skills，把开发协作、工具操作和个人偏好整理成可以重复使用的工作流。
 
 你可以用它让 Codex 协助处理 GitHub 和 GitLab 上的工作、管理依赖、探索领域模型，或与 Gmail、Google Calendar、Linear 等服务交互。这里也有用于拆解复杂问题、逐步学习和审视方案的 skills。
 
 这套工具根据我的工作方式编写，部分 skill 包含个人偏好或需要单独配置服务凭据。欢迎浏览 [skills 目录](plugins/dcjanus/skills)，挑选适合自己的部分。
 
 ## 开始使用
+
+### Codex
 
 需要支持 plugin 命令的 Codex CLI、Git 和 [uv](https://github.com/astral-sh/uv)。安装 marketplace 和 plugin：
 
@@ -22,6 +24,16 @@ codex plugin add dcjanus@dcjanus-plugins
 ```bash
 codex plugin marketplace upgrade dcjanus-plugins --json
 ```
+
+### Antigravity CLI
+
+从仓库根目录安装同一套 skills：
+
+```bash
+agy plugin install ./plugins/dcjanus
+```
+
+在 `agy` 中输入 `/skills` 查看可用技能。部分依赖 Codex 专用命令或工具的工作流需要在 Codex 中运行。
 
 ## 其他资源
 
