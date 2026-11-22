@@ -27,10 +27,10 @@ codex plugin marketplace upgrade dcjanus-plugins --json
 
 ### Antigravity CLI
 
-从仓库根目录安装同一套 skills：
+直接从 GitHub 安装同一套 skills：
 
 ```bash
-agy plugin install ./plugins/dcjanus
+agy plugin install https://github.com/DCjanus/prompts/tree/master/plugins/dcjanus
 ```
 
 在 `agy` 中输入 `/skills` 查看可用技能。部分依赖 Codex 专用命令或工具的工作流需要在 Codex 中运行。
