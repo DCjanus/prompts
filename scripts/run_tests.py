@@ -14,7 +14,7 @@
 #     "httpxyz>=0.42.1",
 #     "kittytgp>=0.0.3",
 #     "markdown-it-py>=4.3.0",
-#     "openai-codex>=0.171.0",
+#     "openai-codex>=0.172.0",
 #     "pydantic>=2.14.4",
 #     "pytest>=9.2.0",
 #     "pyyaml>=6.0.4",
