@@ -228,6 +228,15 @@ def package_status(report: PackageReport) -> str:
 
     constraints_are_mixed = len(report.constraints) > 1
     if max(versions) < latest:
+        # PyPI's 4.69.0 release has only CPython 3.11 wheels and no source archive.
+        # Recheck with the next release. Both scripts require Python 3.15.
+        if (
+            report.name == "fonttools"
+            and latest == Version("4.69.0")
+            and max(versions) == Version("4.68.0")
+            and not constraints_are_mixed
+        ):
+            return "latest release unavailable for Python 3.15"
         return (
             "minimum behind latest; mixed constraints"
             if constraints_are_mixed
@@ -239,7 +248,7 @@ def package_status(report: PackageReport) -> str:
 
 
 def needs_attention(status: str) -> bool:
-    return status != "ok"
+    return status not in {"ok", "latest release unavailable for Python 3.15"}
 
 
 def build_reports(root: Path, timeout: float) -> tuple[list[PackageReport], list[str]]:

@@ -44,11 +44,27 @@ git diff --name-status <base-or-target>...HEAD
 
 ## Validation
 
-默认省略此章节。仅保留最终 diff 和平台 CI/checks 无法展示、且会改变 reviewer 风险判断的最终行为证据，如真实环境行为、迁移 dry-run、性能或兼容性数据，以及刻意构造的 red/green 回归证据。
+默认省略此章节。仅当场景难以用常规自动化测试充分覆盖，且结果会影响审核判断时，才写明验证场景和观察结果。
 
-常规 lint、fmt、build、测试数量、coverage、CI 状态和命令清单在任务交付回复中汇报；不把调试过程、启动服务或“未发现问题”当作行为证据。没有合格内容就省略整个章节。用户笼统要求“包含验证”时仍按此筛选，明确要求具体命令时遵循其要求；仓库模板优先。
+常规构建、静态检查和自动化测试属于默认验证流程，PR/MR 正文省略命令清单、测试数量和通过状态。用户笼统要求包含验证时仍按上述门槛筛选，按用户明确要求或仓库模板补充指定信息。
 
-例如：test 环境中，`cluster:infra_platform` 可以命中名称含 `infra-platform` 的集群，URL 仍保留原始筛选值。
+反例（发布 PR 只列出常规检查命令）
+
+```md
+## Validation
+
+- `cargo check`
+- `mise run check`
+- `mise run test`
+- `cargo package --locked`
+- `mise exec -- ./scripts/release.py v0.0.5`
+```
+
+正例（写明验证场景和观察结果）
+
+- 在 macOS 上通过 Rex 连接远程 Linux 主机，复制含空格的路径后，在本机文本编辑器中粘贴得到完整路径。
+- 用预生产数据库快照试跑迁移。迁移前后均有 12,480 条记录，旧数据中的空值全部映射到了预期的默认值。
+- 在仅支持单色显示的手持扫描器上打开新版拣货页面，操作者仍能凭图标区分缺货和已拣状态。
 
 ## Inline review reply
 
