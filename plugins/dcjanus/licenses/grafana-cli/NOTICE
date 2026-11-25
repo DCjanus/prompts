@@ -1,7 +1,7 @@
 Grafana gcx Agent Skill
 Source: https://github.com/grafana/gcx
 Skill: claude-plugin/skills/gcx/SKILL.md
-Commit: 215df84336c5c4dd9e1c3944060f76f7184d28ef
+Commit: 117b2311909cb3ece0f5f71f10ed5a24823074d6
 Copyright Grafana Labs and gcx contributors.
 
 references/gcx.md is an unmodified copy of the upstream gcx skill.

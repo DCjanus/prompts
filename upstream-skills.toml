@@ -8,10 +8,10 @@ commit = "7739eaed7f8f3915437a8def198a6d0d7206dbc7"
 name = "domain-modeling"
 repository = "mattpocock/skills"
 path = "skills/engineering/domain-modeling"
-commit = "d80fa0f4ebe0c5714af0adf8670336065233ecc6"
+commit = "2b7ab8c9471fad3fca0a9c0c9e1f52153408172b"
 
 [[skills]]
 name = "grafana-cli"
 repository = "grafana/gcx"
 path = "claude-plugin/skills/gcx"
-commit = "215df84336c5c4dd9e1c3944060f76f7184d28ef"
+commit = "117b2311909cb3ece0f5f71f10ed5a24823074d6"

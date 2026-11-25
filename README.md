@@ -46,5 +46,5 @@ agy plugin install https://github.com/DCjanus/prompts/tree/master/plugins/dcjanu
 ## 第三方来源
 
 - [grill-me](plugins/dcjanus/skills/grill-me/SKILL.md) 改编自 Matt Pocock 的 [grilling](https://github.com/mattpocock/skills/blob/7739eaed7f8f3915437a8def198a6d0d7206dbc7/skills/productivity/grilling/SKILL.md)，按 [MIT License](plugins/dcjanus/licenses/grill-me/LICENSE) 使用。
-- [domain-modeling](plugins/dcjanus/skills/domain-modeling/SKILL.md) 翻译自 Matt Pocock 的 [domain-modeling](https://github.com/mattpocock/skills/blob/d80fa0f4ebe0c5714af0adf8670336065233ecc6/skills/engineering/domain-modeling/SKILL.md)，按 [MIT License](plugins/dcjanus/licenses/domain-modeling/LICENSE) 使用。
-- [grafana-cli](plugins/dcjanus/skills/grafana-cli/SKILL.md) 复用 Grafana 官方 [gcx skill](https://github.com/grafana/gcx/blob/215df84336c5c4dd9e1c3944060f76f7184d28ef/claude-plugin/skills/gcx/SKILL.md)，按 [Apache License 2.0](plugins/dcjanus/licenses/grafana-cli/LICENSE) 分发。
+- [domain-modeling](plugins/dcjanus/skills/domain-modeling/SKILL.md) 翻译自 Matt Pocock 的 [domain-modeling](https://github.com/mattpocock/skills/blob/2b7ab8c9471fad3fca0a9c0c9e1f52153408172b/skills/engineering/domain-modeling/SKILL.md)，按 [MIT License](plugins/dcjanus/licenses/domain-modeling/LICENSE) 使用。
+- [grafana-cli](plugins/dcjanus/skills/grafana-cli/SKILL.md) 复用 Grafana 官方 [gcx skill](https://github.com/grafana/gcx/blob/117b2311909cb3ece0f5f71f10ed5a24823074d6/claude-plugin/skills/gcx/SKILL.md)，按 [Apache License 2.0](plugins/dcjanus/licenses/grafana-cli/LICENSE) 分发。
