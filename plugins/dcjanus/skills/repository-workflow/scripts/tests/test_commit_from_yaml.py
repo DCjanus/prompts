@@ -78,19 +78,17 @@ paths:
             commit_from_yaml.load_spec(
                 """
 subject: "fix(commit): reject escaped newlines"
+paths: [README.md]
 body: '第一行\\n第二行'
 """
             )
-
-    def test_requires_breaking_details_for_a_breaking_subject(self) -> None:
-        with self.assertRaisesRegex(ValidationError, "breaking_change"):
-            commit_from_yaml.load_spec('subject: "feat(api)!: replace the contract"\n')
 
     def test_rejects_reserved_assisted_by_trailer(self) -> None:
         with self.assertRaisesRegex(ValidationError, "reserved trailer key"):
             commit_from_yaml.load_spec(
                 """
 subject: "chore(commit): reject reserved trailer"
+paths: [README.md]
 trailers:
   - key: Assisted-by
     value: Manual:model
@@ -102,6 +100,7 @@ trailers:
             commit_from_yaml.load_spec(
                 """
 subject: "chore(commit): reject multiline trailer"
+paths: [README.md]
 trailers:
   - key: Reviewed-by
     value: |
@@ -110,22 +109,48 @@ trailers:
 """
             )
 
-    def test_renders_breaking_change_impact_and_migration(self) -> None:
-        spec = commit_from_yaml.load_spec(
-            """
-subject: "feat(api)!: replace the contract"
-breaking_change:
-  impact: 旧客户端请求会失效。
-  migration: 升级到 v2 接口。
-"""
-        )
+    def test_rejects_invalid_commit_scope(self) -> None:
+        for fields in (
+            "",
+            "empty_commit: true",
+            "paths: []",
+            "paths: []\nempty_commit: false",
+            "paths: [README.md]\nempty_commit: true",
+            "paths: []\nempty_commit: 'true'",
+            "paths: [README.md]\nempty_commit: 0",
+            "paths: [README.md]\nbreaking_change: {impact: old, migration: new}",
+        ):
+            with self.subTest(fields=fields), self.assertRaises(ValidationError):
+                commit_from_yaml.load_spec(f"subject: 'feat: change API'\n{fields}")
 
-        message = commit_from_yaml.render_message(spec, "Codex:gpt-test")
+    def test_empty_commit_preserves_staged_content(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
 
-        self.assertIn(
-            "BREAKING CHANGE: 影响范围：旧客户端请求会失效。 迁移方式：升级到 v2 接口。",
-            message,
-        )
+            def git(*args: str) -> str:
+                return commit_from_yaml.run_git(repo, list(args))
+
+            git("init", "--quiet")
+            git("config", "user.name", "Test User")
+            git("config", "user.email", "test@example.com")
+            (repo / "pending").write_text("staged")
+            git("add", "pending")
+            before = git("diff", "--cached")
+            spec = commit_from_yaml.load_spec(
+                "subject: 'chore: mark build'\npaths: []\nempty_commit: true"
+            )
+            message = commit_from_yaml.render_message(spec, None)
+            commit_from_yaml.create_commit(repo, spec, message, None)
+            self.assertEqual(git("ls-tree", "HEAD"), "")
+            self.assertEqual(git("diff", "--cached"), before)
+
+            git("commit", "-m", "Add pending file")
+            (repo / "pending").write_text("next staged change")
+            git("add", "pending")
+            before = git("diff", "--cached")
+            commit_from_yaml.create_commit(repo, spec, message, None)
+            self.assertEqual(git("diff", "HEAD^", "HEAD"), "")
+            self.assertEqual(git("diff", "--cached"), before)
 
     def test_auto_detects_codex_agent_and_model(self) -> None:
         with (
@@ -243,6 +268,7 @@ breaking_change:
         spec = commit_from_yaml.load_spec(
             """
 subject: "chore(commit): load assisted-by overrides"
+paths: [README.md]
 assisted_by:
   agent: opencode
   model: deepseek-v4.1-flash
@@ -254,7 +280,7 @@ assisted_by:
 
     def test_loads_assisted_by_skip_from_yaml(self) -> None:
         spec = commit_from_yaml.load_spec(
-            'subject: "chore(commit): skip assisted-by"\nassisted_by: false\n'
+            'subject: "chore(commit): skip assisted-by"\npaths: [README.md]\nassisted_by: false\n'
         )
 
         self.assertIs(spec.assisted_by, False)
@@ -264,6 +290,7 @@ assisted_by:
             commit_from_yaml.load_spec(
                 """
 subject: "chore(commit): reject unknown assisted-by field"
+paths: [README.md]
 assisted_by:
   provider: opencode
 """
@@ -373,15 +400,20 @@ assisted_by:
             commit_from_yaml.run_git(repo, ["init", "--quiet"])
             commit_from_yaml.run_git(repo, ["config", "user.name", "Test User"])
             commit_from_yaml.run_git(repo, ["config", "user.email", "test@example.com"])
+            commit_from_yaml.run_git(repo, ["config", "commit.cleanup", "strip"])
             tracked = repo / "tracked.txt"
             tracked.write_text("content\n", encoding="utf-8")
             commit_from_yaml.run_git(repo, ["add", "tracked.txt"])
             spec = commit_from_yaml.load_spec(
                 """
 subject: "test(commit): create from yaml"
-body: |
-  验证：
-  - 正文使用真实换行。
+body: |+
+  # Migration
+
+
+  BREAKING CHANGE: Affected clients:
+    - Upgrade v1 clients.
+
 paths:
   - tracked.txt
 """
@@ -393,6 +425,7 @@ paths:
             committed = commit_from_yaml.run_git(
                 repo, ["show", "-s", "--format=%B", sha]
             )
+        self.assertIn("Upgrade v1 clients.\n\n\nAssisted-by:", committed)
         self.assertEqual(committed.rstrip("\n"), message.rstrip("\n"))
         self.assertNotIn("\\n", committed)
 
@@ -514,47 +547,26 @@ class ValidateMessageTest(unittest.TestCase):
             "Codex:gpt-test",
         )
 
-    def test_accepts_breaking_message_with_footer(self) -> None:
-        commit_from_yaml.validate_message(
-            "feat(git)!: replace branch command\n\n"
-            "BREAKING CHANGE: 影响范围：旧命令失效。迁移方式：使用新命令。\n\n"
-            "Assisted-by: Codex:gpt-test\n",
-            "Codex:gpt-test",
-        )
-
-    def test_rejects_breaking_title_without_footer(self) -> None:
-        with self.assertRaisesRegex(
-            commit_from_yaml.CommitValidationError,
-            "must contain exactly one BREAKING CHANGE footer",
+    def test_accepts_breaking_markers_independently(self) -> None:
+        for subject, body in (
+            ("feat!: retire endpoint", None),
+            (
+                "feat(api): retire endpoint",
+                "BREAKING CHANGE: Affected clients:\n  - v1 clients",
+            ),
+            (
+                "docs: show footer syntax",
+                "Example:\n\n```text\nBREAKING CHANGE: Example:\n```",
+            ),
         ):
-            commit_from_yaml.validate_message(
-                "feat(git)!: replace branch command\n\nAssisted-by: Codex:gpt-test\n",
-                "Codex:gpt-test",
-            )
-
-    def test_rejects_breaking_footer_without_bang(self) -> None:
-        with self.assertRaisesRegex(
-            commit_from_yaml.CommitValidationError,
-            "requires ! in the title",
-        ):
-            commit_from_yaml.validate_message(
-                "feat(git): replace branch command\n\n"
-                "BREAKING CHANGE: 影响范围：旧命令失效。迁移方式：使用新命令。\n\n"
-                "Assisted-by: Codex:gpt-test\n",
-                "Codex:gpt-test",
-            )
-
-    def test_rejects_malformed_breaking_footer(self) -> None:
-        with self.assertRaisesRegex(
-            commit_from_yaml.CommitValidationError,
-            "malformed BREAKING CHANGE footer",
-        ):
-            commit_from_yaml.validate_message(
-                "feat(git)!: replace branch command\n\n"
-                "BREAKING CHANGE: Invalid footer.:\n\n"
-                "Assisted-by: Codex:gpt-test\n",
-                "Codex:gpt-test",
-            )
+            with self.subTest(subject=subject):
+                spec = commit_from_yaml.CommitSpec(
+                    subject=subject, paths=["api"], body=body
+                )
+                message = commit_from_yaml.render_message(spec, None)
+                commit_from_yaml.validate_message(message, None)
+                if body:
+                    self.assertIn(body, message)
 
     def test_rejects_unparseable_assistant_trailer(self) -> None:
         with self.assertRaisesRegex(

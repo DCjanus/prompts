@@ -37,8 +37,6 @@ DEFAULT_AGENT_NAME = CODEX_AGENT_NAME
 type Host = Literal["codex", "claude-code"]
 SESSION_ID = re.compile(r"^[A-Za-z0-9-]+$")
 CONVENTIONAL_SUBJECT = re.compile(r"^[a-z][a-z0-9-]*(?:\([^\r\n)]+\))?!?: [^\r\n]+$")
-BREAKING_SUBJECT = re.compile(r"^[a-z][a-z0-9-]*(?:\([^\r\n)]+\))?!: .+$")
-BREAKING_PREFIX = "BREAKING CHANGE:"
 TRAILER_KEY = re.compile(r"^[A-Za-z][A-Za-z0-9-]*$")
 app = typer.Typer(add_completion=False, help=__doc__)
 
@@ -68,24 +66,10 @@ def parsed_trailers(message: str) -> list[str]:
 
 
 def validate_message(message: str, assisted_by: str | None) -> None:
-    """验证 breaking 标记与可选的 Assisted-by trailer。"""
+    """验证提交信息中的 Assisted-by trailer。"""
 
-    lines = message.rstrip("\n").splitlines()
-    if not lines:
+    if not message.strip():
         raise CommitValidationError("commit message is empty")
-
-    title_is_breaking = BREAKING_SUBJECT.fullmatch(lines[0]) is not None
-    breaking_footers = [line for line in lines[1:] if line.startswith(BREAKING_PREFIX)]
-    if title_is_breaking and len(breaking_footers) != 1:
-        raise CommitValidationError(
-            "a breaking title must contain exactly one BREAKING CHANGE footer"
-        )
-    if not title_is_breaking and breaking_footers:
-        raise CommitValidationError("a BREAKING CHANGE footer requires ! in the title")
-    if breaking_footers:
-        footer_value = breaking_footers[0].removeprefix(BREAKING_PREFIX).strip()
-        if not footer_value or footer_value.endswith(":"):
-            raise CommitValidationError("malformed BREAKING CHANGE footer")
 
     assisted_by_trailers = [
         trailer
@@ -129,13 +113,6 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class BreakingChange(StrictModel):
-    """破坏性变更的影响和迁移方式。"""
-
-    impact: str = Field(min_length=1)
-    migration: str = Field(min_length=1)
-
-
 class Trailer(StrictModel):
     """一个普通 Git trailer。"""
 
@@ -144,9 +121,9 @@ class Trailer(StrictModel):
 
     @model_validator(mode="after")
     def reject_reserved_keys(self) -> Self:
-        """保留由脚本生成或单独渲染的 trailer key。"""
+        """保留由脚本生成的 Assisted-by trailer。"""
 
-        if self.key.lower() in {"assisted-by", "breaking-change"}:
+        if self.key.lower() == "assisted-by":
             raise ValueError(f"reserved trailer key: {self.key}")
         return self
 
@@ -163,9 +140,9 @@ class CommitSpec(StrictModel):
 
     subject: str = Field(pattern=CONVENTIONAL_SUBJECT.pattern)
     body: str | None = Field(default=None, min_length=1)
-    breaking_change: BreakingChange | None = None
     trailers: list[Trailer] = Field(default_factory=list)
-    paths: list[str] = Field(default_factory=list)
+    paths: list[str]
+    empty_commit: bool = Field(default=False, strict=True)
     assisted_by: AssistedBy | Literal[False] | None = None
 
     @model_validator(mode="before")
@@ -177,20 +154,13 @@ class CommitSpec(StrictModel):
         return value
 
     @model_validator(mode="after")
-    def validate_breaking_pair(self) -> Self:
-        """要求 breaking 标题和详情成对出现。"""
-
-        subject_is_breaking = BREAKING_SUBJECT.fullmatch(self.subject) is not None
-        if subject_is_breaking != (self.breaking_change is not None):
-            raise ValueError(
-                "breaking subject and breaking_change must be provided together"
-            )
-        return self
-
-    @model_validator(mode="after")
     def validate_paths(self) -> Self:
         """限制 paths 为不重复的仓库相对 Git pathspec。"""
 
+        if self.empty_commit and self.paths:
+            raise ValueError("empty_commit requires paths: []")
+        if not self.empty_commit and not self.paths:
+            raise ValueError("paths must be nonempty unless empty_commit is true")
         if len(self.paths) != len(set(self.paths)):
             raise ValueError("paths must not contain duplicates")
         for raw_path in self.paths:
@@ -221,23 +191,12 @@ def load_spec(text: str) -> CommitSpec:
     return CommitSpec.model_validate(payload)
 
 
-def normalize_footer_text(value: str) -> str:
-    """把 breaking 详情压缩为 footer 可用的单行文本。"""
-
-    return " ".join(value.split())
-
-
 def render_message(spec: CommitSpec, assisted_by: str | None) -> str:
     """将结构化描述渲染为带真实换行的提交信息。"""
 
     blocks = [spec.subject]
     if spec.body is not None:
-        blocks.append(spec.body.rstrip("\n"))
-
-    if spec.breaking_change is not None:
-        impact = normalize_footer_text(spec.breaking_change.impact)
-        migration = normalize_footer_text(spec.breaking_change.migration)
-        blocks.append(f"BREAKING CHANGE: 影响范围：{impact} 迁移方式：{migration}")
+        blocks.append(spec.body.removesuffix("\n"))
 
     trailers = [f"{item.key}: {item.value}" for item in spec.trailers]
     if assisted_by is not None:
@@ -460,15 +419,6 @@ def run_git(repo: Path, arguments: list[str], *, input_text: str | None = None) 
     return result.stdout
 
 
-def validate_rendered_message(message: str, assisted_by: str | None) -> None:
-    """按是否启用 Assisted-by 选择验证强度。"""
-
-    if assisted_by is not None:
-        validate_message(message, assisted_by)
-        return
-    validate_message(message, None)
-
-
 def list_untracked_paths(repo: Path, paths: list[str]) -> list[str]:
     """返回 pathspec 匹配且尚未进入 index 的文件。"""
 
@@ -484,7 +434,7 @@ def create_commit(
 ) -> str:
     """使用临时 message file 创建并复核 commit。"""
 
-    validate_rendered_message(message, assisted_by)
+    validate_message(message, assisted_by)
     run_git(repo, ["rev-parse", "--show-toplevel"])
 
     untracked_paths = list_untracked_paths(repo, spec.paths) if spec.paths else []
@@ -496,11 +446,10 @@ def create_commit(
     ) as message_file:
         message_file.write(message)
         message_file.flush()
-        arguments = ["commit"]
-        if spec.paths:
-            arguments.append("--only")
-        arguments.extend(["-F", message_file.name])
-        if spec.paths:
+        arguments = ["commit", "--only", "--cleanup=verbatim", "-F", message_file.name]
+        if spec.empty_commit:
+            arguments.append("--allow-empty")
+        else:
             arguments.extend(["--", *spec.paths])
         try:
             run_git(repo, arguments)
@@ -513,7 +462,7 @@ def create_commit(
             raise
 
     committed_message = run_git(repo, ["show", "-s", "--format=%B", "HEAD"])
-    validate_rendered_message(committed_message, assisted_by)
+    validate_message(committed_message, assisted_by)
     return run_git(repo, ["rev-parse", "HEAD"]).strip()
 
 
@@ -540,7 +489,7 @@ def main(
         spec = load_spec(spec_file.read_text(encoding="utf-8"))
         assisted_by = assisted_by_value(spec.assisted_by)
         message = render_message(spec, assisted_by)
-        validate_rendered_message(message, assisted_by)
+        validate_message(message, assisted_by)
         commit_sha = None
         if not dry_run:
             commit_sha = create_commit(repo, spec, message, assisted_by)
