@@ -63,12 +63,12 @@ BREAKING CHANGE: Describe the affected usage and how to migrate.
 ```yaml
 subject: "feat(api)!: replace authorization contract"
 breaking_change:
-  impact: 旧客户端的授权请求会失效。
-  migration: 升级到 v2 接口并发送 email 字段。
+  impact: Requests from older clients will fail.
+  migration: Upgrade to the v2 API and send the email field.
 ```
 
 - footer 必须同时说明影响范围和迁移方式，不能只写“存在 breaking change”。
-- 通过 YAML 的 `breaking_change.impact` 与 `breaking_change.migration` 生成 footer；禁止将它放入 `trailers`。
+- 通过 YAML 的 `breaking_change.impact` 与 `breaking_change.migration` 生成 footer，分别用 `Impact:` 和 `Migration:` 标注并保留字段内的换行。禁止将它放入 `trailers`。
 - 不要根据中间实现或旧提交机械继承 breaking 标记，以最终净变化为准。
 
 ## Trailers

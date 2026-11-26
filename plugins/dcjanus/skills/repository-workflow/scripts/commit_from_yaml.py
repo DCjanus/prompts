@@ -22,6 +22,7 @@ import subprocess
 import tempfile
 from collections.abc import Iterator
 from pathlib import Path
+from textwrap import indent
 from typing import Annotated, Any, Literal, Self
 
 import typer
@@ -221,12 +222,6 @@ def load_spec(text: str) -> CommitSpec:
     return CommitSpec.model_validate(payload)
 
 
-def normalize_footer_text(value: str) -> str:
-    """把 breaking 详情压缩为 footer 可用的单行文本。"""
-
-    return " ".join(value.split())
-
-
 def render_message(spec: CommitSpec, assisted_by: str | None) -> str:
     """将结构化描述渲染为带真实换行的提交信息。"""
 
@@ -235,9 +230,10 @@ def render_message(spec: CommitSpec, assisted_by: str | None) -> str:
         blocks.append(spec.body.rstrip("\n"))
 
     if spec.breaking_change is not None:
-        impact = normalize_footer_text(spec.breaking_change.impact)
-        migration = normalize_footer_text(spec.breaking_change.migration)
-        blocks.append(f"BREAKING CHANGE: 影响范围：{impact} 迁移方式：{migration}")
+        impact = spec.breaking_change.impact.strip()
+        migration = spec.breaking_change.migration.strip()
+        details = indent(f"Impact: {impact}\nMigration: {migration}", "  ")
+        blocks.append(f"{BREAKING_PREFIX} {details.lstrip()}")
 
     trailers = [f"{item.key}: {item.value}" for item in spec.trailers]
     if assisted_by is not None:

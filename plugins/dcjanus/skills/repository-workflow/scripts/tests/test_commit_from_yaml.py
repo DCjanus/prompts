@@ -115,17 +115,22 @@ trailers:
             """
 subject: "feat(api)!: replace the contract"
 breaking_change:
-  impact: 旧客户端请求会失效。
-  migration: 升级到 v2 接口。
+  impact: |
+    Older clients stop working.
+    Rust 1.90 is affected.
+  migration: Upgrade to Rust 1.91.
 """
         )
 
         message = commit_from_yaml.render_message(spec, "Codex:gpt-test")
 
         self.assertIn(
-            "BREAKING CHANGE: 影响范围：旧客户端请求会失效。 迁移方式：升级到 v2 接口。",
+            "BREAKING CHANGE: Impact: Older clients stop working.\n"
+            "  Rust 1.90 is affected.\n"
+            "  Migration: Upgrade to Rust 1.91.",
             message,
         )
+        commit_from_yaml.validate_message(message, "Codex:gpt-test")
 
     def test_auto_detects_codex_agent_and_model(self) -> None:
         with (
