@@ -78,6 +78,7 @@ paths:
             commit_from_yaml.load_spec(
                 """
 subject: "fix(commit): reject escaped newlines"
+paths: [README.md]
 body: '第一行\\n第二行'
 """
             )
@@ -99,6 +100,7 @@ trailers:
             commit_from_yaml.load_spec(
                 """
 subject: "chore(commit): reject multiline trailer"
+paths: [README.md]
 trailers:
   - key: Reviewed-by
     value: |
@@ -107,44 +109,48 @@ trailers:
 """
             )
 
-    def test_accepts_breaking_text_in_freeform_body(self) -> None:
-        body = "BREAKING CHANGE: Affected clients:\n- Rust 1.90 users."
-        for subject in ("docs: show footer syntax", "feat(api)!: replace the contract"):
-            with self.subTest(subject=subject):
-                spec = commit_from_yaml.CommitSpec(
-                    subject=subject, body=body, paths=["README.md"]
-                )
-                message = commit_from_yaml.render_message(spec, "Codex:gpt-test")
-                self.assertIn(body, message)
-                commit_from_yaml.validate_message(message, "Codex:gpt-test")
-
-    def test_requires_explicit_paths_and_empty_commit_intent(self) -> None:
-        for fields in ("", "paths: []", "paths: [README.md]\nempty_commit: true"):
+    def test_rejects_invalid_commit_scope(self) -> None:
+        for fields in (
+            "",
+            "empty_commit: true",
+            "paths: []",
+            "paths: []\nempty_commit: false",
+            "paths: [README.md]\nempty_commit: true",
+            "paths: []\nempty_commit: 'true'",
+            "paths: [README.md]\nempty_commit: 0",
+            "paths: [README.md]\nbreaking_change: {impact: old, migration: new}",
+        ):
             with self.subTest(fields=fields), self.assertRaises(ValidationError):
-                commit_from_yaml.load_spec(f"subject: 'chore: test paths'\n{fields}")
+                commit_from_yaml.load_spec(f"subject: 'feat: change API'\n{fields}")
 
-    def test_empty_commit_preserves_staged_changes(self) -> None:
+    def test_empty_commit_preserves_staged_content(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             repo = Path(directory)
-            commit_from_yaml.run_git(repo, ["init", "--quiet"])
-            commit_from_yaml.run_git(repo, ["config", "user.name", "Test User"])
-            commit_from_yaml.run_git(repo, ["config", "user.email", "test@example.com"])
-            commit_from_yaml.run_git(repo, ["commit", "--allow-empty", "-m", "Initial"])
-            (repo / "staged.txt").write_text("work in progress\n", encoding="utf-8")
-            commit_from_yaml.run_git(repo, ["add", "staged.txt"])
-            before = commit_from_yaml.run_git(repo, ["diff", "--cached"])
+
+            def git(*args: str) -> str:
+                return commit_from_yaml.run_git(repo, list(args))
+
+            git("init", "--quiet")
+            git("config", "user.name", "Test User")
+            git("config", "user.email", "test@example.com")
+            (repo / "pending").write_text("staged")
+            git("add", "pending")
+            before = git("diff", "--cached")
             spec = commit_from_yaml.load_spec(
-                "subject: 'chore(ci): retrigger checks'\npaths: []\nempty_commit: true"
+                "subject: 'chore: mark build'\npaths: []\nempty_commit: true"
             )
             message = commit_from_yaml.render_message(spec, None)
             commit_from_yaml.create_commit(repo, spec, message, None)
+            self.assertEqual(git("ls-tree", "HEAD"), "")
+            self.assertEqual(git("diff", "--cached"), before)
 
-            self.assertEqual(
-                commit_from_yaml.run_git(repo, ["diff", "HEAD^", "HEAD"]), ""
-            )
-            self.assertEqual(
-                commit_from_yaml.run_git(repo, ["diff", "--cached"]), before
-            )
+            git("commit", "-m", "Add pending file")
+            (repo / "pending").write_text("next staged change")
+            git("add", "pending")
+            before = git("diff", "--cached")
+            commit_from_yaml.create_commit(repo, spec, message, None)
+            self.assertEqual(git("diff", "HEAD^", "HEAD"), "")
+            self.assertEqual(git("diff", "--cached"), before)
 
     def test_auto_detects_codex_agent_and_model(self) -> None:
         with (
@@ -284,6 +290,7 @@ assisted_by:
             commit_from_yaml.load_spec(
                 """
 subject: "chore(commit): reject unknown assisted-by field"
+paths: [README.md]
 assisted_by:
   provider: opencode
 """
@@ -387,7 +394,7 @@ assisted_by:
         ):
             commit_from_yaml.find_claude_code_transcript()
 
-    def test_preserves_structured_message_with_strip_cleanup(self) -> None:
+    def test_creates_a_real_commit_from_structured_message(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             repo = Path(directory)
             commit_from_yaml.run_git(repo, ["init", "--quiet"])
@@ -400,12 +407,13 @@ assisted_by:
             spec = commit_from_yaml.load_spec(
                 """
 subject: "test(commit): create from yaml"
-body: |
+body: |+
   # Migration
-  Upgrade the compiler.
 
 
-  Run the test suite.
+  BREAKING CHANGE: Affected clients:
+    - Upgrade v1 clients.
+
 paths:
   - tracked.txt
 """
@@ -417,6 +425,7 @@ paths:
             committed = commit_from_yaml.run_git(
                 repo, ["show", "-s", "--format=%B", sha]
             )
+        self.assertIn("Upgrade v1 clients.\n\n\nAssisted-by:", committed)
         self.assertEqual(committed.rstrip("\n"), message.rstrip("\n"))
         self.assertNotIn("\\n", committed)
 
@@ -537,6 +546,27 @@ class ValidateMessageTest(unittest.TestCase):
             "fix(cli): handle empty input\n\nAssisted-by: Codex:gpt-test\n",
             "Codex:gpt-test",
         )
+
+    def test_accepts_breaking_markers_independently(self) -> None:
+        for subject, body in (
+            ("feat!: retire endpoint", None),
+            (
+                "feat(api): retire endpoint",
+                "BREAKING CHANGE: Affected clients:\n  - v1 clients",
+            ),
+            (
+                "docs: show footer syntax",
+                "Example:\n\n```text\nBREAKING CHANGE: Example:\n```",
+            ),
+        ):
+            with self.subTest(subject=subject):
+                spec = commit_from_yaml.CommitSpec(
+                    subject=subject, paths=["api"], body=body
+                )
+                message = commit_from_yaml.render_message(spec, None)
+                commit_from_yaml.validate_message(message, None)
+                if body:
+                    self.assertIn(body, message)
 
     def test_rejects_unparseable_assistant_trailer(self) -> None:
         with self.assertRaisesRegex(

@@ -66,10 +66,9 @@ def parsed_trailers(message: str) -> list[str]:
 
 
 def validate_message(message: str, assisted_by: str | None) -> None:
-    """验证提交消息和可选的 Assisted-by trailer。"""
+    """验证提交信息中的 Assisted-by trailer。"""
 
-    lines = message.rstrip("\n").splitlines()
-    if not lines:
+    if not message.strip():
         raise CommitValidationError("commit message is empty")
 
     assisted_by_trailers = [
@@ -122,9 +121,9 @@ class Trailer(StrictModel):
 
     @model_validator(mode="after")
     def reject_reserved_keys(self) -> Self:
-        """保留由脚本生成或单独渲染的 trailer key。"""
+        """保留由脚本生成的 Assisted-by trailer。"""
 
-        if self.key.lower() in {"assisted-by", "breaking-change"}:
+        if self.key.lower() == "assisted-by":
             raise ValueError(f"reserved trailer key: {self.key}")
         return self
 
@@ -161,7 +160,7 @@ class CommitSpec(StrictModel):
         if self.empty_commit and self.paths:
             raise ValueError("empty_commit requires paths: []")
         if not self.empty_commit and not self.paths:
-            raise ValueError("paths must not be empty unless empty_commit is true")
+            raise ValueError("paths must be nonempty unless empty_commit is true")
         if len(self.paths) != len(set(self.paths)):
             raise ValueError("paths must not contain duplicates")
         for raw_path in self.paths:
@@ -197,7 +196,7 @@ def render_message(spec: CommitSpec, assisted_by: str | None) -> str:
 
     blocks = [spec.subject]
     if spec.body is not None:
-        blocks.append(spec.body.rstrip("\n"))
+        blocks.append(spec.body.removesuffix("\n"))
 
     trailers = [f"{item.key}: {item.value}" for item in spec.trailers]
     if assisted_by is not None:
@@ -420,15 +419,6 @@ def run_git(repo: Path, arguments: list[str], *, input_text: str | None = None) 
     return result.stdout
 
 
-def validate_rendered_message(message: str, assisted_by: str | None) -> None:
-    """按是否启用 Assisted-by 选择验证强度。"""
-
-    if assisted_by is not None:
-        validate_message(message, assisted_by)
-        return
-    validate_message(message, None)
-
-
 def list_untracked_paths(repo: Path, paths: list[str]) -> list[str]:
     """返回 pathspec 匹配且尚未进入 index 的文件。"""
 
@@ -444,7 +434,7 @@ def create_commit(
 ) -> str:
     """使用临时 message file 创建并复核 commit。"""
 
-    validate_rendered_message(message, assisted_by)
+    validate_message(message, assisted_by)
     run_git(repo, ["rev-parse", "--show-toplevel"])
 
     untracked_paths = list_untracked_paths(repo, spec.paths) if spec.paths else []
@@ -456,11 +446,10 @@ def create_commit(
     ) as message_file:
         message_file.write(message)
         message_file.flush()
-        arguments = ["commit", "--cleanup=verbatim", "--only"]
+        arguments = ["commit", "--only", "--cleanup=verbatim", "-F", message_file.name]
         if spec.empty_commit:
             arguments.append("--allow-empty")
-        arguments.extend(["-F", message_file.name])
-        if spec.paths:
+        else:
             arguments.extend(["--", *spec.paths])
         try:
             run_git(repo, arguments)
@@ -473,7 +462,7 @@ def create_commit(
             raise
 
     committed_message = run_git(repo, ["show", "-s", "--format=%B", "HEAD"])
-    validate_rendered_message(committed_message, assisted_by)
+    validate_message(committed_message, assisted_by)
     return run_git(repo, ["rev-parse", "HEAD"]).strip()
 
 
@@ -500,7 +489,7 @@ def main(
         spec = load_spec(spec_file.read_text(encoding="utf-8"))
         assisted_by = assisted_by_value(spec.assisted_by)
         message = render_message(spec, assisted_by)
-        validate_rendered_message(message, assisted_by)
+        validate_message(message, assisted_by)
         commit_sha = None
         if not dry_run:
             commit_sha = create_commit(repo, spec, message, assisted_by)

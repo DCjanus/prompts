@@ -19,64 +19,39 @@
 
 ## 结构化 YAML
 
-使用 `scripts/commit_from_yaml.py` 创建 commit，不直接通过 shell 的 `-m` 参数拼接正文。最小配置：
+使用 `scripts/commit_from_yaml.py` 创建 commit。每次都要填写 Conventional Commits 标题 `subject` 和提交范围 `paths`。
 
 ```yaml
 subject: "fix(auth): handle missing email claims"
-paths:
-  - src/main/java/example/AuthService.java
+paths: [src/auth.py]
 ```
 
-确实需要解释关键约束时才添加 `body`：
+普通提交只包含 `paths` 匹配的文件，包括未跟踪且未被忽略的文件。其他已暂存的改动会保留。使用仓库相对路径、目录或 Git pathspec，含通配符或 magic 的表达式用引号括起。例如，`':(glob)src/**/*.py'` 匹配 `src` 各层目录的 Python 文件。
+
+需要创建空提交时，显式填写 `empty_commit: true` 和空列表。已有暂存内容会保留。
 
 ```yaml
-subject: "chore(toolchain): configure JDK 17 with mise"
-body: |
-  生产构建环境固定使用 JDK 17；仓库级配置用于避免本地与 CI 选择不同工具链。
-trailers:
-  - key: Reviewed-by
-    value: DCjanus <DCjanus@dcjanus.com>
-paths:
-  - .mise.toml
+subject: "chore(ci): retrigger checks"
+paths: []
+empty_commit: true
 ```
-
-- `subject` 和 `paths` 必填，标题须符合 Conventional Commits。
-- `body` 和 `trailers` 可选；不满足上述正文条件时不要写 `body`。确需正文时，它是自由多行字符串，内部 Markdown 与换行完全由调用方控制。
-- `paths` 列出本次提交的仓库相对路径。可以填文件、目录或 Git pathspec。使用通配符时加引号，例如 `':(glob)src/**/*.py'` 匹配 `src` 下各层级的 Python 文件。
-- `empty_commit` 默认为 `false`，此时 `paths` 至少填一项。创建空提交时填写 `paths: []` 和 `empty_commit: true`，已有暂存改动会保留。
-- `Assisted-by` 由脚本根据顶层 `assisted_by` 覆盖项生成，禁止放入 `trailers`。
-- 所有字符串都禁止包含字面量 `\\n`；多行正文使用 YAML 的 `|` block scalar 表达。
 
 ## Breaking change
 
-最终净变化确实会导致既有用法、接口或行为失效时，同时在标题和 footer 中显式标记：
-
-```text
-type(scope)!: concise summary
-
-BREAKING CHANGE: Describe the affected usage and how to migrate.
-```
-
-对应 YAML：
+变更会使既有用法失效时，在标题中用 `!` 标记，并在 `body` 末尾写 `BREAKING CHANGE:`，说明影响和迁移方式。多行正文使用 YAML 的 `|` 保留换行；字符串中不能使用字面量 `\n`。
 
 ```yaml
-subject: "feat(api)!: replace authorization contract"
+subject: "feat(api)!: require an email claim"
+paths: [src/auth.py]
 body: |
-  BREAKING CHANGE: Requests from older clients will fail.
-  Upgrade to the v2 API and send the email field.
-paths:
-  - src/main/java/example/AuthService.java
+  BREAKING CHANGE: Tokens without an email claim are rejected.
+  Configure your identity provider to include the user's email in each token.
 ```
-
-- footer 必须同时说明影响范围和迁移方式，不能只写“存在 breaking change”。
-- 在 `body` 末尾直接撰写脚注。
-- 不要根据中间实现或旧提交机械继承 breaking 标记，以最终净变化为准。
 
 ## Trailers
 
-- 通过 YAML 的 `trailers` 添加 `Co-authored-by`、`Reviewed-by` 等 trailer。每项填写 `key` 和非空的单行 `value`。键名使用字母、数字和连字符。
-- `Assisted-by` 由提交脚本自动探测，或通过顶层 `assisted_by` 覆盖项控制：`agent` 指定 Agent 前缀，`model` 指定模型并跳过探测，`assisted_by: false` 明确省略 trailer。
-- `BREAKING CHANGE` 写在 `body` 末尾。
+- 通过可选的 `trailers` 列表添加普通 trailer，例如 `- {key: Reviewed-by, value: "DCjanus <DCjanus@dcjanus.com>"}`。key 以字母开头，可包含字母、数字和连字符。value 必须是非空单行字符串。
+- `Assisted-by` 默认根据当前会话生成。通过顶层 `assisted_by.agent` 或 `assisted_by.model` 覆盖对应值，或设 `assisted_by: false` 省略此项。
 
 ## PR/MR 标题
 
