@@ -40,9 +40,9 @@ paths:
   - .mise.toml
 ```
 
-- `subject` 必填，必须符合 Conventional Commits。
-- `body`、`trailers`、`paths` 可选；不满足上述正文条件时不要写 `body`。确需正文时，它是自由多行字符串，内部 Markdown 与换行完全由调用方控制。
-- `paths` 的每一项都是仓库相对的 Git pathspec，支持字面路径、目录、`*`、`?`、字符集合以及 `:(glob)` 等 Git pathspec magic；非空时脚本自动处理匹配到的未跟踪文件，并使用 `git commit --only`，为空时提交当前 index。
+- `subject` 和 `paths` 必填，标题须符合 Conventional Commits。
+- `body` 和 `trailers` 可选；不满足上述正文条件时不要写 `body`。确需正文时，它是自由多行字符串，内部 Markdown 与换行完全由调用方控制。
+- `paths` 的每一项都是仓库相对的 Git pathspec，支持字面路径、目录、`*`、`?`、字符集合以及 `:(glob)` 等 Git pathspec magic；脚本自动处理匹配到的未跟踪文件，并使用 `git commit --only` 提交指定路径。
 - pathspec 会原样传给 Git，不经过 shell 展开。包含通配符或 magic 时必须在 YAML 中使用引号；需要可预测的目录层级匹配时优先使用 `:(glob)`，其中 `*` 不匹配 `/`、`**` 可跨越目录。例如 `':(glob)src/**/*.py'` 会匹配 `src` 下各层级的 Python 文件。
 - `trailers` 是 `key` / `value` 结构化列表；key 仅支持字母、数字和连字符，value 必须是非空单行字符串。
 - `Assisted-by` 由脚本根据顶层 `assisted_by` 覆盖项生成，禁止放入 `trailers`。
@@ -62,13 +62,15 @@ BREAKING CHANGE: Describe the affected usage and how to migrate.
 
 ```yaml
 subject: "feat(api)!: replace authorization contract"
-breaking_change:
-  impact: Requests from older clients will fail.
-  migration: Upgrade to the v2 API and send the email field.
+body: |
+  BREAKING CHANGE: Requests from older clients will fail.
+  Upgrade to the v2 API and send the email field.
+paths:
+  - src/main/java/example/AuthService.java
 ```
 
 - footer 必须同时说明影响范围和迁移方式，不能只写“存在 breaking change”。
-- 通过 YAML 的 `breaking_change.impact` 与 `breaking_change.migration` 生成 footer，分别用 `Impact:` 和 `Migration:` 标注并保留字段内的换行。禁止将它放入 `trailers`。
+- 在 `body` 末尾直接撰写脚注。脚本使用 `--cleanup=verbatim` 将生成的消息交给 Git。
 - 不要根据中间实现或旧提交机械继承 breaking 标记，以最终净变化为准。
 
 ## Trailers

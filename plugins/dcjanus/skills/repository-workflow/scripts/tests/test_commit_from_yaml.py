@@ -82,15 +82,12 @@ body: '第一行\\n第二行'
 """
             )
 
-    def test_requires_breaking_details_for_a_breaking_subject(self) -> None:
-        with self.assertRaisesRegex(ValidationError, "breaking_change"):
-            commit_from_yaml.load_spec('subject: "feat(api)!: replace the contract"\n')
-
     def test_rejects_reserved_assisted_by_trailer(self) -> None:
         with self.assertRaisesRegex(ValidationError, "reserved trailer key"):
             commit_from_yaml.load_spec(
                 """
 subject: "chore(commit): reject reserved trailer"
+paths: [README.md]
 trailers:
   - key: Assisted-by
     value: Manual:model
@@ -110,27 +107,44 @@ trailers:
 """
             )
 
-    def test_renders_breaking_change_impact_and_migration(self) -> None:
-        spec = commit_from_yaml.load_spec(
-            """
-subject: "feat(api)!: replace the contract"
-breaking_change:
-  impact: |
-    Older clients stop working.
-    Rust 1.90 is affected.
-  migration: Upgrade to Rust 1.91.
-"""
-        )
+    def test_accepts_breaking_text_in_freeform_body(self) -> None:
+        body = "BREAKING CHANGE: Affected clients:\n- Rust 1.90 users."
+        for subject in ("docs: show footer syntax", "feat(api)!: replace the contract"):
+            with self.subTest(subject=subject):
+                spec = commit_from_yaml.CommitSpec(
+                    subject=subject, body=body, paths=["README.md"]
+                )
+                message = commit_from_yaml.render_message(spec, "Codex:gpt-test")
+                self.assertIn(body, message)
+                commit_from_yaml.validate_message(message, "Codex:gpt-test")
 
-        message = commit_from_yaml.render_message(spec, "Codex:gpt-test")
+    def test_requires_explicit_paths_and_empty_commit_intent(self) -> None:
+        for fields in ("", "paths: []", "paths: [README.md]\nempty_commit: true"):
+            with self.subTest(fields=fields), self.assertRaises(ValidationError):
+                commit_from_yaml.load_spec(f"subject: 'chore: test paths'\n{fields}")
 
-        self.assertIn(
-            "BREAKING CHANGE: Impact: Older clients stop working.\n"
-            "  Rust 1.90 is affected.\n"
-            "  Migration: Upgrade to Rust 1.91.",
-            message,
-        )
-        commit_from_yaml.validate_message(message, "Codex:gpt-test")
+    def test_empty_commit_preserves_staged_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            commit_from_yaml.run_git(repo, ["init", "--quiet"])
+            commit_from_yaml.run_git(repo, ["config", "user.name", "Test User"])
+            commit_from_yaml.run_git(repo, ["config", "user.email", "test@example.com"])
+            commit_from_yaml.run_git(repo, ["commit", "--allow-empty", "-m", "Initial"])
+            (repo / "staged.txt").write_text("work in progress\n", encoding="utf-8")
+            commit_from_yaml.run_git(repo, ["add", "staged.txt"])
+            before = commit_from_yaml.run_git(repo, ["diff", "--cached"])
+            spec = commit_from_yaml.load_spec(
+                "subject: 'chore(ci): retrigger checks'\npaths: []\nempty_commit: true"
+            )
+            message = commit_from_yaml.render_message(spec, None)
+            commit_from_yaml.create_commit(repo, spec, message, None)
+
+            self.assertEqual(
+                commit_from_yaml.run_git(repo, ["diff", "HEAD^", "HEAD"]), ""
+            )
+            self.assertEqual(
+                commit_from_yaml.run_git(repo, ["diff", "--cached"]), before
+            )
 
     def test_auto_detects_codex_agent_and_model(self) -> None:
         with (
@@ -248,6 +262,7 @@ breaking_change:
         spec = commit_from_yaml.load_spec(
             """
 subject: "chore(commit): load assisted-by overrides"
+paths: [README.md]
 assisted_by:
   agent: opencode
   model: deepseek-v4.1-flash
@@ -259,7 +274,7 @@ assisted_by:
 
     def test_loads_assisted_by_skip_from_yaml(self) -> None:
         spec = commit_from_yaml.load_spec(
-            'subject: "chore(commit): skip assisted-by"\nassisted_by: false\n'
+            'subject: "chore(commit): skip assisted-by"\npaths: [README.md]\nassisted_by: false\n'
         )
 
         self.assertIs(spec.assisted_by, False)
@@ -372,12 +387,13 @@ assisted_by:
         ):
             commit_from_yaml.find_claude_code_transcript()
 
-    def test_creates_a_real_commit_from_structured_message(self) -> None:
+    def test_preserves_structured_message_with_strip_cleanup(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             repo = Path(directory)
             commit_from_yaml.run_git(repo, ["init", "--quiet"])
             commit_from_yaml.run_git(repo, ["config", "user.name", "Test User"])
             commit_from_yaml.run_git(repo, ["config", "user.email", "test@example.com"])
+            commit_from_yaml.run_git(repo, ["config", "commit.cleanup", "strip"])
             tracked = repo / "tracked.txt"
             tracked.write_text("content\n", encoding="utf-8")
             commit_from_yaml.run_git(repo, ["add", "tracked.txt"])
@@ -385,8 +401,11 @@ assisted_by:
                 """
 subject: "test(commit): create from yaml"
 body: |
-  验证：
-  - 正文使用真实换行。
+  # Migration
+  Upgrade the compiler.
+
+
+  Run the test suite.
 paths:
   - tracked.txt
 """
@@ -518,48 +537,6 @@ class ValidateMessageTest(unittest.TestCase):
             "fix(cli): handle empty input\n\nAssisted-by: Codex:gpt-test\n",
             "Codex:gpt-test",
         )
-
-    def test_accepts_breaking_message_with_footer(self) -> None:
-        commit_from_yaml.validate_message(
-            "feat(git)!: replace branch command\n\n"
-            "BREAKING CHANGE: 影响范围：旧命令失效。迁移方式：使用新命令。\n\n"
-            "Assisted-by: Codex:gpt-test\n",
-            "Codex:gpt-test",
-        )
-
-    def test_rejects_breaking_title_without_footer(self) -> None:
-        with self.assertRaisesRegex(
-            commit_from_yaml.CommitValidationError,
-            "must contain exactly one BREAKING CHANGE footer",
-        ):
-            commit_from_yaml.validate_message(
-                "feat(git)!: replace branch command\n\nAssisted-by: Codex:gpt-test\n",
-                "Codex:gpt-test",
-            )
-
-    def test_rejects_breaking_footer_without_bang(self) -> None:
-        with self.assertRaisesRegex(
-            commit_from_yaml.CommitValidationError,
-            "requires ! in the title",
-        ):
-            commit_from_yaml.validate_message(
-                "feat(git): replace branch command\n\n"
-                "BREAKING CHANGE: 影响范围：旧命令失效。迁移方式：使用新命令。\n\n"
-                "Assisted-by: Codex:gpt-test\n",
-                "Codex:gpt-test",
-            )
-
-    def test_rejects_malformed_breaking_footer(self) -> None:
-        with self.assertRaisesRegex(
-            commit_from_yaml.CommitValidationError,
-            "malformed BREAKING CHANGE footer",
-        ):
-            commit_from_yaml.validate_message(
-                "feat(git)!: replace branch command\n\n"
-                "BREAKING CHANGE: Invalid footer.:\n\n"
-                "Assisted-by: Codex:gpt-test\n",
-                "Codex:gpt-test",
-            )
 
     def test_rejects_unparseable_assistant_trailer(self) -> None:
         with self.assertRaisesRegex(

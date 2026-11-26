@@ -22,7 +22,6 @@ import subprocess
 import tempfile
 from collections.abc import Iterator
 from pathlib import Path
-from textwrap import indent
 from typing import Annotated, Any, Literal, Self
 
 import typer
@@ -38,8 +37,6 @@ DEFAULT_AGENT_NAME = CODEX_AGENT_NAME
 type Host = Literal["codex", "claude-code"]
 SESSION_ID = re.compile(r"^[A-Za-z0-9-]+$")
 CONVENTIONAL_SUBJECT = re.compile(r"^[a-z][a-z0-9-]*(?:\([^\r\n)]+\))?!?: [^\r\n]+$")
-BREAKING_SUBJECT = re.compile(r"^[a-z][a-z0-9-]*(?:\([^\r\n)]+\))?!: .+$")
-BREAKING_PREFIX = "BREAKING CHANGE:"
 TRAILER_KEY = re.compile(r"^[A-Za-z][A-Za-z0-9-]*$")
 app = typer.Typer(add_completion=False, help=__doc__)
 
@@ -69,24 +66,11 @@ def parsed_trailers(message: str) -> list[str]:
 
 
 def validate_message(message: str, assisted_by: str | None) -> None:
-    """验证 breaking 标记与可选的 Assisted-by trailer。"""
+    """验证提交消息和可选的 Assisted-by trailer。"""
 
     lines = message.rstrip("\n").splitlines()
     if not lines:
         raise CommitValidationError("commit message is empty")
-
-    title_is_breaking = BREAKING_SUBJECT.fullmatch(lines[0]) is not None
-    breaking_footers = [line for line in lines[1:] if line.startswith(BREAKING_PREFIX)]
-    if title_is_breaking and len(breaking_footers) != 1:
-        raise CommitValidationError(
-            "a breaking title must contain exactly one BREAKING CHANGE footer"
-        )
-    if not title_is_breaking and breaking_footers:
-        raise CommitValidationError("a BREAKING CHANGE footer requires ! in the title")
-    if breaking_footers:
-        footer_value = breaking_footers[0].removeprefix(BREAKING_PREFIX).strip()
-        if not footer_value or footer_value.endswith(":"):
-            raise CommitValidationError("malformed BREAKING CHANGE footer")
 
     assisted_by_trailers = [
         trailer
@@ -130,13 +114,6 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class BreakingChange(StrictModel):
-    """破坏性变更的影响和迁移方式。"""
-
-    impact: str = Field(min_length=1)
-    migration: str = Field(min_length=1)
-
-
 class Trailer(StrictModel):
     """一个普通 Git trailer。"""
 
@@ -164,9 +141,9 @@ class CommitSpec(StrictModel):
 
     subject: str = Field(pattern=CONVENTIONAL_SUBJECT.pattern)
     body: str | None = Field(default=None, min_length=1)
-    breaking_change: BreakingChange | None = None
     trailers: list[Trailer] = Field(default_factory=list)
-    paths: list[str] = Field(default_factory=list)
+    paths: list[str]
+    empty_commit: bool = Field(default=False, strict=True)
     assisted_by: AssistedBy | Literal[False] | None = None
 
     @model_validator(mode="before")
@@ -178,20 +155,13 @@ class CommitSpec(StrictModel):
         return value
 
     @model_validator(mode="after")
-    def validate_breaking_pair(self) -> Self:
-        """要求 breaking 标题和详情成对出现。"""
-
-        subject_is_breaking = BREAKING_SUBJECT.fullmatch(self.subject) is not None
-        if subject_is_breaking != (self.breaking_change is not None):
-            raise ValueError(
-                "breaking subject and breaking_change must be provided together"
-            )
-        return self
-
-    @model_validator(mode="after")
     def validate_paths(self) -> Self:
         """限制 paths 为不重复的仓库相对 Git pathspec。"""
 
+        if self.empty_commit and self.paths:
+            raise ValueError("empty_commit requires paths: []")
+        if not self.empty_commit and not self.paths:
+            raise ValueError("paths must not be empty unless empty_commit is true")
         if len(self.paths) != len(set(self.paths)):
             raise ValueError("paths must not contain duplicates")
         for raw_path in self.paths:
@@ -228,12 +198,6 @@ def render_message(spec: CommitSpec, assisted_by: str | None) -> str:
     blocks = [spec.subject]
     if spec.body is not None:
         blocks.append(spec.body.rstrip("\n"))
-
-    if spec.breaking_change is not None:
-        impact = spec.breaking_change.impact.strip()
-        migration = spec.breaking_change.migration.strip()
-        details = indent(f"Impact: {impact}\nMigration: {migration}", "  ")
-        blocks.append(f"{BREAKING_PREFIX} {details.lstrip()}")
 
     trailers = [f"{item.key}: {item.value}" for item in spec.trailers]
     if assisted_by is not None:
@@ -492,9 +456,9 @@ def create_commit(
     ) as message_file:
         message_file.write(message)
         message_file.flush()
-        arguments = ["commit"]
-        if spec.paths:
-            arguments.append("--only")
+        arguments = ["commit", "--cleanup=verbatim", "--only"]
+        if spec.empty_commit:
+            arguments.append("--allow-empty")
         arguments.extend(["-F", message_file.name])
         if spec.paths:
             arguments.extend(["--", *spec.paths])
