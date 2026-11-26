@@ -23,7 +23,8 @@
 
 ```yaml
 subject: "fix(auth): handle missing email claims"
-paths: [src/auth.py]
+paths:
+  - src/auth.py
 ```
 
 普通提交只包含 `paths` 匹配的文件，包括未跟踪且未被忽略的文件。其他已暂存的改动会保留。使用仓库相对路径、目录或 Git pathspec，含通配符或 magic 的表达式用引号括起。例如，`':(glob)src/**/*.py'` 匹配 `src` 各层目录的 Python 文件。
@@ -42,7 +43,8 @@ empty_commit: true
 
 ```yaml
 subject: "feat(api)!: require an email claim"
-paths: [src/auth.py]
+paths:
+  - src/auth.py
 body: |
   BREAKING CHANGE: Tokens without an email claim are rejected.
   Configure your identity provider to include the user's email in each token.
