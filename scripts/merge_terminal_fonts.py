@@ -44,6 +44,7 @@ STYLES = {
     "Italic": "Sarasa-Term-SC-Italic",
     "BoldItalic": "Sarasa-Term-SC-Bold-Italic",
 }
+SHORTCUT_SYMBOLS = "⇧⌘⇪⌫⌦"
 LATIN_RANGES = (
     (0x20, 0xFF),
     (0x100, 0x24F),
@@ -289,6 +290,45 @@ def shape(path: Path, text: str, features: dict[str, bool]) -> list[tuple]:
     ]
 
 
+def replace_shortcut_symbols(font: TTFont, source: TTFont, width: int) -> None:
+    """等比缩放 JuliaMono 的快捷键符号，保留半角进宽。"""
+    cmap = font.getBestCmap()
+    source_cmap = source.getBestCmap()
+    source_glyphs = source.getGlyphSet()
+    glyf = font["glyf"]
+    for char in SHORTCUT_SYMBOLS:
+        glyph_name = cmap[ord(char)]
+        outline = DecomposingRecordingPen(source_glyphs)
+        source_glyphs[source_cmap[ord(char)]].draw(outline)
+        bounds = BoundsPen(None)
+        outline.replay(bounds)
+        left, bottom, right, top = bounds.bounds
+        # Command 略向左移，为后接字母保留右侧空隙。
+        max_width = width * (0.82 if char == "⌘" else 0.84)
+        max_height = width * (1.14 if char in "⇧⇪" else 1)
+        scale = min(max_width / (right - left), max_height / (top - bottom))
+        center_x = width * (0.432 if char == "⌘" else 0.5)
+        center_y = width * 0.69
+        outline_pen = TTGlyphPen(None)
+        outline.replay(
+            TransformPen(
+                outline_pen,
+                (
+                    scale,
+                    0,
+                    0,
+                    scale,
+                    center_x - scale * (left + right) / 2,
+                    center_y - scale * (bottom + top) / 2,
+                ),
+            )
+        )
+        replacement = outline_pen.glyph()
+        replacement.recalcBounds(glyf)
+        glyf[glyph_name] = replacement
+        font["hmtx"][glyph_name] = (width, replacement.xMin)
+
+
 def verify(output: Path, latin: Path, target_width: int) -> None:
     """检查双格中文、单格西文和合并后的布局结果。"""
     with TTFont(output) as font, TTFont(latin) as source:
@@ -299,6 +339,16 @@ def verify(output: Path, latin: Path, target_width: int) -> None:
         for char in "中文测试":
             if font["hmtx"][cmap[ord(char)]][0] != target_width * 2:
                 raise ValueError(f"中文占宽异常：{char}")
+        for char in SHORTCUT_SYMBOLS:
+            glyph_name = cmap[ord(char)]
+            advance, bearing = font["hmtx"][glyph_name]
+            glyph = font["glyf"][glyph_name]
+            if (
+                advance != target_width
+                or bearing != glyph.xMin
+                or not (0 < glyph.xMin < glyph.xMax < target_width)
+            ):
+                raise ValueError(f"快捷键符号超出半角格：{char}")
         ligatures_changed = False
         for text in SHAPING_SAMPLES:
             ligatures_changed |= shape(
@@ -328,7 +378,7 @@ def rename(
     weight: int,
     build_id: str,
 ) -> None:
-    """创建独立家族并保留两份来源声明。"""
+    """创建独立家族并保留来源声明。"""
     display_style = "Bold Italic" if style == "BoldItalic" else style
     ps_family = re.sub(r"[^A-Za-z0-9]", "", family) + build_id
     values = {
@@ -376,6 +426,12 @@ def main(
             help="含 Lilex-{Regular,Bold,Italic,BoldItalic}.ttf 的目录。",
         ),
     ],
+    juliamono_dir: Annotated[
+        Path,
+        typer.Option(
+            exists=True, file_okay=False, readable=True, help="JuliaMono TTF 目录。"
+        ),
+    ],
     output_dir: Annotated[
         Path, typer.Option(file_okay=False, help="输出目录；必须不存在，避免覆盖。")
     ],
@@ -389,7 +445,7 @@ def main(
         ),
     ] = None,
 ) -> None:
-    """合并 Lilex 与更纱：收紧西文侧边距，保留中文、框线及编程连字。
+    """合并 Lilex、更纱和 JuliaMono，保留中文、框线及编程连字。
 
     生成四个静态 TTF、构建报告、许可证及 Ghostty 配置片段。
     家族名和文件名固定；内部标识随构建变化，不修改 Ghostty 配置。
@@ -403,13 +459,22 @@ def main(
             "家族名需包含 ASCII 字母，且不超过 40 字符", param_hint="--family"
         )
     paths = {style: lilex_dir / f"Lilex-{style}.ttf" for style in STYLES}
-    for path in paths.values():
-        if not path.is_file():
-            raise typer.BadParameter(f"缺少 {path.name}", param_hint="--lilex-dir")
+    symbol_paths = {
+        style: juliamono_dir
+        / f"JuliaMono-{'RegularItalic' if style == 'Italic' else style}.ttf"
+        for style in STYLES
+    }
+    for option, source_paths in (
+        ("--lilex-dir", paths),
+        ("--juliamono-dir", symbol_paths),
+    ):
+        for path in source_paths.values():
+            if not path.is_file():
+                raise typer.BadParameter(f"缺少 {path.name}", param_hint=option)
     provenance = {
         "sources": [
             {"file": path.name, "blake3": digest(path)}
-            for path in [sarasa, *paths.values()]
+            for path in [sarasa, *paths.values(), *symbol_paths.values()]
         ],
         "converter": digest(Path(__file__)),
         "dependencies": {name: version(name) for name in ("fonttools", "uharfbuzz")},
@@ -446,6 +511,11 @@ def main(
                 for cp in latin.getBestCmap()
                 if any(start <= cp <= end for start, end in LATIN_RANGES)
             }
+            with TTFont(symbol_paths[style]) as symbols:
+                replace_shortcut_symbols(cjk, symbols, width)
+                symbol_notices = {
+                    n: symbols["name"].getDebugName(n) for n in (0, 13, 14)
+                }
             notices = {
                 name_id: "\n\n".join(
                     filter(
@@ -453,6 +523,7 @@ def main(
                         (
                             cjk["name"].getDebugName(name_id),
                             latin["name"].getDebugName(name_id),
+                            symbol_notices[name_id],
                         ),
                     )
                 )
@@ -500,6 +571,7 @@ def main(
                     "style": style,
                     "file": filename,
                     "latin_source": paths[style].name,
+                    "shortcut_source": symbol_paths[style].name,
                     "latin_weight": weight,
                     "advance_scale": factor,
                     "fit_mode": "tight",
@@ -534,7 +606,7 @@ def main(
             encoding="utf-8",
         )
     licenses = Path(__file__).resolve().parents[1] / "licenses" / "terminal-fonts"
-    for name in ("Lilex.txt", "Sarasa-Gothic.txt"):
+    for name in ("Lilex.txt", "Sarasa-Gothic.txt", "JuliaMono.txt"):
         shutil.copyfile(licenses / name, output_dir / name)
     (output_dir / "ghostty.font.conf").write_text(
         f'# 移除旧 font-codepoint-map 后使用。\nfont-family = ""\nfont-family = "{family}"\n',

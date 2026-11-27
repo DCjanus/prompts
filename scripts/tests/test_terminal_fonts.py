@@ -17,7 +17,9 @@ from scripts import terminal_font_sources as sources
 
 def fixture_font(style: str, latin: bool) -> TTFont:
     """建立含宽字形、中文、连字和附加符锚点的最小来源。"""
-    characters = set("".join(merge.SHAPING_SAMPLES) + "中文测试á")
+    characters = set(
+        "".join(merge.SHAPING_SAMPLES) + "中文测试á" + merge.SHORTCUT_SYMBOLS
+    )
     cmap = {ord(char): f"u{ord(char):04X}" for char in sorted(characters)}
     names = [".notdef", *cmap.values(), "arrow"]
     builder = FontBuilder(1000, isTTF=True)
@@ -95,11 +97,15 @@ def test_sidebearings_preserve_height_and_fill_grid():
 def test_build_repeatable_and_install_conflict(tmp_path):
     latin_dir = tmp_path / "latin"
     latin_dir.mkdir()
+    symbol_dir = tmp_path / "symbols"
+    symbol_dir.mkdir()
     collection = TTCollection()
     collection.fonts = []
     for style in merge.STYLES:
         fixture_font(style, True).save(latin_dir / f"Lilex-{style}.ttf")
         collection.fonts.append(fixture_font(style, False))
+        symbol_style = "RegularItalic" if style == "Italic" else style
+        fixture_font(style, True).save(symbol_dir / f"JuliaMono-{symbol_style}.ttf")
     sarasa = tmp_path / "Sarasa-SuperTTC.ttc"
     collection.save(sarasa)
     outputs = [tmp_path / "first", tmp_path / "second"]
@@ -111,6 +117,8 @@ def test_build_repeatable_and_install_conflict(tmp_path):
                 str(sarasa),
                 "--lilex-dir",
                 str(latin_dir),
+                "--juliamono-dir",
+                str(symbol_dir),
                 "--output-dir",
                 str(output),
             ],
@@ -133,7 +141,13 @@ def test_build_repeatable_and_install_conflict(tmp_path):
             )
             assert reports[0]["build_id"] in font["name"].getDebugName(6)
             assert font["hmtx"][font.getBestCmap()[ord("中")]][0] == 1000
-    for name in ("Lilex.txt", "Sarasa-Gothic.txt"):
+            for char in merge.SHORTCUT_SYMBOLS:
+                glyph_name = font.getBestCmap()[ord(char)]
+                left, bottom, right, top = bounds(font, char)
+                assert font["hmtx"][glyph_name] == (500, left)
+                assert 0 < left < right < 500
+                assert top - bottom == (570 if char in "⇧⇪" else 500)
+    for name in ("Lilex.txt", "Sarasa-Gothic.txt", "JuliaMono.txt"):
         assert "open font license" in (outputs[0] / name).read_text().lower()
     assert reports[0]["family"] in (outputs[0] / "ghostty.font.conf").read_text()
     installed = tmp_path / "installed"
@@ -156,6 +170,8 @@ def test_build_repeatable_and_install_conflict(tmp_path):
             str(sarasa),
             "--lilex-dir",
             str(latin_dir),
+            "--juliamono-dir",
+            str(symbol_dir),
             "--output-dir",
             str(outputs[0]),
         ],

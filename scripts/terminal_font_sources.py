@@ -39,8 +39,10 @@ DEFAULT_MANIFEST = Path(__file__).resolve().parents[1] / "terminal-fonts.toml"
 def load_manifest(path: Path) -> list[dict]:
     """读取固定版本、下载摘要和上游检查基线。"""
     fonts = tomllib.loads(path.read_text())["fonts"]
-    if {font["name"] for font in fonts} != {"sarasa", "lilex"} or len(fonts) != 2:
-        raise ValueError("清单必须包含且仅包含 sarasa 和 lilex")
+    if {font["name"] for font in fonts} != {"sarasa", "lilex", "juliamono"} or len(
+        fonts
+    ) != 3:
+        raise ValueError("清单必须包含且仅包含 sarasa、lilex 和 juliamono")
     for font in fonts:
         if not re.fullmatch(r"[\w.-]+/[\w.-]+", font["repository"]):
             raise ValueError("无效 GitHub repository")
@@ -233,7 +235,11 @@ def notes(
         "## 上游来源",
         "",
     ]
-    labels = {"lilex": "Lilex", "sarasa": "更纱黑体 Sarasa Gothic"}
+    labels = {
+        "lilex": "Lilex",
+        "sarasa": "更纱黑体 Sarasa Gothic",
+        "juliamono": "JuliaMono",
+    }
     for font in fonts:
         url = f"https://github.com/{font['repository']}/releases/tag/{quote(font['tag'], safe='')}"
         lines.append(f"- {labels[font['name']]}：[{font['tag']}]({url})")
@@ -275,9 +281,10 @@ def fetch(
     """下载固定版本，校验 SHA-256，仅解包所需字体；不自动追随 latest。"""
     if output_dir.exists():
         raise typer.BadParameter("输出目录已存在", param_hint="--output-dir")
+    fonts = load_manifest(manifest)
     with TemporaryDirectory(prefix="terminal-font-sources-") as temp:
         staging = Path(temp)
-        for font in load_manifest(manifest):
+        for font in fonts:
             asset = approved_asset(font, release(font))
             url = asset["browser_download_url"]
             expected = f"https://github.com/{font['repository']}/releases/download/"
@@ -303,7 +310,8 @@ def fetch(
                     ):
                         shutil.copyfileobj(source, target)
         output_dir.mkdir(parents=True)
-        for name in ("sarasa", "lilex"):
+        for font in fonts:
+            name = font["name"]
             shutil.copytree(staging / name, output_dir / name)
         shutil.copyfile(manifest, output_dir / "terminal-fonts.toml")
     console.print(f"已校验并输出：{output_dir}")
