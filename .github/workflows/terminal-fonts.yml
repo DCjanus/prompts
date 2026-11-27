@@ -69,7 +69,8 @@ jobs:
         run: |
           ./scripts/merge_terminal_fonts.py \
             --sarasa font-sources/sarasa/Sarasa-SuperTTC.ttc \
-            --lilex-dir font-sources/lilex --output-dir terminal-fonts
+            --lilex-dir font-sources/lilex --juliamono-dir font-sources/juliamono \
+            --output-dir terminal-fonts
           cp terminal-fonts.toml terminal-fonts/
           zip -j terminal-fonts.zip terminal-fonts/*
       - uses: actions/upload-artifact@v7.0.2

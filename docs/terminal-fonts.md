@@ -1,6 +1,6 @@
 # DCjanus Mono SC 终端字体
 
-将 Lilex 的西文字形与更纱 Term SC 的中文、框线合并为单一字体，包含 Regular、Bold、Italic、Bold Italic 四个样式。Ghostty 无需 `font-codepoint-map`，常规、粗体及斜体直接选择同一家族中的对应样式。
+将 Lilex 的西文字形与更纱 Term SC 的中文、框线合并为单一字体，并使用 JuliaMono 的 `⇧⌘⇪⌫⌦`，包含 Regular、Bold、Italic、Bold Italic 四个样式。Ghostty 无需 `font-codepoint-map`，常规、粗体及斜体直接选择同一家族中的对应样式。
 
 ## 为什么要合并字体
 
@@ -10,7 +10,7 @@
 
 ## 下载与安装
 
-从 [固定字体 release](https://github.com/DCjanus/prompts/releases/tag/terminal-fonts-latest) 下载 `terminal-fonts.zip`。解压后将四个 `.ttf` 安装到 macOS 的 `~/Library/Fonts/`；其他系统按其字体安装方式处理。压缩包还包含来源清单、构建报告、两份 OFL 许可证和 `ghostty.font.conf`。
+从 [固定字体 release](https://github.com/DCjanus/prompts/releases/tag/terminal-fonts-latest) 下载 `terminal-fonts.zip`。解压后将四个 `.ttf` 安装到 macOS 的 `~/Library/Fonts/`；其他系统按其字体安装方式处理。压缩包还包含来源清单、构建报告、三份 OFL 许可证和 `ghostty.font.conf`。
 
 备份 Ghostty 配置，移除现有 `font-family`、`font-family-bold`、`font-family-italic`、`font-family-bold-italic` 和所有 `font-codepoint-map`，再加入包内 `ghostty.font.conf` 的内容。保留主题等其他设置。重载配置后新建窗口；未发现新字体时退出并重新启动 Ghostty。
 
@@ -26,6 +26,7 @@
 ./scripts/merge_terminal_fonts.py \
   --sarasa /tmp/font-sources/sarasa/Sarasa-SuperTTC.ttc \
   --lilex-dir /tmp/font-sources/lilex \
+  --juliamono-dir /tmp/font-sources/juliamono \
   --output-dir /tmp/terminal-fonts \
   --install-dir "$HOME/Library/Fonts"
 ```
@@ -61,4 +62,4 @@ printf 'Regular: ABC abc 0123 中文测试 -> !=\n\033[1mBold:    ABC abc 0123 �
 
 ## 来源与许可
 
-[Lilex](https://github.com/mishamyrt/Lilex) 和 [Sarasa Gothic](https://github.com/be5invis/Sarasa-Gothic) 均按 SIL Open Font License 1.1 使用。完整文本分别保存在 [Lilex.txt](../licenses/terminal-fonts/Lilex.txt) 和 [Sarasa-Gothic.txt](../licenses/terminal-fonts/Sarasa-Gothic.txt)，并随每份构建产物分发。
+[Lilex](https://github.com/mishamyrt/Lilex)、[Sarasa Gothic](https://github.com/be5invis/Sarasa-Gothic) 和 [JuliaMono](https://github.com/cormullion/juliamono) 均按 SIL Open Font License 1.1 使用。完整文本分别保存在 [Lilex.txt](../licenses/terminal-fonts/Lilex.txt)、[Sarasa-Gothic.txt](../licenses/terminal-fonts/Sarasa-Gothic.txt) 和 [JuliaMono.txt](../licenses/terminal-fonts/JuliaMono.txt)，并随每份构建产物分发。
